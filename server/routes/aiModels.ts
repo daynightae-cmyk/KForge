@@ -9,14 +9,15 @@ import { MediapipeWrapper } from "../knoux_models/mediapipeWrapper";
 
 const router = express.Router();
 
-// Initialize all AI model wrappers
-const gfpganModelPath = path.resolve(__dirname, "../knoux_models/gfpgan/gfpgan.pth");
-const beautyGANModelPath = path.resolve(__dirname, "../knoux_models/beauty_gan/beauty_gan.pth");
-const styleGAN3ModelPath = path.resolve(__dirname, "../knoux_models/stylegan3/stylegan3.pkl");
-const decaModelPath = path.resolve(__dirname, "../knoux_models/deca/deca.pkl");
-const decaConfigPath = path.resolve(__dirname, "../knoux_models/deca/config.yaml");
-const wav2lipModelPath = path.resolve(__dirname, "../knoux_models/wav2lip/wav2lip.pth");
-const mediapipeModelPath = path.resolve(__dirname, "../knoux_models/mediapipe/");
+// Keep model assets relative to the launched KForge project, which works in Vite and in the ESM production bundle.
+const modelsRoot = path.resolve(process.cwd(), "server", "knoux_models");
+const gfpganModelPath = path.join(modelsRoot, "gfpgan", "gfpgan.pth");
+const beautyGANModelPath = path.join(modelsRoot, "beauty_gan", "beauty_gan.pth");
+const styleGAN3ModelPath = path.join(modelsRoot, "stylegan3", "stylegan3.pkl");
+const decaModelPath = path.join(modelsRoot, "deca", "deca.pkl");
+const decaConfigPath = path.join(modelsRoot, "deca", "config.yaml");
+const wav2lipModelPath = path.join(modelsRoot, "wav2lip", "wav2lip.pth");
+const mediapipeModelPath = path.join(modelsRoot, "mediapipe");
 
 const gfpgan = new GFPGANWrapper(gfpganModelPath);
 const beautyGAN = new BeautyGANWrapper(beautyGANModelPath);
