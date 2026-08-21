@@ -1,0 +1,116 @@
+{
+  "version": "1.0",
+  "bodyPresets": {
+    "slim": {
+      "name": "Slim Figure",
+      "description": "Natural slimming effect",
+      "modifications": {
+        "waistSize": 0.8,
+        "shoulderWidth": 1.0,
+        "height": 1.05,
+        "legShape": 1.1,
+        "armShape": 0.9
+      }
+    },
+    "sport": {
+      "name": "Athletic Build",
+      "description": "Toned and muscular appearance",
+      "modifications": {
+        "waistSize": 0.9,
+        "shoulderWidth": 1.2,
+        "height": 1.0,
+        "legShape": 1.15,
+        "armShape": 1.1
+      }
+    },
+    "fashion": {
+      "name": "Fashion Model",
+      "description": "Tall and elegant proportions",
+      "modifications": {
+        "waistSize": 0.7,
+        "shoulderWidth": 0.95,
+        "height": 1.1,
+        "legShape": 1.2,
+        "armShape": 0.85
+      }
+    },
+    "curvy": {
+      "name": "Curvy Figure",
+      "description": "Enhanced curves",
+      "modifications": {
+        "waistSize": 0.75,
+        "shoulderWidth": 1.05,
+        "height": 1.0,
+        "legShape": 1.05,
+        "armShape": 0.95
+      }
+    },
+    "natural": {
+      "name": "Natural Enhancement",
+      "description": "Subtle improvements",
+      "modifications": {
+        "waistSize": 0.95,
+        "shoulderWidth": 1.02,
+        "height": 1.01,
+        "legShape": 1.02,
+        "armShape": 0.98
+      }
+    }
+  },
+  "genderSpecific": {
+    "male": {
+      "broad_shoulders": {
+        "name": "Broad Shoulders",
+        "modifications": {
+          "shoulderWidth": 1.3,
+          "waistSize": 0.9,
+          "height": 1.02,
+          "armShape": 1.15
+        }
+      },
+      "athletic": {
+        "name": "Athletic Male",
+        "modifications": {
+          "shoulderWidth": 1.25,
+          "waistSize": 0.85,
+          "height": 1.0,
+          "armShape": 1.2,
+          "legShape": 1.1
+        }
+      }
+    },
+    "female": {
+      "hourglass": {
+        "name": "Hourglass Figure",
+        "modifications": {
+          "waistSize": 0.7,
+          "shoulderWidth": 1.0,
+          "height": 1.0,
+          "legShape": 1.05
+        }
+      },
+      "pear_shape": {
+        "name": "Pear Shape Enhancement",
+        "modifications": {
+          "waistSize": 0.8,
+          "shoulderWidth": 1.1,
+          "height": 1.0,
+          "legShape": 1.0
+        }
+      }
+    }
+  },
+  "realTimeSettings": {
+    "processingSpeed": "medium",
+    "qualityLevel": "high",
+    "gpuAcceleration": true,
+    "previewResolution": "720p",
+    "exportResolution": "1080p"
+  },
+  "trackingSettings": {
+    "confidenceThreshold": 0.8,
+    "smoothingFactor": 0.7,
+    "adaptiveTracking": true,
+    "multiPersonSupport": true
+  }
+}

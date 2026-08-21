@@ -1,0 +1,162 @@
+{
+  "version": "1.0",
+  "presets": {
+    "natural": {
+      "name": "Natural Look",
+      "description": "Subtle enhancement for everyday use",
+      "effects": {
+        "makeup": {
+          "style": "Natural",
+          "foundation": { "intensity": 0.3, "coverage": "light" },
+          "eyes": { "intensity": 0.2, "style": "subtle" },
+          "lips": { "intensity": 0.3, "color": "nude" },
+          "blush": { "intensity": 0.2, "placement": "natural" }
+        },
+        "faceEnhancement": {
+          "skinSmoothing": 0.3,
+          "eyeEnhancement": 0.2,
+          "teethWhitening": 0.1,
+          "overall": 0.4
+        },
+        "faceMorphing": {
+          "eyeSize": 1.0,
+          "noseSharpness": 1.0,
+          "smile": 0.0,
+          "jawlineRefinement": 0.0
+        }
+      }
+    },
+    "party": {
+      "name": "Party Glam",
+      "description": "Bold and dramatic for special occasions",
+      "effects": {
+        "makeup": {
+          "style": "Party",
+          "foundation": { "intensity": 0.6, "coverage": "medium" },
+          "eyes": { "intensity": 0.8, "style": "dramatic" },
+          "lips": { "intensity": 0.7, "color": "bold" },
+          "blush": { "intensity": 0.4, "placement": "defined" }
+        },
+        "faceEnhancement": {
+          "skinSmoothing": 0.6,
+          "eyeEnhancement": 0.4,
+          "teethWhitening": 0.3,
+          "overall": 0.6
+        },
+        "faceMorphing": {
+          "eyeSize": 1.2,
+          "noseSharpness": 0.8,
+          "smile": 0.3,
+          "jawlineRefinement": 0.4
+        }
+      }
+    },
+    "wedding": {
+      "name": "Wedding Elegance",
+      "description": "Classic and timeless for special moments",
+      "effects": {
+        "makeup": {
+          "style": "Wedding",
+          "foundation": { "intensity": 0.7, "coverage": "full" },
+          "eyes": { "intensity": 0.6, "style": "elegant" },
+          "lips": { "intensity": 0.5, "color": "classic" },
+          "blush": { "intensity": 0.3, "placement": "soft" }
+        },
+        "faceEnhancement": {
+          "skinSmoothing": 0.8,
+          "eyeEnhancement": 0.7,
+          "teethWhitening": 0.5,
+          "overall": 0.8
+        },
+        "faceMorphing": {
+          "eyeSize": 1.1,
+          "noseSharpness": 0.9,
+          "smile": 0.2,
+          "jawlineRefinement": 0.3
+        }
+      }
+    },
+    "fantasy": {
+      "name": "Fantasy Look",
+      "description": "Creative and artistic effects",
+      "effects": {
+        "makeup": {
+          "style": "Fantasy",
+          "foundation": { "intensity": 0.5, "coverage": "medium" },
+          "eyes": { "intensity": 1.0, "style": "creative" },
+          "lips": { "intensity": 0.9, "color": "fantasy" },
+          "blush": { "intensity": 0.6, "placement": "artistic" }
+        },
+        "faceEnhancement": {
+          "skinSmoothing": 0.4,
+          "eyeEnhancement": 0.8,
+          "teethWhitening": 0.2,
+          "overall": 0.6
+        },
+        "faceMorphing": {
+          "eyeSize": 1.4,
+          "noseSharpness": 0.7,
+          "smile": 0.4,
+          "jawlineRefinement": 0.6
+        }
+      }
+    },
+    "kpop": {
+      "name": "K-Pop Style",
+      "description": "Korean beauty trends",
+      "effects": {
+        "makeup": {
+          "style": "KPOP",
+          "foundation": { "intensity": 0.8, "coverage": "full" },
+          "eyes": { "intensity": 0.9, "style": "kpop" },
+          "lips": { "intensity": 0.6, "color": "gradient" },
+          "blush": { "intensity": 0.5, "placement": "youthful" }
+        },
+        "faceEnhancement": {
+          "skinSmoothing": 1.0,
+          "eyeEnhancement": 1.0,
+          "teethWhitening": 0.8,
+          "overall": 1.0
+        },
+        "faceMorphing": {
+          "eyeSize": 1.3,
+          "noseSharpness": 0.6,
+          "smile": 0.1,
+          "jawlineRefinement": 0.7
+        }
+      }
+    }
+  },
+  "expressions": {
+    "happy": {
+      "mouth": 0.8,
+      "eyes": 0.6,
+      "eyebrows": 0.3,
+      "cheeks": 0.7
+    },
+    "sad": {
+      "mouth": -0.6,
+      "eyes": -0.4,
+      "eyebrows": -0.5,
+      "cheeks": -0.3
+    },
+    "surprised": {
+      "mouth": 0.4,
+      "eyes": 0.9,
+      "eyebrows": 0.8,
+      "cheeks": 0.2
+    },
+    "angry": {
+      "mouth": -0.3,
+      "eyes": -0.2,
+      "eyebrows": -0.8,
+      "cheeks": 0.1
+    },
+    "neutral": {
+      "mouth": 0.0,
+      "eyes": 0.0,
+      "eyebrows": 0.0,
+      "cheeks": 0.0
+    }
+  }
+}
