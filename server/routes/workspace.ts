@@ -30,6 +30,7 @@ import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
 import { appendTaskLog, cancelTask, getTask, listTasks, retryTask, startTask, type TaskKind } from "../services/tasks";
 import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatformMode } from "../services/localPlatform";
+import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -191,6 +192,25 @@ function commandFor(manager: string | null, script: string) {
   return { command: "npm", args: ["run", script] };
 }
 
+async function detectedProjectCommand(project: ProjectSummary, profile: ProjectProfile, action: "test" | "build" | "typecheck") {
+  const scriptName = action === "typecheck" ? "typecheck" : action;
+  if (profile.scripts[scriptName]) return commandFor(profile.packageManager, scriptName);
+  const root = project.path;
+  if (await pathExists(path.join(root, "go.mod"))) return action === "test" ? { command: "go", args: ["test", "./..."] } : action === "build" ? { command: "go", args: ["build", "./..."] } : null;
+  if (await pathExists(path.join(root, "Cargo.toml"))) return action === "test" ? { command: "cargo", args: ["test"] } : action === "build" ? { command: "cargo", args: ["build", "--release"] } : null;
+  if (await pathExists(path.join(root, "pom.xml"))) return action === "test" ? { command: "mvn", args: ["test"] } : action === "build" ? { command: "mvn", args: ["package", "-DskipTests"] } : null;
+  const gradle = await pathExists(path.join(root, process.platform === "win32" ? "gradlew.bat" : "gradlew"));
+  if (gradle) return action === "test" ? { command: process.platform === "win32" ? "gradlew.bat" : "./gradlew", args: ["test"] } : action === "build" ? { command: process.platform === "win32" ? "gradlew.bat" : "./gradlew", args: ["build", "-x", "test"] } : null;
+  const hasCsproj = (await fs.readdir(root, { withFileTypes: true }).catch(() => [] as Dirent[])).some((entry) => entry.name.endsWith(".csproj") || entry.name.endsWith(".sln"));
+  if (hasCsproj) return action === "test" ? { command: "dotnet", args: ["test"] } : action === "build" ? { command: "dotnet", args: ["build", "--configuration", "Release"] } : null;
+  const pythonManifest = ["pyproject.toml", "requirements.txt", "setup.py"].map((name) => path.join(root, name));
+  if ((await Promise.all(pythonManifest.map(pathExists))).some(Boolean)) {
+    const manifest = (await Promise.all(pythonManifest.map((file) => fs.readFile(file, "utf8").catch(() => "")))).join("\n");
+    if (action === "test" && /(?:pytest|\[tool\.pytest)/i.test(manifest)) return { command: "python", args: ["-m", "pytest"] };
+  }
+  return null;
+}
+
 export async function detectProjectProfile(project: ProjectSummary): Promise<ProjectProfile> {
   const root = project.path;
   const packageJson = await readJson(path.join(root, "package.json"));
@@ -230,7 +250,7 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
   const allFiles = await findFiles(root, () => true, 20_000);
   const sourceFiles = allFiles.filter((relative) => sourceExtensions.has(path.extname(relative).toLowerCase()));
   const sourceRoots = [...new Set(sourceFiles.map((relative) => relative.split("/")[0]).filter((name) => ["src", "app", "client", "server", "api", "lib", "cmd"].includes(name)))];
-  const envFiles = allFiles.filter((relative) => /(^|\/)\.env(?:\.[^/]+)?$/.test(relative));
+  const envFiles = allFiles.filter((relative) => !relative.startsWith("fixtures/") && /(^|\/)\.env(?:\.[^/]+)?$/.test(relative));
   const ci = allFiles.filter((relative) => relative.startsWith(".github/workflows/") || /(^|\/)(\.gitlab-ci\.yml|azure-pipelines\.yml|\.circleci\/config\.yml)$/.test(relative));
   const docker = allFiles.filter((relative) => /(^|\/)(Dockerfile|docker-compose(?:\.[\w-]+)?\.ya?ml)$/.test(relative));
   const deployment = allFiles.filter((relative) => /(^|\/)(vercel\.json|netlify\.toml|fly\.toml|render\.yaml|app\.yaml)$/.test(relative));
@@ -264,14 +284,15 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
 }
 
 export async function makeProjectSummary(projectPath: string): Promise<ProjectSummary> {
-  const [git, profile] = await Promise.all([
+  const [git, profile, trust] = await Promise.all([
     gitInfo(projectPath),
-    detectProjectProfile({ id: projectId(projectPath), name: path.basename(projectPath), path: projectPath, provider: "Local", branch: "", lastActivity: "", projectType: "", modifiedFiles: 0, untrackedFiles: 0, ahead: 0, behind: 0, healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: "unknown" }),
+    detectProjectProfile({ id: projectId(projectPath), name: path.basename(projectPath), trust: "untrusted", path: projectPath, provider: "Local", branch: "", lastActivity: "", projectType: "", modifiedFiles: 0, untrackedFiles: 0, ahead: 0, behind: 0, healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: "unknown" }),
+    getProjectTrust(getWorkspaceRoot(), projectPath),
   ]);
   const stats = await fs.stat(projectPath);
   const provider = git.remoteUrl?.includes("github.com") ? "GitHub" : git.isGit ? "Git" : "Local";
   return {
-    id: projectId(projectPath), name: path.basename(projectPath), path: projectPath, provider, remoteUrl: git.remoteUrl, branch: git.branch,
+    id: projectId(projectPath), name: path.basename(projectPath), trust, path: projectPath, provider, remoteUrl: git.remoteUrl, branch: git.branch,
     lastActivity: git.lastActivity === "No commits" ? stats.mtime.toISOString() : git.lastActivity,
     projectType: [...profile.framework, ...profile.languages.filter((language) => !profile.framework.includes(language))].join(" + ") || "Local project",
     modifiedFiles: git.modifiedFiles, untrackedFiles: git.untrackedFiles, ahead: git.ahead, behind: git.behind,
@@ -300,10 +321,16 @@ async function resolveProject(id: string) {
   return (await allProjects()).find((project) => project.id === id);
 }
 
+function untrustedProjectError(action: string) {
+  return { error: `UNTRUSTED PROJECT: ${action} is disabled until you explicitly approve execution for this local project. Read-only inspection remains available.`, permission: "ask", trust: "untrusted" as const };
+}
+
 function issue(projectId: string, seed: string, severity: DiagnosticSeverity, category: DiagnosticCategory, title: string, message: string, options: Partial<Pick<ScanIssue, "file" | "line" | "description" | "confidence" | "fixability" | "source" | "suggestion" | "rule" | "risk">> = {}): ScanIssue {
+  const priority = severity === "critical" ? "P0" : severity === "high" ? "P1" : severity === "medium" ? "P2" : "P3";
   return {
     id: `${projectId}:${seed}`,
     severity,
+    priority,
     category,
     title,
     message,
@@ -373,7 +400,7 @@ async function completenessIssues(project: ProjectSummary, profile: ProjectProfi
     try {
       const lines = (await fs.readFile(path.join(project.path, relative), "utf8")).split(/\r?\n/);
       lines.forEach((line, index) => {
-        if (/\bTODO\b|\bFIXME\b/.test(line)) issues.push(issue(project.id, `marker-${relative}-${index + 1}`, "low", "completeness", "Implementation marker found", line.trim(), { file: relative, line: index + 1, source: "KForge completeness", confidence: "high", fixability: "guided", suggestion: "Classify the marker and create an implementation task before release." }));
+        if (/^\s*(?:\/\/|\/\*|#)\s*(?:TODO|FIXME)\b/i.test(line)) issues.push(issue(project.id, `marker-${relative}-${index + 1}`, "low", "completeness", "Implementation marker found", line.trim(), { file: relative, line: index + 1, source: "KForge completeness", confidence: "high", fixability: "guided", suggestion: "Classify the marker and create an implementation task before release." }));
       });
     } catch { /* unreadable source file is not a diagnostic */ }
   }
@@ -482,7 +509,16 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
   ];
   const measured = metrics.filter((entry) => entry.score !== null);
   const totalWeight = measured.reduce((total, entry) => total + entry.weight, 0);
-  return { score: totalWeight ? Math.round(measured.reduce((total, entry) => total + (entry.score || 0) * entry.weight, 0) / totalWeight) : null, evidenceCoverage: Math.round((measured.length / metrics.length) * 100), metrics, calculatedAt: new Date().toISOString() };
+  const toDecisionEntry = (entry: ScanIssue) => ({ title: entry.title, source: entry.source, file: entry.file, issueId: entry.id });
+  const blockingIssues = diagnostics.filter((entry) => entry.severity === "critical" || entry.severity === "high");
+  const warningIssues = diagnostics.filter((entry) => entry.severity === "medium" || entry.severity === "low");
+  const failedMetrics = metrics.filter((entry) => entry.status === "fail");
+  const unknownVerification = metrics.filter((entry) => ["tests", "build", "runtime"].includes(entry.key) && entry.status === "unknown");
+  const blockers = [...blockingIssues.map(toDecisionEntry), ...failedMetrics.map((entry) => ({ title: `${entry.label} failed`, source: "KForge health" }))];
+  const warnings = [...warningIssues.map(toDecisionEntry), ...unknownVerification.map((entry) => ({ title: `${entry.label} has not been verified`, source: "KForge health" }))];
+  const releaseState: ProjectHealth["release"]["state"] = blockers.length ? "BLOCKED" : warnings.length ? "READY WITH WARNINGS" : "READY";
+  const release = { state: releaseState, blockers, warnings, evidence: metrics.flatMap((entry) => entry.evidence) };
+  return { score: totalWeight ? Math.round(measured.reduce((total, entry) => total + (entry.score || 0) * entry.weight, 0) / totalWeight) : null, evidenceCoverage: Math.round((measured.length / metrics.length) * 100), metrics, release, calculatedAt: new Date().toISOString() };
 }
 
 function awaitableScore(condition: boolean, score: number) {
@@ -566,9 +602,8 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
   }
   if ((action === "pull" || action === "push") && !(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: "Remote Git sync is disabled in Offline Mode. Switch KForge to Online Optional only when you explicitly want to contact a remote." };
   if ((action === "pull" || action === "push") && project.modifiedFiles + project.untrackedFiles > 0) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: "Git operation blocked because the working tree contains local changes. Review or commit them first." };
-  const scriptName = action === "typecheck" ? "typecheck" : action;
-  const command = action === "test" || action === "build" || action === "typecheck" ? profile.scripts[scriptName] ? commandFor(profile.packageManager, scriptName) : null : { command: "git", args: [action] };
-  if (!command) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: `No ${action} script was detected in this project.` };
+  const command = action === "test" || action === "build" || action === "typecheck" ? await detectedProjectCommand(project, profile, action) : { command: "git", args: [action] };
+  if (!command) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: `No verified ${action} command was detected from the project manifests.` };
   const execution = await run(command.command, command.args, project.path, commandTimeoutMs);
   const result: CommandResult = { action, projectId: project.id, ok: execution.ok, startedAt, completedAt: new Date().toISOString(), exitCode: execution.code, output: execution.output, message: execution.ok ? `${action[0].toUpperCase()}${action.slice(1)} completed successfully.` : `${action[0].toUpperCase()}${action.slice(1)} failed.` };
   latestActions.set(project.id, { ...(latestActions.get(project.id) || {}), [action]: result });
@@ -753,6 +788,7 @@ router.post("/projects/:id/problems/:problemId/apply", async (req, res) => {
   const project = await resolveProject(req.params.id);
   const verify = req.body?.verify === true;
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Solution apply"));
   const scan = await scanProject(project);
   const problem = scan.issues.find((entry) => entry.id === req.params.problemId);
   if (!problem) return res.status(404).json({ error: "Problem not found in the latest real scan." });
@@ -783,6 +819,7 @@ router.post("/projects/:id/problems/:problemId/apply", async (req, res) => {
 router.post("/projects/:id/release-gate", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Release Gate execution"));
   const profile = await detectProjectProfile(project);
   const verification: CommandResult[] = [];
   if (profile.scripts.typecheck) verification.push(await executeProjectAction(project, "typecheck"));
@@ -802,6 +839,7 @@ router.post("/projects/:id/release-gate", async (req, res) => {
 router.post("/projects/:id/pre-push-gate", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Pre-push verification"));
   const typecheck = await executeProjectAction(project, "typecheck");
   const tests = await executeProjectAction(project, "test");
   const build = await executeProjectAction(project, "build");
@@ -884,6 +922,8 @@ router.post("/projects/:id/agent/tools/:tool", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (!isAgentToolName(req.params.tool)) return res.status(400).json({ error: "Unknown or unregistered agent tool." });
+  const readOnlyTools = new Set(["list_files", "read_file", "search_files", "find_symbol", "inspect_file"]);
+  if (project.trust !== "trusted" && !readOnlyTools.has(req.params.tool)) return res.status(428).json(untrustedProjectError(`Agent tool ${req.params.tool}`));
   const input = typeof req.body === "object" && req.body !== null && !Array.isArray(req.body) ? req.body as Record<string, unknown> : {};
   const result = await executeAgentTool(project.path, projectToolHandlers(project), req.params.tool, input);
   return res.status(result.ok ? 200 : result.permission === "dangerous" || result.permission === "safe-write" ? 428 : result.permission === "blocked" ? 403 : 422).json(result);
@@ -894,6 +934,7 @@ router.post("/projects/:id/agent/runs", async (req, res) => {
   const goal = typeof req.body?.goal === "string" ? req.body.goal.trim().slice(0, 800) : "Audit this project and report verified engineering findings.";
   const issueId = typeof req.body?.issueId === "string" ? req.body.issueId : undefined;
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Agent execution"));
   let taskId = "";
   const task = startTask(project.id, "agent", async () => {
     const log = (message: string, progress: number) => appendTaskLog(taskId, message, progress);
@@ -999,6 +1040,7 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
   const project = await resolveProject(req.params.id);
   const mission = typeof req.body?.mission === "string" ? req.body.mission : "audit";
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Agent mission"));
   if (!["audit", "fix-critical", "prepare-release"].includes(mission)) return res.status(400).json({ error: "Unsupported mission. Choose audit, fix-critical, or prepare-release." });
   let taskId = "";
   const task = startTask(project.id, "agent", async () => {
@@ -1077,6 +1119,7 @@ router.post("/projects/:id/agent/patches/apply", async (req, res) => {
   const issueId = typeof req.body?.issueId === "string" ? req.body.issueId : "";
   const confirmed = req.body?.confirmed === true;
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Patch application"));
   const scan = await scanProject(project);
   const issue = scan.issues.find((entry) => entry.id === issueId);
   if (!issue) return res.status(404).json({ error: "Problem not found in the latest real scan." });
@@ -1102,6 +1145,14 @@ router.post("/projects/:id/agent/patches/apply", async (req, res) => {
     await restoreSnapshot(project.path, snapshot.id).catch(() => undefined);
     return res.status(500).json({ ok: false, rolledBack: true, snapshot, patch, error: error instanceof Error ? error.message : "Patch failed and KForge restored the snapshot." });
   }
+});
+
+router.post("/projects/:id/trust", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Trusting a project enables local commands and write-capable agent operations. Explicit confirmation is required.", permission: "ask" });
+  await setProjectTrust(getWorkspaceRoot(), project.path, "trusted");
+  return res.json({ project: await makeProjectSummary(project.path), trust: "trusted" });
 });
 
 router.post("/projects/open", async (req, res) => {
@@ -1175,6 +1226,7 @@ router.post("/projects/:id/tasks", async (req, res) => {
   const action = req.body?.action;
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (!isWorkspaceAction(action)) return res.status(400).json({ error: "Unsupported KForge action." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Task execution"));
   const kind: TaskKind = action === "pull" || action === "push" ? "git" : action;
   const task = startTask(project.id, kind, () => executeProjectAction(project, action));
   return res.status(202).json({ task });
@@ -1185,6 +1237,7 @@ router.post("/projects/:id/actions", async (req, res) => {
   const action = req.body?.action;
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (!isWorkspaceAction(action)) return res.status(400).json({ error: "Unsupported KForge action." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Project command"));
   try {
     const result = await executeProjectAction(project, action);
     return res.status(result.ok ? 200 : 422).json(result);

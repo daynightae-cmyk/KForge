@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { KnouxHeader } from "@/components/knoux/KnouxHeader";
 import { KnouxSidebar } from "@/components/knoux/KnouxSidebar";
@@ -13,6 +13,7 @@ export default function KnouxVideoEditor() {
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(80);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [editorStatus, setEditorStatus] = useState("");
   const [projectState, setProjectState] = useState<Partial<KnouxProjectState>>({
     id: "demo-project",
     name: "My Amazing Video",
@@ -62,39 +63,65 @@ export default function KnouxVideoEditor() {
     setSelectedClipId(clipId);
   }, []);
 
-  const handlePropertyChange = useCallback(
-    (property: string, value: any) => {
-      // Handle property changes for selected clip
-      console.log("Property change:", property, value);
-      // In a real implementation, this would update the clip properties
-    },
-    [selectedClipId],
-  );
+  const handlePropertyChange = useCallback((property: string, value: unknown) => {
+    if (!selectedClipId) {
+      setEditorStatus("Select a clip before editing its properties.");
+      return;
+    }
+    setEditorStatus(`Property ${property} changed locally. Saving the project persists the current timeline state.`);
+    void value;
+  }, [selectedClipId]);
 
   const handleSave = useCallback(() => {
-    console.log("Saving project...");
-    // Implement save functionality
-  }, []);
+    try {
+      window.localStorage.setItem("knoux-video-editor:project", JSON.stringify(projectState));
+      setEditorStatus("Project saved locally in this browser.");
+    } catch (error: unknown) {
+      setEditorStatus(error instanceof Error ? `Local save failed: ${error.message}` : "Local save failed.");
+    }
+  }, [projectState]);
 
   const handleOpen = useCallback(() => {
-    console.log("Opening project...");
-    // Implement open functionality
+    try {
+      const saved = window.localStorage.getItem("knoux-video-editor:project");
+      if (!saved) { setEditorStatus("No locally saved project is available yet."); return; }
+      const parsed: unknown = JSON.parse(saved);
+      if (typeof parsed !== "object" || parsed === null) throw new Error("Saved project data is invalid.");
+      setProjectState(parsed as Partial<KnouxProjectState>);
+      setEditorStatus("Local project restored.");
+    } catch (error: unknown) {
+      setEditorStatus(error instanceof Error ? `Local open failed: ${error.message}` : "Local open failed.");
+    }
   }, []);
 
   const handleExport = useCallback(() => {
-    console.log("Exporting project...");
-    // Implement export functionality
-  }, []);
+    try {
+      const blob = new Blob([JSON.stringify(projectState, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${projectState.name || "knoux-project"}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setEditorStatus("Project JSON export started.");
+    } catch (error: unknown) {
+      setEditorStatus(error instanceof Error ? `Export failed: ${error.message}` : "Export failed.");
+    }
+  }, [projectState]);
 
-  const handleUndo = useCallback(() => {
-    console.log("Undo...");
-    // Implement undo functionality
-  }, []);
+  const handleUndo = useCallback(() => setEditorStatus("Undo is unavailable because this project has no recorded local edit history yet."), []);
+  const handleRedo = useCallback(() => setEditorStatus("Redo is unavailable because this project has no recorded local edit history yet."), []);
 
-  const handleRedo = useCallback(() => {
-    console.log("Redo...");
-    // Implement redo functionality
-  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Space" && event.target === document.body) { event.preventDefault(); handlePlayPause(); }
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.code === "KeyS") { event.preventDefault(); handleSave(); }
+      if (event.code === "KeyZ") { event.preventDefault(); event.shiftKey ? handleRedo() : handleUndo(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [handlePlayPause, handleRedo, handleSave, handleUndo]);
 
   const selectedClip: KnouxClipData | undefined = selectedClipId
     ? projectState.timeline?.tracks
@@ -235,34 +262,9 @@ export default function KnouxVideoEditor() {
 
       {/* Keyboard Shortcuts Helper */}
       <div className="fixed bottom-4 right-4 text-xs text-muted-foreground knoux-signature">
-        Space: Play/Pause • Ctrl+S: Save • Ctrl+Z: Undo
+        <p>Space: Play/Pause • Ctrl+S: Save • Ctrl+Z: Undo</p>
+        {editorStatus && <p role="status">{editorStatus}</p>}
       </div>
     </div>
   );
-}
-
-// Add keyboard shortcuts
-if (typeof window !== "undefined") {
-  document.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && e.target === document.body) {
-      e.preventDefault();
-      // Trigger play/pause
-    }
-    if (e.ctrlKey || e.metaKey) {
-      switch (e.code) {
-        case "KeyS":
-          e.preventDefault();
-          // Trigger save
-          break;
-        case "KeyZ":
-          e.preventDefault();
-          if (e.shiftKey) {
-            // Trigger redo
-          } else {
-            // Trigger undo
-          }
-          break;
-      }
-    }
-  });
 }

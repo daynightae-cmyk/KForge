@@ -1,0 +1,7 @@
+[project]
+name = "kforge-python-fixture"
+version = "0.1.0"
+dependencies = ["fastapi", "pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

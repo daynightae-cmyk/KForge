@@ -103,7 +103,7 @@ export function KnouxSidebar() {
   // e.g., logging the tab change or pre-loading data for the new tab.
   useEffect(() => {
     console.log(`Knoux Sidebar: Active tab switched to "${activeKnouxTab}".`);
-    // TODO: Maybe pre-fetch some core data for this tab? Or relies on the panel component to do it.
+    // Each panel owns its own data acquisition so tab changes stay isolated and predictable.
   }, [activeKnouxTab]); // Dependency: Run this effect when activeKnouxTab state changes.
 
   // --- Sidebar UI Structure Rendering ---

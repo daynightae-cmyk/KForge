@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { createSnapshot, restoreSnapshot } from "../services/snapshots";
 import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localPlatform";
+import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { executeProjectAction, makeProjectSummary, scanProject } from "./workspace";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
@@ -52,6 +53,29 @@ describe("KForge Workspace engines", () => {
       expect(onlineOptional.optionalOnlineFeatures.find((entry) => entry.id === "clone")?.enabled).toBe(true);
     } finally {
       await fs.rm(stateFile, { force: true });
+    }
+  });
+
+  it("detects Python, Go, and Rust project manifests in the golden fixture suite", async () => {
+    const [python, go, rust] = await Promise.all(["workspace-python", "workspace-go", "workspace-rust"].map(async (name) => scanProject(await makeProjectSummary(fixture(name)))));
+    expect(python.profile.framework).toEqual(expect.arrayContaining(["FastAPI"]));
+    expect(python.profile.languages).toEqual(expect.arrayContaining(["Python"]));
+    expect(go.profile.framework).toEqual(expect.arrayContaining(["Go"]));
+    expect(go.profile.languages).toEqual(expect.arrayContaining(["Go"]));
+    expect(rust.profile.framework).toEqual(expect.arrayContaining(["Rust"]));
+    expect(rust.profile.languages).toEqual(expect.arrayContaining(["Rust"]));
+  });
+
+  it("keeps a newly opened project untrusted until explicit local approval", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-trust-"));
+    const projectPath = path.join(workspaceRoot, "unknown-project");
+    try {
+      await fs.mkdir(projectPath);
+      await expect(getProjectTrust(workspaceRoot, projectPath)).resolves.toBe("untrusted");
+      await setProjectTrust(workspaceRoot, projectPath, "trusted");
+      await expect(getProjectTrust(workspaceRoot, projectPath)).resolves.toBe("trusted");
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
     }
   });
 

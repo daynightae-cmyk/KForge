@@ -1,5 +1,6 @@
 export type WorkspaceStatus = "pass" | "warning" | "fail" | "unknown" | "running" | "unavailable";
 export type DiagnosticSeverity = "critical" | "high" | "medium" | "low" | "info";
+export type IssuePriority = "P0" | "P1" | "P2" | "P3";
 export type DiagnosticCategory = "security" | "dependency" | "quality" | "configuration" | "typecheck" | "test" | "build" | "runtime" | "git" | "completeness" | "architecture" | "api" | "ui" | "mock";
 export type Fixability = "automatic" | "guided" | "manual" | "unavailable";
 export type IssueStatus = "open" | "in_progress" | "fixed" | "verified" | "ignored";
@@ -8,6 +9,7 @@ export type FixRisk = "safe" | "review" | "approval" | "blocked";
 export interface ProjectSummary {
   id: string;
   name: string;
+  trust: "trusted" | "untrusted";
   path: string;
   provider: "GitHub" | "Git" | "Local";
   remoteUrl?: string;
@@ -57,6 +59,7 @@ export interface ProjectProfile {
 export interface ScanIssue {
   id: string;
   severity: DiagnosticSeverity;
+  priority: IssuePriority;
   category: DiagnosticCategory;
   title: string;
   message: string;
@@ -83,10 +86,20 @@ export interface HealthMetric {
   lastScan: string;
 }
 
+export type ReleaseDecisionState = "READY" | "READY WITH WARNINGS" | "BLOCKED";
+
+export interface ReleaseDecision {
+  state: ReleaseDecisionState;
+  blockers: Array<{ title: string; source: string; file?: string; issueId?: string }>;
+  warnings: Array<{ title: string; source: string; file?: string; issueId?: string }>;
+  evidence: string[];
+}
+
 export interface ProjectHealth {
   score: number | null;
   evidenceCoverage: number;
   metrics: HealthMetric[];
+  release: ReleaseDecision;
   calculatedAt: string;
 }
 
