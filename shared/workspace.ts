@@ -1,7 +1,9 @@
 export type WorkspaceStatus = "pass" | "warning" | "fail" | "unknown" | "running" | "unavailable";
 export type DiagnosticSeverity = "critical" | "high" | "medium" | "low" | "info";
-export type DiagnosticCategory = "security" | "dependency" | "quality" | "configuration" | "typecheck" | "test" | "build" | "runtime" | "git" | "completeness";
+export type DiagnosticCategory = "security" | "dependency" | "quality" | "configuration" | "typecheck" | "test" | "build" | "runtime" | "git" | "completeness" | "architecture" | "api" | "ui" | "mock";
 export type Fixability = "automatic" | "guided" | "manual" | "unavailable";
+export type IssueStatus = "open" | "in_progress" | "fixed" | "verified" | "ignored";
+export type FixRisk = "safe" | "review" | "approval" | "blocked";
 
 export interface ProjectSummary {
   id: string;
@@ -64,7 +66,9 @@ export interface ScanIssue {
   confidence: "high" | "medium" | "low";
   fixability: Fixability;
   source: string;
-  status: "open" | "resolved" | "ignored";
+  status: IssueStatus;
+  rule?: string;
+  risk?: FixRisk;
   suggestion?: string;
 }
 

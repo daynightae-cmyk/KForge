@@ -41,6 +41,14 @@ export function getTask(taskId: string) {
   return tasks.get(taskId);
 }
 
+export function appendTaskLog(taskId: string, message: string, progress?: number) {
+  const task = tasks.get(taskId);
+  if (!task) return undefined;
+  if (typeof progress === "number") task.progress = Math.max(task.progress, Math.min(99, Math.round(progress)));
+  append(task, message);
+  return task;
+}
+
 export function startTask(projectId: string, kind: TaskKind, executor: () => Promise<TaskExecutionResult>, retryOf?: string): KForgeTask {
   const task: KForgeTask = { id: randomUUID(), projectId, kind, status: "queued", progress: 0, logs: [], startedAt: new Date().toISOString(), retryOf };
   tasks.set(task.id, task);

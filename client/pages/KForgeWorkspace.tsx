@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CircleDot,
   Clock3,
+  Cpu,
   Code2,
   Command,
   FolderGit2,
@@ -18,10 +19,12 @@ import {
   History,
   LayoutDashboard,
   MoreHorizontal,
+  MessageSquare,
   Network,
   Play,
   Plus,
   RefreshCw,
+  Rocket,
   Search,
   Settings2,
   ShieldAlert,
@@ -42,10 +45,12 @@ import type {
 
 const NAVIGATION = [
   { group: "Projects", items: [["Workspace", LayoutDashboard], ["Recent projects", History], ["Open project", FolderOpen]] },
-  { group: "Project intelligence", items: [["Overview", HeartPulse], ["Project graph", Network], ["Architecture", Box]] },
-  { group: "Audit", items: [["KForge Sonar", ShieldAlert], ["Security scan", ShieldAlert], ["Dependencies", Box]] },
+  { group: "AI", items: [["AI providers", Bot], ["Models", Cpu], ["Agents", Bot], ["Tasks", Activity]] },
+  { group: "Intelligence", items: [["Project graph", Network], ["Ask KForge", MessageSquare], ["Architecture", Box]] },
+  { group: "Quality", items: [["KForge Sonar", ShieldAlert], ["Problems", ShieldAlert], ["Solutions", Wrench]] },
+  { group: "Release", items: [["Release Gate", Rocket]] },
   { group: "Developer tools", items: [["Terminal", Terminal], ["Tests", TestTube2], ["Build", Play]] },
-  { group: "Remote", items: [["Git", GitBranch], ["GitHub", Github], ["Agent tasks", Bot]] },
+  { group: "Remote", items: [["Git", GitBranch], ["GitHub", Github]] },
 ] as const;
 
 type Status = WorkspaceStatus;
@@ -54,7 +59,7 @@ type SortKey = "name" | "projectType" | "branch" | "lastActivity" | "sync";
 interface TaskItem {
   id: string;
   projectId: string;
-  action: WorkspaceAction;
+  action: WorkspaceAction | "agent";
   state: "queued" | "running" | "success" | "error" | "cancelled";
   progress: number;
   output: string;
@@ -79,8 +84,8 @@ interface ServerTask {
 }
 
 function taskFromServer(task: ServerTask): TaskItem | null {
-  if (!["scan", "test", "build", "typecheck", "runtime", "pull", "push"].includes(task.kind)) return null;
-  const action = task.kind as WorkspaceAction;
+  if (!["scan", "test", "build", "typecheck", "runtime", "pull", "push", "agent"].includes(task.kind)) return null;
+  const action = task.kind as WorkspaceAction | "agent";
   return {
     id: task.id,
     projectId: task.projectId,
@@ -216,6 +221,7 @@ export default function KForgeWorkspace() {
       const mapped = (payload.tasks || []).map(taskFromServer).filter((task): task is TaskItem => task !== null);
       setTasks(mapped);
       mapped.filter((task) => task.state === "success" || task.state === "error").forEach((task) => {
+        if (task.action === "agent") return;
         const result: CommandResult = { action: task.action, projectId: task.projectId, ok: task.state === "success", startedAt: task.startedAt, completedAt: task.finishedAt || task.startedAt, output: task.output, message: task.message };
         setActionResults((previous) => ({ ...previous, [task.projectId]: { ...previous[task.projectId], [task.action]: result } }));
         if (task.action === "scan" && task.state === "success" && task.output) {
@@ -371,6 +377,7 @@ export default function KForgeWorkspace() {
             <div className="kf-group-header kf-group-header--collapsed"><button onClick={() => setOpenGroups((state) => ({ ...state, others: !state.others }))}>{openGroups.others ? <ChevronDown size={16} /> : <ChevronRight size={16} />}<span>Connected & recent</span><small>{projects.filter((project) => project.provider === "GitHub").length}</small></button><span>{openGroups.others ? "GitHub-connected repositories appear in the local projects list." : ""}</span></div>
           </section>
 
+          {activeProject && activeNav !== "Workspace" && <CapabilityPanel activeNav={activeNav} project={activeProject} scan={activeScan} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} />}
           {activeProject && <ProjectInspectorV2 project={activeProject} scan={activeScan} results={actionResults[activeProject.id]} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} />}
         </section>
       </main>
@@ -403,6 +410,45 @@ function ProjectInspector({ project, scan, results, tasks, onRun, onTaskControl 
   <div className="kf-inspector-grid"><article className="kf-inspector-card"><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>KForge Sonar</h3></div>{scan && <span>Last scan {formatDate(scan.scannedAt)}</span>}</div>{!scan ? <div className="kf-card-empty"><p>No audit result is loaded for this project.</p><button onClick={() => onRun("scan")}>Run full scan</button></div> : issues.length === 0 ? <div className="kf-card-empty kf-card-empty--good"><p>No security, dependency, or local Git findings were detected by this scan.</p></div> : <div className="kf-issues">{issues.slice(0, 5).map((issue) => <details key={issue.id} className="kf-issue"><summary><span className={`kf-severity kf-severity--${issue.severity}`}>{issue.severity}</span><span><strong>{issue.title}</strong><small>{issue.file || issue.category}</small></span><ChevronRight size={15} /></summary><div><p>{issue.message}</p>{issue.suggestion && <p className="kf-suggestion"><Wrench size={14} />{issue.suggestion}</p>}</div></details>)}</div>}</article>
   <article className="kf-inspector-card"><div className="kf-card-heading"><div><Bot size={17} /><h3>Agent workspace</h3></div><span>Task center</span></div>{tasks.length === 0 ? <div className="kf-card-empty"><p>Actions initiated in KForge are tracked here with their real command output.</p><button onClick={() => onRun("scan")}>Start audit task</button></div> : <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span className="kf-task-indicator">{task.state === "running" ? <RefreshCw size={14} className="kf-spin" /> : <Activity size={14} />}</span><span><strong>{task.action} · {task.state === "success" ? "completed" : task.state}</strong><small>{task.message} · {task.progress}%</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for command output…"}</pre><div className="kf-task-controls">{task.state === "queued" && <button onClick={() => onTaskControl(task, "cancel")}>Cancel</button>}{(task.state === "success" || task.state === "error" || task.state === "cancelled") && <button onClick={() => onTaskControl(task, "retry")}>Retry</button>}</div></details>)}</div>}</article></div></section>;
 }
+
+function CapabilityPanel({ activeNav, project, scan, tasks, onRun, onTaskControl }: { activeNav: string; project: ProjectSummary; scan?: ProjectScan; tasks: TaskItem[]; onRun: (action: WorkspaceAction) => void; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) {
+  if (activeNav === "AI providers" || activeNav === "Models") return <AICenter view={activeNav === "Models" ? "models" : "providers"} />;
+  if (activeNav === "Agents") return <AgentMissionCenter project={project} />;
+  if (activeNav === "Tasks") return <TaskCenterPanel tasks={tasks} onTaskControl={onTaskControl} />;
+  if (activeNav === "Project graph" || activeNav === "Architecture") return <GraphPanel project={project} />;
+  if (activeNav === "Ask KForge") return <AskKForgePanel project={project} />;
+  if (activeNav === "Release Gate") return <ReleaseGatePanel project={project} />;
+  if (activeNav === "KForge Sonar" || activeNav === "Problems" || activeNav === "Solutions" || activeNav === "Security scan" || activeNav === "Dependencies") return <QualityPanel title={activeNav} scan={scan} onScan={() => onRun("scan")} />;
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>{activeNav}</h3></div><span>Workspace</span></div><p className="kf-capability-copy">This Workspace section stays connected to the selected project and local engineering engine.</p></section>;
+}
+
+function AICenter({ view }: { view: "providers" | "models" }) {
+  const [data, setData] = useState<{ providers?: Array<{ id: string; name: string; kind: string; configured: boolean; reachable: boolean; available: boolean; endpoint?: string; models: Array<{ id: string; name: string }>; reason?: string; privacy?: string }>; hardware?: { os: string; cpu: { model: string; cores: number }; memory: { totalBytes: number }; gpu: Array<{ name: string; vramBytes?: number }>; disk: { availableBytes?: number } }; recommendations?: Array<{ id: string; label: string; pullName: string; parameterCount: string; estimatedDownloadBytes: number; estimatedRamBytes: number; license: string; compatible: boolean; reason: string }>; active?: { provider: string; model: string } } | null>(null);
+  const [message, setMessage] = useState("");
+  const refresh = async () => { try { const response = await fetch(view === "models" ? "/api/workspace/ai/models" : "/api/workspace/ai/providers"); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "AI Center is unavailable."); setData(view === "models" ? payload : { providers: payload.providers }); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "AI Center request failed."); } };
+  useEffect(() => { void refresh(); }, [view]);
+  const install = async (pullName: string) => { if (!window.confirm(`Download ${pullName}? KForge will use disk, RAM, and network only after this confirmation.`)) return; try { const response = await fetch("/api/workspace/ai/models/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: "ollama", model: pullName, confirmed: true }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Installation could not start."); setMessage(`Installation task ${payload.task?.id || "started"} is running in the local engine.`); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Installation failed."); } };
+  const test = async (provider: string, model: string) => { try { const response = await fetch("/api/workspace/ai/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, model }) }); const payload = await response.json(); setMessage(response.ok ? `Test passed in ${payload.latencyMs} ms using ${payload.model}.` : payload.error || "Test failed."); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "AI test failed."); } };
+  const providers = data?.providers || [];
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Cpu size={17} /><h3>{view === "models" ? "KForge Model Center" : "KForge AI Center"}</h3></div><button onClick={() => void refresh()}>Refresh</button></div>{message && <p className="kf-capability-message">{message}</p>}{view === "providers" ? <div className="kf-provider-grid">{providers.map((provider) => <article key={provider.id} className="kf-provider-card"><div><strong>{provider.name}</strong><span>{provider.kind}</span></div><p>{provider.available ? "Ready" : provider.reachable ? "Reachable — no model" : provider.configured ? "Configured — not contacted" : "Not configured"}</p><small>{provider.endpoint || provider.reason || provider.privacy}</small>{provider.models.map((model) => <div className="kf-provider-model" key={model.id}><span>{model.name}</span><button onClick={() => void test(provider.id, model.id)}>Test</button></div>)}</article>)}</div> : <div className="kf-model-center"><div className="kf-hardware-grid"><span><strong>OS</strong>{data?.hardware?.os || "Loading"}</span><span><strong>CPU</strong>{data?.hardware?.cpu.model || "Loading"}</span><span><strong>RAM</strong>{data?.hardware ? `${Math.round(data.hardware.memory.totalBytes / 1e9)} GB` : "Loading"}</span><span><strong>GPU</strong>{data?.hardware?.gpu.map((gpu) => gpu.name).join(", ") || "Not reported"}</span><span><strong>Free disk</strong>{data?.hardware?.disk.availableBytes ? `${Math.round(data.hardware.disk.availableBytes / 1e9)} GB` : "Unavailable"}</span></div><div className="kf-provider-grid">{(data?.recommendations || []).map((model) => <article key={model.id} className={`kf-provider-card ${model.compatible ? "is-compatible" : "is-incompatible"}`}><div><strong>{model.label}</strong><span>{model.parameterCount}</span></div><p>{model.compatible ? "Compatible with detected budget" : "Not recommended"}</p><small>{model.reason}</small><small>{model.license} · ~{Math.round(model.estimatedDownloadBytes / 1e9)} GB download</small><button disabled={!model.compatible} onClick={() => void install(model.pullName)}>Install with confirmation</button></article>)}</div></div>}</section>;
+}
+
+function AgentMissionCenter({ project }: { project: ProjectSummary }) {
+  const [mission, setMission] = useState("audit");
+  const [status, setStatus] = useState("Choose a mission. KForge records task logs, applies only verified safe patches, and restores snapshots on failed verification.");
+  const start = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/agent/missions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mission }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Mission could not start."); setStatus(`Mission task ${payload.task.id} started. Open Tasks to follow its event log.`); } catch (cause: unknown) { setStatus(cause instanceof Error ? cause.message : "Mission start failed."); } };
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Bot size={17} /><h3>KForge Engineer missions</h3></div><span>Read · Plan · Patch · Verify</span></div><div className="kf-inline-controls"><select value={mission} onChange={(event) => setMission(event.target.value)}><option value="audit">Audit project</option><option value="fix-critical">Fix critical issue</option><option value="prepare-release">Prepare production release</option></select><button className="kf-button kf-button--primary" onClick={() => void start()}>Start mission</button></div><p className="kf-capability-copy">{status}</p></section>;
+}
+
+function TaskCenterPanel({ tasks, onTaskControl }: { tasks: TaskItem[]; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) { return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>Task Center v2</h3></div><span>{tasks.length} selected-project task(s)</span></div>{tasks.length ? <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span><strong>{task.action} · {task.state}</strong><small>{task.message} · {task.progress}%</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for process output…"}</pre>{task.state === "queued" && <button onClick={() => onTaskControl(task, "cancel")}>Cancel queued task</button>}{["success", "error", "cancelled"].includes(task.state) && <button onClick={() => onTaskControl(task, "retry")}>Retry task</button>}</details>)}</div> : <p className="kf-capability-copy">Agent and project tasks appear here after they start. Logs and output come from the actual local process.</p>}</section>; }
+
+function GraphPanel({ project }: { project: ProjectSummary }) { const [data, setData] = useState<{ graph?: { summary: { files: number; imports: number; routes: number; apis: number; tests: number } } } | null>(null); const [message, setMessage] = useState(""); useEffect(() => { void (async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/graph`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Graph unavailable."); setData(payload); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Graph request failed."); } })(); }, [project.id]); const summary = data?.graph?.summary; return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Network size={17} /><h3>Project Graph</h3></div><span>Actual static evidence</span></div>{summary ? <div className="kf-hardware-grid"><span><strong>Files</strong>{summary.files}</span><span><strong>Imports</strong>{summary.imports}</span><span><strong>Routes</strong>{summary.routes}</span><span><strong>APIs</strong>{summary.apis}</span><span><strong>Tests</strong>{summary.tests}</span></div> : <p className="kf-capability-copy">{message || "Building graph…"}</p>}</section>; }
+
+function AskKForgePanel({ project }: { project: ProjectSummary }) { const [question, setQuestion] = useState("What are the 5 biggest risks in this project?"); const [answer, setAnswer] = useState(""); const ask = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/ask`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Ask KForge failed."); setAnswer(typeof payload.answer === "string" ? payload.answer : JSON.stringify(payload.answer, null, 2)); } catch (cause: unknown) { setAnswer(cause instanceof Error ? cause.message : "Ask KForge failed."); } }; return <section className="kf-capability-panel"><div className="kf-card-heading"><div><MessageSquare size={17} /><h3>Ask KForge</h3></div><span>Project-grounded</span></div><div className="kf-agent-panel"><textarea value={question} onChange={(event) => setQuestion(event.target.value)} /><button className="kf-button kf-button--primary" onClick={() => void ask()}>Ask</button>{answer && <pre>{answer}</pre>}</div></section>; }
+
+function ReleaseGatePanel({ project }: { project: ProjectSummary }) { const [result, setResult] = useState(""); const run = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/release-gate`, { method: "POST" }); const payload = await response.json(); setResult(JSON.stringify({ readiness: payload.readiness, checks: payload.checks, missingChecks: payload.missingChecks, blockers: payload.blockers?.map((entry: ScanIssue) => entry.title) }, null, 2)); } catch (cause: unknown) { setResult(cause instanceof Error ? cause.message : "Release Gate failed."); } }; return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Rocket size={17} /><h3>KForge Release Gate</h3></div><span>Typecheck · Tests · Build · Runtime · Security</span></div><button className="kf-button kf-button--primary" onClick={() => void run()}>Run Release Gate</button>{result && <pre className="kf-release-output">{result}</pre>}</section>; }
+
+function QualityPanel({ title, scan, onScan }: { title: string; scan?: ProjectScan; onScan: () => void }) { const issues = scan?.issues || []; return <section className="kf-capability-panel"><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>{title}</h3></div><button onClick={onScan}>Run current scan</button></div>{scan ? <div className="kf-issues">{issues.slice(0, 8).map((entry) => <details key={entry.id} className="kf-issue"><summary><span className={`kf-severity kf-severity--${entry.severity}`}>{entry.severity}</span><span><strong>{entry.title}</strong><small>{entry.source} · {entry.rule || entry.category}</small></span><ChevronRight size={15} /></summary><p>{entry.suggestion || entry.description}</p></details>)}</div> : <p className="kf-capability-copy">No scan is loaded. Start a real local scan to populate this panel.</p>}</section>; }
 
 function ProjectInspectorV2({ project, scan, results, tasks, onRun, onTaskControl }: { project: ProjectSummary; scan?: ProjectScan; results?: Partial<Record<WorkspaceAction, CommandResult>>; tasks: TaskItem[]; onRun: (action: WorkspaceAction) => void; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) {
   const health = scan?.health.score;

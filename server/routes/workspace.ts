@@ -23,8 +23,11 @@ import type {
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
 import { detectLocalAIProvider, requestLocalPlan } from "../services/localAI";
+import { generateWithLocalAI, getModelCenter, installOllamaModel, listAIProviders, setActiveModel, testAIConnection, type AIProviderId } from "../services/aiCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
-import { cancelTask, getTask, listTasks, retryTask, startTask, type TaskKind } from "../services/tasks";
+import { buildAgentContext, buildLocalAIPlan, buildRulePlan, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
+import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
+import { appendTaskLog, cancelTask, getTask, listTasks, retryTask, startTask, type TaskKind } from "../services/tasks";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -295,7 +298,7 @@ async function resolveProject(id: string) {
   return (await allProjects()).find((project) => project.id === id);
 }
 
-function issue(projectId: string, seed: string, severity: DiagnosticSeverity, category: DiagnosticCategory, title: string, message: string, options: Partial<Pick<ScanIssue, "file" | "line" | "description" | "confidence" | "fixability" | "source" | "suggestion">> = {}): ScanIssue {
+function issue(projectId: string, seed: string, severity: DiagnosticSeverity, category: DiagnosticCategory, title: string, message: string, options: Partial<Pick<ScanIssue, "file" | "line" | "description" | "confidence" | "fixability" | "source" | "suggestion" | "rule" | "risk">> = {}): ScanIssue {
   return {
     id: `${projectId}:${seed}`,
     severity,
@@ -307,6 +310,8 @@ function issue(projectId: string, seed: string, severity: DiagnosticSeverity, ca
     fixability: options.fixability || "manual",
     source: options.source || "KForge",
     status: "open",
+    rule: options.rule,
+    risk: options.risk || (options.fixability === "automatic" ? "safe" : options.fixability === "guided" ? "review" : options.fixability === "manual" ? "approval" : "blocked"),
     file: options.file,
     line: options.line,
     suggestion: options.suggestion,
@@ -360,7 +365,7 @@ async function trackedSensitiveFiles(project: ProjectSummary) {
 }
 
 async function completenessIssues(project: ProjectSummary, profile: ProjectProfile) {
-  const markers = await findFiles(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()), 5_000);
+  const markers = await findFiles(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()) && !relative.startsWith("fixtures/") && !/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(relative), 5_000);
   const issues: ScanIssue[] = [];
   for (const relative of markers) {
     try {
@@ -373,6 +378,71 @@ async function completenessIssues(project: ProjectSummary, profile: ProjectProfi
   if (!(await pathExists(path.join(project.path, "README.md")))) issues.push(issue(project.id, "missing-readme", "low", "completeness", "README is missing", "The project root has no README.md.", { source: "KForge completeness", fixability: "guided", suggestion: "Add concise local-development, test, build, and production instructions." }));
   if (profile.envFiles.length > 0 && !(await pathExists(path.join(project.path, ".env.example")))) issues.push(issue(project.id, "missing-env-example", "low", "completeness", "Environment example is missing", "Environment files were detected without a .env.example template.", { source: "KForge completeness", fixability: "guided", suggestion: "Provide non-secret variable names and safe example values in .env.example." }));
   return issues;
+}
+
+async function advancedCompletionIssues(project: ProjectSummary) {
+  const files = await findFiles(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()) && !relative.startsWith("fixtures/") && !/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(relative) && relative !== "server/routes/workspace.ts", 5_000);
+  const findings: ScanIssue[] = [];
+  for (const relative of files) {
+    try {
+      const lines = (await fs.readFile(path.join(project.path, relative), "utf8")).split(/\r?\n/);
+      lines.forEach((line, index) => {
+        const trimmed = line.trim();
+        const context = lines.slice(Math.max(0, index - 3), Math.min(lines.length, index + 4)).join("\n");
+        if (/\b(?:TODO|FIXME)\b/i.test(trimmed) && /(?:mock|placeholder|not implemented|fake|stub)/i.test(context)) {
+          findings.push(issue(project.id, `placeholder-marker-${relative}-${index + 1}`, "medium", "mock", "Placeholder implementation marker", trimmed, { file: relative, line: index + 1, source: "KForge completion", rule: "kforge/placeholder-marker", confidence: "high", fixability: "guided", risk: "review", suggestion: "Replace the placeholder with a verified implementation and add a focused test." }));
+        }
+        if (/\b(alert\(\s*["'](?:done|success|saved|completed)[^"']*["']\s*\)|console\.log\(\s*["'](?:saving|loading|done|success)[^"']*["']\s*\))/i.test(trimmed)) {
+          findings.push(issue(project.id, `mock-feedback-${relative}-${index + 1}`, "low", "mock", "Suspicious mock feedback", trimmed, { file: relative, line: index + 1, source: "KForge completion", rule: "kforge/mock-feedback", confidence: "medium", fixability: "guided", risk: "review", suggestion: "Verify that a real persistence/network operation occurs before showing completion feedback." }));
+        }
+        if (/^(?:export\s+)?(?:async\s+)?function\s+\w+[^\{]*\{\s*\}$|=>\s*\{\s*\}\s*;?$/.test(trimmed)) {
+          findings.push(issue(project.id, `empty-handler-${relative}-${index + 1}`, "low", "completeness", "Empty handler or function body", trimmed, { file: relative, line: index + 1, source: "KForge completion", rule: "kforge/empty-handler", confidence: "medium", fixability: "guided", risk: "review", suggestion: "Confirm whether this handler is intentionally empty; otherwise implement behavior and error handling." }));
+        }
+        if (/return\s+(?:\[\]|\{\})\s*;?\s*$/.test(trimmed) && /(?:TODO|FIXME|mock|placeholder|not implemented|fake|stub)/i.test(context)) {
+          findings.push(issue(project.id, `empty-response-${relative}-${index + 1}`, "medium", "mock", "Suspicious empty response", trimmed, { file: relative, line: index + 1, source: "KForge completion", rule: "kforge/suspicious-empty-response", confidence: "medium", fixability: "guided", risk: "review", suggestion: "Verify whether the empty response is a safe domain result or an unfinished service implementation." }));
+        }
+      });
+    } catch { /* unreadable source file is omitted from advanced completion evidence */ }
+  }
+  return findings;
+}
+
+async function lintIssues(project: ProjectSummary, profile: ProjectProfile, tools: ToolAvailability[]) {
+  if (!profile.scripts.lint || !tools.find((entry) => entry.name === "eslint")?.available) return [] as ScanIssue[];
+  const command = commandFor(profile.packageManager, "lint");
+  const result = await run(command.command, command.args, project.path, commandTimeoutMs);
+  if (result.ok) return [] as ScanIssue[];
+  const parsed = result.output.split(/\r?\n/).flatMap((line, index) => {
+    const match = line.match(/^(.+?):(\d+):(\d+)\s+(error|warning)\s+(.+?)(?:\s{2,}(\S+))?$/i);
+    if (!match) return [];
+    return [issue(project.id, `eslint-${match[1]}-${match[2]}-${index}`, match[4].toLowerCase() === "error" ? "medium" : "low", "quality", `ESLint ${match[4].toLowerCase()}`, match[5], { file: match[1].split(path.sep).join("/"), line: Number(match[2]), source: "ESLint", rule: match[6], confidence: "high", fixability: "guided", risk: "review", suggestion: "Review the ESLint rule and use the project formatter/fix command only after previewing the change." })];
+  });
+  return parsed.length ? parsed : [issue(project.id, "eslint-command", "medium", "quality", "ESLint command failed", result.output || "The lint command exited unsuccessfully.", { source: "ESLint", rule: "eslint/command", confidence: "high", fixability: "guided", risk: "review", suggestion: "Inspect lint output before applying fixes." })];
+}
+
+async function externalScannerIssues(project: ProjectSummary, tools: ToolAvailability[]) {
+  const findings: ScanIssue[] = [];
+  const gitleaks = tools.find((entry) => entry.name === "gitleaks");
+  if (gitleaks?.available) {
+    const result = await run("gitleaks", ["detect", "--no-git", "--report-format", "json", "--report-path", "-"], project.path, 60_000);
+    if (!result.ok && result.output) findings.push(issue(project.id, "gitleaks-findings", "high", "security", "Gitleaks reported potential secrets", "Gitleaks exited unsuccessfully; inspect its raw output in Task Center.", { source: "Gitleaks", rule: "gitleaks/detect", confidence: "medium", fixability: "guided", risk: "approval", suggestion: "Review the scanner output, revoke exposed secrets, and remove sensitive files from source control." }));
+  }
+  const semgrep = tools.find((entry) => entry.name === "semgrep");
+  if (semgrep?.available) {
+    const result = await run("semgrep", ["--json", "--config", "auto", "--quiet"], project.path, 90_000);
+    try {
+      const parsed: unknown = JSON.parse(result.output);
+      const rows = Array.isArray((parsed as { results?: unknown[] }).results) ? (parsed as { results: Array<Record<string, unknown>> }).results : [];
+      rows.forEach((row, index) => {
+        const extra = recordOf(row.extra);
+        const start = recordOf(row.start);
+        const severityRaw = asString(extra.severity).toLowerCase();
+        const severity: DiagnosticSeverity = severityRaw === "error" ? "high" : severityRaw === "warning" ? "medium" : "low";
+        findings.push(issue(project.id, `semgrep-${index}-${asString(row.check_id)}`, severity, "security", asString(extra.message) || "Semgrep finding", asString(extra.message) || "Semgrep reported a finding.", { file: asString(row.path), line: typeof start.line === "number" ? start.line : undefined, source: "Semgrep", rule: asString(row.check_id), confidence: "high", fixability: "guided", risk: "review", suggestion: "Review the Semgrep rule and surrounding code before applying a patch." }));
+      });
+    } catch { if (!result.ok) findings.push(issue(project.id, "semgrep-command", "medium", "security", "Semgrep command failed", result.output || "Semgrep failed without JSON output.", { source: "Semgrep", rule: "semgrep/command", confidence: "high", fixability: "manual", risk: "approval" })); }
+  }
+  return findings;
 }
 
 function statusForIssues(issues: ScanIssue[], categories: DiagnosticCategory[]) {
@@ -431,9 +501,9 @@ export async function scanProject(project: ProjectSummary): Promise<ProjectScan>
     if (!execution.ok) diagnostics.push(...parseTypecheckDiagnostics(project.id, execution.output));
     if (!execution.ok && !diagnostics.length) diagnostics.push(issue(project.id, "typecheck-command", "high", "typecheck", "Typecheck command failed", execution.output || "The TypeScript command exited with a non-zero status.", { source: "TypeScript", fixability: "guided", suggestion: "Inspect the TypeScript output and correct the project types before continuing." }));
   }
-  const [sensitiveFiles, dependencyIssues, completeness] = await Promise.all([trackedSensitiveFiles(project), npmAuditIssues(project, profile), completenessIssues(project, profile)]);
-  sensitiveFiles.forEach((file) => diagnostics.push(issue(project.id, `tracked-sensitive-${file}`, "high", "security", "Potentially sensitive file is tracked by Git", `${file} is version-controlled and requires review.`, { file, source: "Git", fixability: "guided", suggestion: "Move secrets to an ignored local file and rotate any exposed credentials." })));
-  diagnostics.push(...dependencyIssues, ...completeness);
+  const [sensitiveFiles, dependencyIssues, completeness, advancedCompletion, eslintFindings, externalFindings] = await Promise.all([trackedSensitiveFiles(project), npmAuditIssues(project, profile), completenessIssues(project, profile), advancedCompletionIssues(project), lintIssues(project, profile, tools), externalScannerIssues(project, tools)]);
+  sensitiveFiles.forEach((file) => diagnostics.push(issue(project.id, `tracked-sensitive-${file}`, "high", "security", "Potentially sensitive file is tracked by Git", `${file} is version-controlled and requires review.`, { file, source: "Git", rule: "git/tracked-sensitive-file", fixability: "guided", risk: "approval", suggestion: "Move secrets to an ignored local file and rotate any exposed credentials." })));
+  diagnostics.push(...dependencyIssues, ...completeness, ...advancedCompletion, ...eslintFindings, ...externalFindings);
   if (project.modifiedFiles + project.untrackedFiles > 0) diagnostics.push(issue(project.id, "working-tree-changed", "info", "git", "Local changes are present", `${project.modifiedFiles} modified and ${project.untrackedFiles} untracked file(s) are present.`, { source: "Git", fixability: "manual", suggestion: "Review the diff before pulling, pushing, or creating a release." }));
   if (project.behind > 0) diagnostics.push(issue(project.id, "remote-behind", "medium", "git", "Remote updates are available", `The current branch is ${project.behind} commit(s) behind its upstream branch.`, { source: "Git", fixability: "guided", suggestion: "Pull and resolve conflicts before dependent work." }));
   const health = await calculateHealth(project, profile, diagnostics, actionState, typecheckStatus);
@@ -503,6 +573,47 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
   addActivity(project.id, { kind, title: result.ok ? `${action} completed` : `${action} failed`, detail: result.message });
   return result;
 }
+
+router.get("/ai/providers", async (_req, res) => {
+  res.json({ providers: await listAIProviders() });
+});
+
+router.get("/ai/models", async (_req, res) => {
+  res.json(await getModelCenter(getWorkspaceRoot()));
+});
+
+router.post("/ai/models/active", async (req, res) => {
+  const provider = typeof req.body?.provider === "string" ? req.body.provider as AIProviderId : undefined;
+  const model = typeof req.body?.model === "string" ? req.body.model : "";
+  if (!provider || !model) return res.status(400).json({ error: "Choose a provider and an installed model." });
+  try {
+    const active = await setActiveModel(getWorkspaceRoot(), provider, model);
+    return res.json({ active });
+  } catch (error: unknown) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "The active model could not be changed." });
+  }
+});
+
+router.post("/ai/models/install", async (req, res) => {
+  const provider = typeof req.body?.provider === "string" ? req.body.provider : "";
+  const model = typeof req.body?.model === "string" ? req.body.model : "";
+  const confirmed = req.body?.confirmed === true;
+  if (provider !== "ollama" || !model) return res.status(400).json({ error: "KForge currently supports confirmed installation through Ollama only." });
+  if (!confirmed) return res.status(428).json({ error: "Model download requires explicit confirmation because it can consume substantial disk, RAM, and network resources.", permission: "ask" });
+  const task = startTask("ai-center", "agent", async () => installOllamaModel(model));
+  return res.status(202).json({ task });
+});
+
+router.post("/ai/test", async (req, res) => {
+  const provider = typeof req.body?.provider === "string" ? req.body.provider as AIProviderId : undefined;
+  const model = typeof req.body?.model === "string" ? req.body.model : undefined;
+  try {
+    const result = await testAIConnection(getWorkspaceRoot(), provider, model);
+    return res.json(result);
+  } catch (error: unknown) {
+    return res.status(503).json({ ok: false, error: error instanceof Error ? error.message : "AI connection test failed." });
+  }
+});
 
 router.get("/tasks", (req, res) => {
   const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
@@ -636,6 +747,25 @@ router.post("/projects/:id/problems/:problemId/apply", async (req, res) => {
   }
 });
 
+router.post("/projects/:id/release-gate", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const profile = await detectProjectProfile(project);
+  const verification: CommandResult[] = [];
+  if (profile.scripts.typecheck) verification.push(await executeProjectAction(project, "typecheck"));
+  if (profile.scripts.test) verification.push(await executeProjectAction(project, "test"));
+  if (profile.scripts.build) verification.push(await executeProjectAction(project, "build"));
+  if (profile.scripts.start) verification.push(await executeProjectAction(project, "runtime"));
+  const freshProject = await makeProjectSummary(project.path);
+  const scan = await scanProject(freshProject);
+  const failedVerification = verification.filter((entry) => !entry.ok);
+  const blockers = scan.issues.filter((entry) => (entry.severity === "critical" || entry.severity === "high") && entry.status !== "ignored");
+  const warnings = scan.issues.filter((entry) => entry.severity === "medium" || entry.severity === "low");
+  const missingChecks = ["typecheck", "test", "build", "runtime"].filter((action) => !verification.some((entry) => entry.action === action));
+  const readiness = blockers.length || failedVerification.length ? "BLOCKED" : warnings.length || missingChecks.length ? "READY WITH WARNINGS" : "READY";
+  return res.status(readiness === "BLOCKED" ? 422 : 200).json({ readiness, checks: verification.map((entry) => ({ action: entry.action, ok: entry.ok, message: entry.message })), missingChecks, security: scan.issues.filter((entry) => entry.category === "security"), dependencies: scan.issues.filter((entry) => entry.category === "dependency"), completeness: scan.issues.filter((entry) => entry.category === "completeness" || entry.category === "mock"), blockers, warnings, scan });
+});
+
 router.post("/projects/:id/pre-push-gate", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
@@ -685,19 +815,139 @@ router.post("/projects/:id/snapshots/:snapshotId/restore", async (req, res) => {
   }
 });
 
+const agentPermissions = { readFiles: "allow", editFiles: "allow", runTests: "allow", runBuild: "allow", installPackage: "ask", deleteFile: "ask", gitCommit: "ask", gitPush: "ask", deploy: "ask", forcePush: "block", exposeSecret: "block" } as const;
+
+router.get("/projects/:id/agent/context", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const issueId = typeof req.query.issueId === "string" ? req.query.issueId : undefined;
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const scan = await scanProject(project);
+  return res.json({ context: await buildAgentContext(project, scan, issueId), permissions: agentPermissions });
+});
+
+router.post("/projects/:id/ask", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (!question) return res.status(400).json({ error: "Ask a project-specific question." });
+  const scan = await scanProject(project);
+  const context = await buildAgentContext(project, scan);
+  try {
+    const generated = await generateWithLocalAI(getWorkspaceRoot(), "You are Ask KForge. Answer only from the redacted project context. Cite specific diagnostic titles, files, or verification evidence. Do not invent results or expose secrets.", `Question: ${question}\n\nContext:\n${JSON.stringify(context)}`);
+    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, answer: generated.content, contextFiles: context.files.map((entry) => entry.path) });
+  } catch {
+    const top = [...scan.issues].sort((left, right) => ({ critical: 4, high: 3, medium: 2, low: 1, info: 0 }[right.severity] - { critical: 4, high: 3, medium: 2, low: 1, info: 0 }[left.severity])).slice(0, 5);
+    const answer = { notice: "No active local model is available; this is a deterministic answer from the current scan and project graph context, not generated AI.", question, project: project.name, health: scan.health.score, topRisks: top.map((entry) => ({ title: entry.title, severity: entry.severity, file: entry.file, source: entry.source, suggestion: entry.suggestion })), verification: scan.health.metrics.filter((entry) => entry.status !== "unknown").map((entry) => ({ check: entry.label, status: entry.status, evidence: entry.evidence })) };
+    return res.json({ mode: "rules", provider: "none", answer, contextFiles: context.files.map((entry) => entry.path) });
+  }
+});
+
+router.post("/projects/:id/agent/missions", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const mission = typeof req.body?.mission === "string" ? req.body.mission : "audit";
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (!["audit", "fix-critical", "prepare-release"].includes(mission)) return res.status(400).json({ error: "Unsupported mission. Choose audit, fix-critical, or prepare-release." });
+  let taskId = "";
+  const task = startTask(project.id, "agent", async () => {
+    const log = (message: string, progress: number) => appendTaskLog(taskId, message, progress);
+    log("Reading project profile and Git state.", 12);
+    const scan = await scanProject(project);
+    log(`Scan found ${scan.issues.length} issue(s).`, 30);
+    if (mission === "audit") return { ok: true, message: "Audit mission completed.", output: JSON.stringify({ mission, scan }, null, 2) };
+    if (mission === "prepare-release") {
+      const profile = scan.profile;
+      const verification: CommandResult[] = [];
+      if (profile.scripts.typecheck) { log("Running typecheck.", 45); verification.push(await executeProjectAction(project, "typecheck")); }
+      if (profile.scripts.test) { log("Running tests.", 60); verification.push(await executeProjectAction(project, "test")); }
+      if (profile.scripts.build) { log("Running production build.", 75); verification.push(await executeProjectAction(project, "build")); }
+      if (profile.scripts.start) { log("Running runtime verification.", 88); verification.push(await executeProjectAction(project, "runtime")); }
+      const failed = verification.filter((entry) => !entry.ok);
+      return { ok: failed.length === 0, message: failed.length ? "Release preparation found failed verification steps." : "Release preparation completed.", output: JSON.stringify({ mission, verification, scan }, null, 2) };
+    }
+    const target = scan.issues.find((entry) => entry.severity === "critical" || entry.severity === "high");
+    if (!target) return { ok: true, message: "No critical or high issue is available for deterministic safe repair.", output: JSON.stringify({ mission, scan }, null, 2) };
+    log(`Generating verified patch for ${target.title}.`, 48);
+    const patch = await generateVerifiedPatch(project, target);
+    if (!patch || patch.risk !== "safe") return { ok: false, message: "No safe deterministic patch is available for the highest-priority issue.", output: JSON.stringify({ mission, target, patch }, null, 2) };
+    log(`Creating snapshot for ${patch.file}.`, 58);
+    const snapshot = await createSnapshot(project.path, [patch.file], `Before mission ${mission}: ${patch.id}`);
+    try {
+      log(`Applying verified patch to ${patch.file}.`, 68);
+      await validateAndApplyPatch(project.path, patch);
+      const verification: CommandResult[] = [];
+      const profile = await detectProjectProfile(project);
+      if (profile.scripts.typecheck) { log("Verifying typecheck.", 78); verification.push(await executeProjectAction(project, "typecheck")); }
+      if (profile.scripts.test) { log("Verifying tests.", 86); verification.push(await executeProjectAction(project, "test")); }
+      if (verification.some((entry) => !entry.ok)) { await restoreSnapshot(project.path, snapshot.id); return { ok: false, message: "Mission verification failed; snapshot restored.", output: JSON.stringify({ mission, target, patch, snapshot, verification, rolledBack: true }, null, 2) }; }
+      return { ok: true, message: "Safe critical-issue repair completed and verified.", output: JSON.stringify({ mission, target, patch, snapshot, verification, rolledBack: false }, null, 2) };
+    } catch (error: unknown) {
+      await restoreSnapshot(project.path, snapshot.id).catch(() => undefined);
+      return { ok: false, message: "Mission patch failed; snapshot restored.", output: error instanceof Error ? error.message : "Unknown patch error." };
+    }
+  });
+  taskId = task.id;
+  return res.status(202).json({ task, mission, permissions: agentPermissions });
+});
+
 router.post("/projects/:id/agent/plan", async (req, res) => {
   const project = await resolveProject(req.params.id);
   const mission = typeof req.body?.mission === "string" ? req.body.mission.trim() : "Review project diagnostics and propose a safe fix plan.";
+  const issueId = typeof req.body?.issueId === "string" ? req.body.issueId : undefined;
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   const scan = await scanProject(project);
-  const context = JSON.stringify({ project: { name: project.name, path: project.path, branch: project.branch }, profile: scan.profile, health: scan.health, diagnostics: scan.issues }, null, 2);
+  const context = await buildAgentContext(project, scan, issueId);
   try {
-    const plan = await requestLocalPlan("You are KForge Engineer. You may read and plan only. Do not claim edits, test results, commits, pushes, or secret values. Return a concise ordered plan that names evidence and verification commands.", `Mission: ${mission}\n\nProject context:\n${context}`);
-    addActivity(project.id, { kind: "system", title: "KForge Engineer generated a plan", detail: `Local provider: ${plan.provider.provider}.` });
-    return res.json({ mission, provider: plan.provider, plan: plan.content, permissions: { readFiles: "allow", editFiles: "allow", runTests: "allow", runBuild: "allow", installPackage: "ask", deleteFile: "ask", gitCommit: "ask", gitPush: "ask", deploy: "ask", forcePush: "block", exposeSecret: "block" } });
+    const aiPlan = await buildLocalAIPlan(getWorkspaceRoot(), context, mission);
+    addActivity(project.id, { kind: "system", title: "KForge Engineer generated local-AI plan", detail: `Model: ${aiPlan.model}.` });
+    return res.json({ mission, context, plan: aiPlan.plan, mode: aiPlan.mode, provider: aiPlan.provider, model: aiPlan.model, permissions: agentPermissions });
+  } catch {
+    const plan = buildRulePlan(context);
+    addActivity(project.id, { kind: "system", title: "KForge Engineer generated rule-backed plan", detail: "No active local AI model was available." });
+    return res.json({ mission, context, plan, mode: plan.mode, provider: "none", permissions: agentPermissions, notice: "No active local model is available. This is a deterministic, evidence-based rules plan — not generated AI." });
+  }
+});
+
+router.post("/projects/:id/agent/patches", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const issueId = typeof req.body?.issueId === "string" ? req.body.issueId : "";
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const scan = await scanProject(project);
+  const issue = scan.issues.find((entry) => entry.id === issueId);
+  if (!issue) return res.status(404).json({ error: "Problem not found in the latest real scan." });
+  const patch = await generateVerifiedPatch(project, issue);
+  if (!patch) return res.status(422).json({ error: "No verified deterministic patch exists for this diagnostic. Use the context and plan for guided repair.", issue });
+  return res.json({ issue, patch, permissions: agentPermissions });
+});
+
+router.post("/projects/:id/agent/patches/apply", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const issueId = typeof req.body?.issueId === "string" ? req.body.issueId : "";
+  const confirmed = req.body?.confirmed === true;
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const scan = await scanProject(project);
+  const issue = scan.issues.find((entry) => entry.id === issueId);
+  if (!issue) return res.status(404).json({ error: "Problem not found in the latest real scan." });
+  const patch = await generateVerifiedPatch(project, issue);
+  if (!patch) return res.status(422).json({ error: "No verified deterministic patch exists for this diagnostic." });
+  if (patch.risk !== "safe" && !confirmed) return res.status(428).json({ error: "This patch requires explicit approval.", permission: "ask", patch });
+  const snapshot = await createSnapshot(project.path, [patch.file], `Before KForge Engineer patch ${patch.id}`);
+  try {
+    await validateAndApplyPatch(project.path, patch);
+    const profile = await detectProjectProfile(project);
+    const verification: CommandResult[] = [];
+    if (profile.scripts.typecheck) verification.push(await executeProjectAction(project, "typecheck"));
+    if (profile.scripts.test) verification.push(await executeProjectAction(project, "test"));
+    if (profile.scripts.build) verification.push(await executeProjectAction(project, "build"));
+    if (profile.scripts.start) verification.push(await executeProjectAction(project, "runtime"));
+    if (verification.some((entry) => !entry.ok)) {
+      await restoreSnapshot(project.path, snapshot.id);
+      return res.status(422).json({ ok: false, rolledBack: true, snapshot, patch, verification, error: "Verification failed; KForge restored the snapshot." });
+    }
+    addActivity(project.id, { kind: "system", title: "KForge Engineer patch verified", detail: `${patch.file} changed after snapshot and verification.` });
+    return res.json({ ok: true, rolledBack: false, snapshot, patch, verification });
   } catch (error: unknown) {
-    const provider = await detectLocalAIProvider();
-    return res.status(503).json({ error: error instanceof Error ? error.message : "Local AI is unavailable.", provider, permissions: { readFiles: "allow", editFiles: "allow", runTests: "allow", runBuild: "allow", installPackage: "ask", deleteFile: "ask", gitCommit: "ask", gitPush: "ask", deploy: "ask", forcePush: "block", exposeSecret: "block" } });
+    await restoreSnapshot(project.path, snapshot.id).catch(() => undefined);
+    return res.status(500).json({ ok: false, rolledBack: true, snapshot, patch, error: error instanceof Error ? error.message : "Patch failed and KForge restored the snapshot." });
   }
 });
 
@@ -741,6 +991,21 @@ router.get("/projects/:id/profile", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   res.json({ profile: await detectProjectProfile(project) });
+});
+
+router.get("/projects/:id/graph", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  res.json({ projectId: project.id, graph: await buildProjectGraph(project.path) });
+});
+
+router.get("/projects/:id/graph/impact", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const file = typeof req.query.file === "string" ? req.query.file : "";
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (!file) return res.status(400).json({ error: "Provide a project-relative file path." });
+  const graph = await buildProjectGraph(project.path);
+  return res.json({ projectId: project.id, impact: analyzeImpact(graph, file) });
 });
 
 router.get("/projects/:id/problems", async (req, res) => {
