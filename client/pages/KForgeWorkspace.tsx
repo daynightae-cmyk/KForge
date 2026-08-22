@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Network,
   Play,
+  Pin,
   Plus,
   RefreshCw,
   Rocket,
@@ -47,7 +48,7 @@ import type {
 } from "@shared/workspace";
 
 const NAVIGATION = [
-  { group: "Projects", items: [["Workspace", LayoutDashboard], ["Project health", HeartPulse], ["Recent projects", History], ["Favorites", Star], ["Archive", Archive], ["Open project", FolderOpen]] },
+  { group: "Projects", items: [["Workspace", LayoutDashboard], ["Project health", HeartPulse], ["Recent projects", History], ["Favorites", Star], ["Pinned", Pin], ["Archive", Archive], ["Open project", FolderOpen], ["Import project", FolderGit2]] },
   { group: "AI", items: [["AI providers", Bot], ["Models", Cpu], ["Agents", Bot], ["Tasks", Activity]] },
   { group: "Marketplace", items: [["Marketplace", Box]] },
   { group: "Intelligence", items: [["Project graph", Network], ["Ask KForge", MessageSquare], ["Architecture", Box]] },
@@ -316,6 +317,17 @@ export default function KForgeWorkspace() {
     }
   };
 
+  const updateProjectCollection = async (project: ProjectSummary, patch: Partial<Pick<ProjectSummary, "favorite" | "pinned" | "archived">>) => {
+    try {
+      const response = await fetch(`/api/workspace/projects/${project.id}/collection`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Project collection could not be updated.");
+      await refreshProjects();
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : "Project collection could not be updated.");
+    }
+  };
+
   const setPlatformMode = async (mode: LocalPlatformStatus["mode"]) => {
     if (mode === "online-optional" && !window.confirm("You are enabling online access.\n\nPurpose: optional GitHub synchronization and provider download pages.\nData: repository URL and metadata only when you explicitly clone, pull, or push.\n\nProject source remains local. Cloud AI is not enabled, and no project source is sent to a cloud provider unless you separately choose and confirm that action.")) return;
     try {
@@ -419,7 +431,7 @@ export default function KForgeWorkspace() {
                   if (event.key === " " && activeProjectId) { event.preventDefault(); toggleSelected(activeProjectId); }
                 }}>
                   <table className="kf-table"><thead><tr><th><input aria-label="Select all filtered projects" type="checkbox" checked={allFilteredSelected} onChange={() => setSelected(allFilteredSelected ? new Set() : new Set(filteredProjects.map((project) => project.id)))} /></th><SortableHeader label="Project" onClick={() => updateSort("name")} active={sort.key === "name"} />{columns.type && <SortableHeader label="Type" onClick={() => updateSort("projectType")} active={sort.key === "projectType"} />}{columns.branch && <SortableHeader label="Branch" onClick={() => updateSort("branch")} active={sort.key === "branch"} />}{columns.status && <th>Health & checks</th>}{columns.git && <SortableHeader label="Git sync" onClick={() => updateSort("sync")} active={sort.key === "sync"} />}{columns.activity && <SortableHeader label="Last activity" onClick={() => updateSort("lastActivity")} active={sort.key === "lastActivity"} />}<th aria-label="Actions" /></tr></thead>
-                  <tbody>{filteredProjects.map((project) => <ProjectRow key={project.id} project={project} selected={selected.has(project.id)} active={project.id === activeProjectId} scan={scans[project.id]} results={actionResults[project.id]} columns={columns} onSelect={() => toggleSelected(project.id)} onActivate={() => setActiveProjectId(project.id)} onRun={(action) => void runAction(project, action)} />)}</tbody></table>
+                  <tbody>{filteredProjects.map((project) => <ProjectRow key={project.id} project={project} selected={selected.has(project.id)} active={project.id === activeProjectId} scan={scans[project.id]} results={actionResults[project.id]} columns={columns} onSelect={() => toggleSelected(project.id)} onActivate={() => setActiveProjectId(project.id)} onRun={(action) => void runAction(project, action)} onCollectionUpdate={(patch) => void updateProjectCollection(project, patch)} />)}</tbody></table>
                 </div>
               )
             )}
@@ -441,11 +453,11 @@ function EyeIcon() { return <span className="kf-eye-icon">◉</span>; }
 
 function SortableHeader({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) { return <th><button className={`kf-sort-button ${active ? "is-active" : ""}`} onClick={onClick}>{label}<ArrowDownUp size={13} /></button></th>; }
 
-function ProjectRow({ project, selected, active, scan, results, columns, onSelect, onActivate, onRun }: { project: ProjectSummary; selected: boolean; active: boolean; scan?: ProjectScan; results?: Partial<Record<WorkspaceAction, CommandResult>>; columns: Record<string, boolean>; onSelect: () => void; onActivate: () => void; onRun: (action: WorkspaceAction) => void }) {
+function ProjectRow({ project, selected, active, scan, results, columns, onSelect, onActivate, onRun, onCollectionUpdate }: { project: ProjectSummary; selected: boolean; active: boolean; scan?: ProjectScan; results?: Partial<Record<WorkspaceAction, CommandResult>>; columns: Record<string, boolean>; onSelect: () => void; onActivate: () => void; onRun: (action: WorkspaceAction) => void; onCollectionUpdate: (patch: Partial<Pick<ProjectSummary, "favorite" | "pinned" | "archived">>) => void }) {
   const security = scan?.summaries.security || "unknown";
   const tests = results?.test?.ok ? "pass" : results?.test ? "fail" : "unknown";
   const build = results?.build?.ok ? "pass" : results?.build ? "fail" : "unknown";
-  return <tr className={`${active ? "is-active" : ""} ${selected ? "is-selected" : ""}`} onClick={onActivate}><td onClick={(event) => event.stopPropagation()}><input aria-label={`Select ${project.name}`} type="checkbox" checked={selected} onChange={onSelect} /></td><td><button className="kf-project-cell" onClick={onActivate}><span className="kf-project-icon"><ProviderMark provider={project.provider} /></span><span><strong>{project.name}</strong><small title={project.path}>{project.trust === "untrusted" ? "Untrusted · read only" : "Trusted local execution"} · {project.path}</small></span></button></td>{columns.type && <td><span className="kf-type-pill">{project.projectType}</span></td>}{columns.branch && <td><span className="kf-branch"><GitBranch size={13} />{project.branch}</span></td>}{columns.status && <td><div className="kf-checks"><span className={statusClass(security)} title="Security"><ShieldAlert size={12} />{statusLabel(security)}</span><span className={statusClass(tests)} title="Tests"><TestTube2 size={12} />{statusLabel(tests)}</span><span className={statusClass(build)} title="Build"><Play size={12} />{statusLabel(build)}</span></div></td>}{columns.git && <td><GitState project={project} /></td>}{columns.activity && <td><span className="kf-date"><Clock3 size={13} />{formatDate(project.lastActivity)}</span></td>}<td onClick={(event) => event.stopPropagation()}><details className="kf-row-menu"><summary aria-label={`Actions for ${project.name}`}><MoreHorizontal size={18} /></summary><div><button onClick={() => onRun("scan")}>Scan project</button><button onClick={() => onRun("test")}>Run tests</button><button onClick={() => onRun("build")}>Run build</button>{project.remoteUrl && <a href={project.remoteUrl} target="_blank" rel="noreferrer">Open remote</a>}</div></details></td></tr>;
+  return <tr className={`${active ? "is-active" : ""} ${selected ? "is-selected" : ""}`} onClick={onActivate}><td onClick={(event) => event.stopPropagation()}><input aria-label={`Select ${project.name}`} type="checkbox" checked={selected} onChange={onSelect} /></td><td><button className="kf-project-cell" onClick={onActivate}><span className="kf-project-icon"><ProviderMark provider={project.provider} /></span><span><strong>{project.name}</strong><small title={project.path}>{project.trust === "untrusted" ? "Untrusted · read only" : "Trusted local execution"} · {project.path}</small></span></button></td>{columns.type && <td><span className="kf-type-pill">{project.projectType}</span></td>}{columns.branch && <td><span className="kf-branch"><GitBranch size={13} />{project.branch}</span></td>}{columns.status && <td><div className="kf-checks"><span className={statusClass(security)} title="Security"><ShieldAlert size={12} />{statusLabel(security)}</span><span className={statusClass(tests)} title="Tests"><TestTube2 size={12} />{statusLabel(tests)}</span><span className={statusClass(build)} title="Build"><Play size={12} />{statusLabel(build)}</span></div></td>}{columns.git && <td><GitState project={project} /></td>}{columns.activity && <td><span className="kf-date"><Clock3 size={13} />{formatDate(project.lastActivity)}</span></td>}<td onClick={(event) => event.stopPropagation()}><details className="kf-row-menu"><summary aria-label={`Actions for ${project.name}`}><MoreHorizontal size={18} /></summary><div><button onClick={() => onRun("scan")}>Scan project</button><button onClick={() => onRun("test")}>Run tests</button><button onClick={() => onRun("build")}>Run build</button><button onClick={() => onCollectionUpdate({ favorite: !project.favorite })}>{project.favorite ? "Remove favorite" : "Add favorite"}</button><button onClick={() => onCollectionUpdate({ pinned: !project.pinned })}>{project.pinned ? "Unpin project" : "Pin project"}</button><button onClick={() => onCollectionUpdate({ archived: !project.archived })}>{project.archived ? "Restore from archive" : "Archive project"}</button>{project.remoteUrl && <a href={project.remoteUrl} target="_blank" rel="noreferrer">Open remote</a>}</div></details></td></tr>;
 }
 
 function GitState({ project }: { project: ProjectSummary }) { const changed = project.modifiedFiles + project.untrackedFiles; return <div className="kf-git-state"><span className={changed ? "is-warning" : "is-good"}>{changed ? `${changed} changed` : "Clean"}</span>{project.behind > 0 && <small>{project.behind} behind</small>}{project.ahead > 0 && <small>{project.ahead} ahead</small>}</div>; }
@@ -464,8 +476,9 @@ function CapabilitySurface({ activeNav, project, projects, scan, tasks, results,
   if (activeNav === "Project health") return <ProjectHealthPanel project={project} />;
   if (activeNav === "Recent projects") return <RecentProjectsPanel projects={projects} />;
   if (activeNav === "Favorites") return <CollectionProjectsPanel title="Favorite Projects" projects={projects.filter((entry) => entry.categories.favorite)} empty="No projects have been marked as favorite in the local workspace." icon={<Star size={17} />} />;
+  if (activeNav === "Pinned") return <CollectionProjectsPanel title="Pinned Projects" projects={projects.filter((entry) => entry.categories.pinned && !entry.archived)} empty="No projects have been pinned in the local workspace." icon={<Pin size={17} />} />;
   if (activeNav === "Archive") return <CollectionProjectsPanel title="Archived Projects" projects={projects.filter((entry) => entry.categories.archive)} empty="No projects have been archived in the local workspace." icon={<Archive size={17} />} />;
-  if (activeNav === "Open project") return <OpenProjectPanel onOpen={onOpenProject} />;
+  if (activeNav === "Open project" || activeNav === "Import project") return <OpenProjectPanel onOpen={onOpenProject} />;
   if (activeNav === "Terminal") return <TerminalOperationsPanel project={project} results={results} tasks={tasks} onRun={onRun} />;
   if (activeNav === "Tests") return <DeveloperActionPanel title="Test Lab" description="Runs the detected local test command for the selected project and records actual stdout, stderr, exit state, and duration." action="test" result={results?.test} tasks={tasks} onRun={onRun} />;
   if (activeNav === "Build") return <DeveloperActionPanel title="Build Center" description="Runs the project’s detected build command. No package manager or build result is assumed when discovery has not found one." action="build" result={results?.build} tasks={tasks} onRun={onRun} />;
