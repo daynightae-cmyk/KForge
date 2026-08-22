@@ -950,7 +950,17 @@ router.post("/projects/:id/agent/runs", async (req, res) => {
     try { plan = await buildLocalAIPlan(getWorkspaceRoot(), context, goal); log("Local AI plan generated from the active model.", 36); }
     catch { plan = buildRulePlan(context); log("No active local model; using deterministic evidence plan.", 36); }
     const lowerGoal = goal.toLowerCase();
-    const requestedChecks: Array<"sonar" | "graph" | "typecheck" | "test" | "build" | "health"> = lowerGoal.includes("release") || lowerGoal.includes("production") ? ["sonar", "graph", "typecheck", "test", "build", ...(scan.profile.scripts.start ? ["health" as const] : [])] : lowerGoal.includes("test") ? ["sonar", "graph", "typecheck", "test"] : ["sonar", "graph", "typecheck"];
+    const wants = (pattern: RegExp) => pattern.test(lowerGoal);
+    const wantsTest = wants(/\btests?\b/);
+    const wantsBuild = wants(/\bbuild\b/);
+    const wantsRuntime = wants(/\b(runtime|start|health)\b/);
+    const wantsRelease = wants(/\b(release|production)\b/);
+    const wantsCommitSummary = wants(/\b(commit|diff)\b/);
+    const requestedChecks: Array<"sonar" | "graph" | "typecheck" | "test" | "build" | "health" | "git_diff"> = ["sonar", "graph", "typecheck"];
+    if (wantsRelease || wantsTest) requestedChecks.push("test");
+    if (wantsRelease || wantsBuild) requestedChecks.push("build");
+    if ((wantsRelease || wantsRuntime) && scan.profile.scripts.start) requestedChecks.push("health");
+    if (wantsCommitSummary) requestedChecks.push("git_diff");
     for (let index = 0; index < requestedChecks.length; index += 1) {
       const tool = requestedChecks[index];
       log(`Running typed tool: ${tool}.`, 42 + Math.round((index / requestedChecks.length) * 35));
@@ -989,7 +999,13 @@ router.post("/projects/:id/agent/runs", async (req, res) => {
         return { ok: false, message: "Agent patch failed; snapshot restored.", output: error instanceof Error ? error.message : "Unknown patch error." };
       }
     }
-    return { ok: true, message: "Agent run completed with evidence and typed-tool results.", output: JSON.stringify({ goal, context, plan, records, status: "COMPLETED_NO_AUTOFIX" }, null, 2) };
+    const commitSummary = wantsCommitSummary ? {
+      title: "KForge verification summary (no commit created)",
+      body: "The registered git_diff tool captured the current local diff. KForge did not create a Git commit or perform a remote operation.",
+      changedFiles: "Use the attached git_diff tool evidence; no file list is inferred.",
+      validation: requestedChecks.filter((tool) => tool !== "git_diff"),
+    } : undefined;
+    return { ok: true, message: "Agent run completed with evidence and typed-tool results.", output: JSON.stringify({ goal, context, plan, records, commitSummary, status: "COMPLETED_NO_AUTOFIX" }, null, 2) };
   });
   taskId = task.id;
   return res.status(202).json({ task, goal, permissions: agentPermissions });
