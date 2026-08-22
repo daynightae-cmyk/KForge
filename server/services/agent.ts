@@ -4,6 +4,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import type { ProjectScan, ProjectSummary, ScanIssue } from "../../shared/workspace";
 import { generateWithLocalAI } from "./aiCenter";
+import { redactProjectText } from "./redaction";
 
 const execFileAsync = promisify(execFile);
 const textExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".md", ".yml", ".yaml"]);
@@ -44,33 +45,13 @@ function safeFile(projectPath: string, relative: string) {
   return { resolved, relative: relativeCheck.split(path.sep).join("/") };
 }
 
-function redactText(file: string, text: string) {
-  let redacted = false;
-  let value = text;
-  if (/(^|\/)\.env(?:\.|$)/.test(file)) {
-    redacted = true;
-    value = text.split(/\r?\n/).map((line) => /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/.test(line) ? `${line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)/)?.[1]}=[REDACTED]` : line).join("\n");
-  }
-  const sensitive = /(api[_-]?key|token|secret|password|private[_-]?key)\s*([:=])\s*([^\s,;]+)/gi;
-  if (sensitive.test(value)) {
-    sensitive.lastIndex = 0;
-    redacted = true;
-    value = value.replace(sensitive, "$1$2[REDACTED]");
-  }
-  if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(value)) {
-    redacted = true;
-    value = value.replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED PRIVATE KEY]");
-  }
-  return { content: value, redacted };
-}
-
 async function readContextFile(projectPath: string, relative: string, reason: AgentContextFile["reason"], limit: number) {
   const safe = safeFile(projectPath, relative);
   if (!textExtensions.has(path.extname(safe.relative).toLowerCase()) && path.basename(safe.relative) !== "package.json") return null;
   const raw = await fs.readFile(safe.resolved, "utf8").catch(() => "");
   if (!raw) return null;
   const normalized = raw.length > limit ? `${raw.slice(0, limit)}\n/* KForge context truncated */` : raw;
-  const redacted = redactText(safe.relative, normalized);
+  const redacted = redactProjectText(safe.relative, normalized);
   return { path: safe.relative, reason, ...redacted } as AgentContextFile;
 }
 
@@ -155,7 +136,7 @@ export async function generateVerifiedPatch(project: ProjectSummary, issue: Scan
   const source = await fs.readFile(safe.resolved, "utf8");
   const lines = source.split(/\r?\n/);
   const line = lines[issue.line - 1] || "";
-  const match = line.match(/^(\s*(?:const|let)\s+[A-Za-z_$][\w$]*\s*:\s*)(number|string|boolean)(\s*=\s*)("[^"]*"|'[^']*'|true|false)(\s*;?\s*)$/);
+  const match = line.match(/^(\s*(?:(?:export\s+)?(?:const|let))\s+[A-Za-z_$][\w$]*\s*:\s*)(number|string|boolean)(\s*=\s*)("[^"]*"|'[^']*'|true|false)(\s*;?\s*)$/);
   if (!match) return null;
   const literalType = match[4] === "true" || match[4] === "false" ? "boolean" : match[4].startsWith("\"") || match[4].startsWith("'") ? "string" : "";
   if (!literalType || literalType === match[2]) return null;
@@ -164,12 +145,34 @@ export async function generateVerifiedPatch(project: ProjectSummary, issue: Scan
   return { id: `${issue.id}:literal-type-repair`, file: safe.relative, oldText, newText, reason: `The const initializer is an unambiguous ${literalType} literal, but the declaration says ${match[2]}.`, confidence: "high", risk: "safe", verification: ["typecheck", "test", "build", "runtime"] };
 }
 
-export async function validateAndApplyPatch(projectPath: string, patch: AgentPatch) {
-  if (patch.risk === "blocked") throw new Error("Blocked patches cannot be applied.");
+export interface PatchQualityGate {
+  ok: boolean;
+  file: string;
+  occurrences: number;
+  checks: Array<{ name: string; ok: boolean; detail: string }>;
+}
+
+export async function evaluatePatchQuality(projectPath: string, patch: AgentPatch): Promise<PatchQualityGate> {
   const safe = safeFile(projectPath, patch.file);
   const source = await fs.readFile(safe.resolved, "utf8");
   const occurrences = source.split(patch.oldText).length - 1;
-  if (occurrences !== 1) throw new Error(`Patch validation requires exactly one matching old-text occurrence; found ${occurrences}.`);
+  const secretPattern = /(?:api[_-]?key|token|secret|password|private[_-]?key)\s*[:=]\s*(?!\[REDACTED\]|process\.env\.)[^\s,;]+/i;
+  const checks = [
+    { name: "file-exists", ok: true, detail: safe.relative },
+    { name: "exact-old-text", ok: occurrences === 1, detail: `Expected one old-text occurrence; found ${occurrences}.` },
+    { name: "no-accidental-deletion", ok: patch.newText.trim().length > 0 && patch.newText.length >= Math.min(1, patch.oldText.length), detail: "Patch replacement must retain non-empty source text." },
+    { name: "no-secret-exposure", ok: !secretPattern.test(patch.newText), detail: "Patch output must not introduce an inline credential value." },
+    { name: "single-file-scope", ok: Boolean(patch.file) && !patch.file.includes(".."), detail: "Patch is scoped to one validated project-relative file." },
+  ];
+  return { ok: checks.every((entry) => entry.ok), file: safe.relative, occurrences, checks };
+}
+
+export async function validateAndApplyPatch(projectPath: string, patch: AgentPatch) {
+  if (patch.risk === "blocked") throw new Error("Blocked patches cannot be applied.");
+  const gate = await evaluatePatchQuality(projectPath, patch);
+  if (!gate.ok) throw new Error(`Patch Quality Gate rejected the patch: ${gate.checks.filter((entry) => !entry.ok).map((entry) => entry.name).join(", ")}.`);
+  const safe = safeFile(projectPath, patch.file);
+  const source = await fs.readFile(safe.resolved, "utf8");
   await fs.writeFile(safe.resolved, source.replace(patch.oldText, patch.newText), "utf8");
-  return { file: safe.relative, changed: true };
+  return { file: safe.relative, changed: true, qualityGate: gate };
 }

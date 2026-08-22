@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { promises as fs } from "fs";
 import path from "path";
 import { createSnapshot, restoreSnapshot } from "../services/snapshots";
+import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localPlatform";
 import { executeProjectAction, makeProjectSummary, scanProject } from "./workspace";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
@@ -36,6 +37,22 @@ describe("KForge Workspace engines", () => {
     expect(result.ok).toBe(false);
     expect(result.exitCode).not.toBe(0);
     expect(result.output).toContain("fixture test failed intentionally");
+  });
+
+  it("defaults the local platform to offline core operation without a network requirement", async () => {
+    const projectPath = fixture("workspace-clean");
+    const stateFile = path.join(projectPath, ".kforge", "local-platform.json");
+    try {
+      await fs.rm(stateFile, { force: true });
+      const offline = await getLocalPlatformStatus(projectPath);
+      expect(offline.mode).toBe("offline");
+      expect(offline.networkRequiredForCore).toBe(false);
+      expect(offline.optionalOnlineFeatures.find((entry) => entry.id === "clone")?.enabled).toBe(false);
+      const onlineOptional = await setLocalPlatformMode(projectPath, "online-optional");
+      expect(onlineOptional.optionalOnlineFeatures.find((entry) => entry.id === "clone")?.enabled).toBe(true);
+    } finally {
+      await fs.rm(stateFile, { force: true });
+    }
   });
 
   it("creates and restores a file snapshot", async () => {

@@ -564,3 +564,13 @@
   .kf-capability-panel .kf-task-list { padding: 10px 12px; }
   .kf-capability-panel .kf-task-list > .kf-task { margin-bottom: 8px; }
 }
+
+
+@layer components {
+  .kf-wizard-steps { display: flex; flex-wrap: wrap; gap: 5px; padding: 11px 13px; border-bottom: 1px solid var(--kf-border); background: #fafbfd; }
+  .kf-wizard-steps span { border: 1px solid var(--kf-border); border-radius: 999px; padding: 3px 7px; color: #758096; background: #fff; font-size: 9px; font-weight: 700; }
+  .kf-wizard-steps span.is-current { border-color: #a9c5ff; background: #edf4ff; color: #2256cc; }
+  .kf-provider-model { flex-wrap: wrap; }
+  .kf-provider-model button { border: 1px solid #c8d2e6; border-radius: 4px; background: #fff; color: #43516a; padding: 3px 6px; font: 9px inherit; font-weight: 700; cursor: pointer; }
+  .kf-provider-model button:hover { border-color: #9ebbf4; color: #1d58cf; background: #f3f7ff; }
+}

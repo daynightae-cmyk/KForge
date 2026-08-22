@@ -133,10 +133,30 @@ export interface CommandResult {
   message: string;
 }
 
+export type LocalCapabilityState = "ready" | "available" | "limited" | "unavailable";
+
+export interface LocalCapability {
+  id: "projects" | "git" | "file-inspection" | "project-graph" | "quality" | "problems" | "tests-build" | "release-gate" | "agents" | "local-ai" | "artifacts";
+  label: string;
+  state: LocalCapabilityState;
+  detail: string;
+}
+
+export interface LocalPlatformStatus {
+  mode: "offline" | "online-optional";
+  coreReady: boolean;
+  networkRequiredForCore: false;
+  storagePath: string;
+  checkedAt: string;
+  capabilities: LocalCapability[];
+  optionalOnlineFeatures: Array<{ id: "clone" | "git-sync" | "model-download" | "cloud-ai"; label: string; enabled: boolean; detail: string }>;
+}
+
 export interface WorkspaceResponse {
   root: string;
   projects: ProjectSummary[];
   generatedAt: string;
+  localPlatform: LocalPlatformStatus;
 }
 
 export interface WorkspaceActivity {

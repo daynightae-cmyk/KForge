@@ -23,11 +23,13 @@ import type {
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
 import { detectLocalAIProvider, requestLocalPlan } from "../services/localAI";
-import { generateWithLocalAI, getModelCenter, installOllamaModel, listAIProviders, setActiveModel, testAIConnection, type AIProviderId } from "../services/aiCenter";
+import { deleteOllamaModel, generateWithLocalAI, getModelCenter, getOllamaRuntimeStatus, installOllamaModel, listAIProviders, setActiveModel, testAIConnection, type AIProviderId } from "../services/aiCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
-import { buildAgentContext, buildLocalAIPlan, buildRulePlan, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
+import { buildAgentContext, buildLocalAIPlan, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
+import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
 import { appendTaskLog, cancelTask, getTask, listTasks, retryTask, startTask, type TaskKind } from "../services/tasks";
+import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatformMode } from "../services/localPlatform";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -562,6 +564,7 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
     addActivity(project.id, { kind: "runtime", title: result.ok ? "Runtime verification passed" : "Runtime verification failed", detail: result.message });
     return result;
   }
+  if ((action === "pull" || action === "push") && !(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: "Remote Git sync is disabled in Offline Mode. Switch KForge to Online Optional only when you explicitly want to contact a remote." };
   if ((action === "pull" || action === "push") && project.modifiedFiles + project.untrackedFiles > 0) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: "Git operation blocked because the working tree contains local changes. Review or commit them first." };
   const scriptName = action === "typecheck" ? "typecheck" : action;
   const command = action === "test" || action === "build" || action === "typecheck" ? profile.scripts[scriptName] ? commandFor(profile.packageManager, scriptName) : null : { command: "git", args: [action] };
@@ -574,6 +577,16 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
   return result;
 }
 
+router.get("/platform", async (_req, res) => {
+  res.json(await getLocalPlatformStatus(getWorkspaceRoot()));
+});
+
+router.post("/platform/mode", async (req, res) => {
+  const mode = req.body?.mode;
+  if (mode !== "offline" && mode !== "online-optional") return res.status(400).json({ error: "Choose offline or online-optional mode." });
+  res.json(await setLocalPlatformMode(getWorkspaceRoot(), mode));
+});
+
 router.get("/ai/providers", async (_req, res) => {
   res.json({ providers: await listAIProviders() });
 });
@@ -582,13 +595,18 @@ router.get("/ai/models", async (_req, res) => {
   res.json(await getModelCenter(getWorkspaceRoot()));
 });
 
+router.get("/ai/ollama/status", async (_req, res) => {
+  res.json(await getOllamaRuntimeStatus());
+});
+
 router.post("/ai/models/active", async (req, res) => {
   const provider = typeof req.body?.provider === "string" ? req.body.provider as AIProviderId : undefined;
   const model = typeof req.body?.model === "string" ? req.body.model : "";
   if (!provider || !model) return res.status(400).json({ error: "Choose a provider and an installed model." });
   try {
-    const active = await setActiveModel(getWorkspaceRoot(), provider, model);
-    return res.json({ active });
+    const fallback = req.body?.fallback === true;
+    const selection = await setActiveModel(getWorkspaceRoot(), provider, model, fallback);
+    return res.json(selection);
   } catch (error: unknown) {
     return res.status(422).json({ error: error instanceof Error ? error.message : "The active model could not be changed." });
   }
@@ -599,14 +617,29 @@ router.post("/ai/models/install", async (req, res) => {
   const model = typeof req.body?.model === "string" ? req.body.model : "";
   const confirmed = req.body?.confirmed === true;
   if (provider !== "ollama" || !model) return res.status(400).json({ error: "KForge currently supports confirmed installation through Ollama only." });
+  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return res.status(409).json({ error: "Model downloads are disabled in Offline Mode. Existing local models remain usable; choose Online Optional only after you decide to download." });
   if (!confirmed) return res.status(428).json({ error: "Model download requires explicit confirmation because it can consume substantial disk, RAM, and network resources.", permission: "ask" });
   const task = startTask("ai-center", "agent", async () => installOllamaModel(model));
   return res.status(202).json({ task });
 });
 
+router.delete("/ai/models/:model", async (req, res) => {
+  const provider = typeof req.body?.provider === "string" ? req.body.provider : "";
+  const confirmed = req.body?.confirmed === true;
+  if (provider !== "ollama") return res.status(400).json({ error: "KForge can remove local models through Ollama only." });
+  if (!confirmed) return res.status(428).json({ error: "Removing a local model is destructive and requires explicit confirmation.", permission: "ask" });
+  try {
+    const result = await deleteOllamaModel(req.params.model);
+    return res.status(result.ok ? 200 : 422).json(result);
+  } catch (error: unknown) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "The model could not be removed." });
+  }
+});
+
 router.post("/ai/test", async (req, res) => {
   const provider = typeof req.body?.provider === "string" ? req.body.provider as AIProviderId : undefined;
   const model = typeof req.body?.model === "string" ? req.body.model : undefined;
+  if (provider && !["ollama", "lm-studio", "llama-cpp"].includes(provider)) return res.status(403).json({ ok: false, error: "Cloud AI is not a core KForge capability and is never contacted by this local workspace route." });
   try {
     const result = await testAIConnection(getWorkspaceRoot(), provider, model);
     return res.json(result);
@@ -817,12 +850,132 @@ router.post("/projects/:id/snapshots/:snapshotId/restore", async (req, res) => {
 
 const agentPermissions = { readFiles: "allow", editFiles: "allow", runTests: "allow", runBuild: "allow", installPackage: "ask", deleteFile: "ask", gitCommit: "ask", gitPush: "ask", deploy: "ask", forcePush: "block", exposeSecret: "block" } as const;
 
+function projectToolHandlers(project: ProjectSummary): ProjectToolHandlers {
+  const action = (kind: WorkspaceAction) => async () => executeProjectAction(project, kind);
+  return {
+    typecheck: action("typecheck"),
+    lint: async () => {
+      const profile = await detectProjectProfile(project);
+      if (!profile.scripts.lint) throw new Error("No lint script is detected for this project.");
+      const command = commandFor(profile.packageManager, "lint");
+      return run(command.command, command.args, project.path, commandTimeoutMs);
+    },
+    test: action("test"),
+    build: action("build"),
+    start: action("runtime"),
+    health: action("runtime"),
+    logs: async () => ({ activities: activities.get(project.id) || [], tasks: listTasks(project.id).slice(0, 25) }),
+    gitStatus: async () => gitCenter(project),
+    gitDiff: async () => ({ diffStat: (await gitCenter(project)).diffStat }),
+    scan: async () => scanProject(project),
+    sonar: async () => { const scan = await scanProject(project); return { issues: scan.issues, tools: scan.tools, health: scan.health }; },
+    graph: async () => buildProjectGraph(project.path),
+    dependencyAudit: async () => { const scan = await scanProject(project); return scan.issues.filter((entry) => entry.category === "dependency"); },
+  };
+}
+
+router.get("/projects/:id/agent/tools", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  return res.json({ projectId: project.id, tools: listAgentTools(), permissions: agentPermissions });
+});
+
+router.post("/projects/:id/agent/tools/:tool", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (!isAgentToolName(req.params.tool)) return res.status(400).json({ error: "Unknown or unregistered agent tool." });
+  const input = typeof req.body === "object" && req.body !== null && !Array.isArray(req.body) ? req.body as Record<string, unknown> : {};
+  const result = await executeAgentTool(project.path, projectToolHandlers(project), req.params.tool, input);
+  return res.status(result.ok ? 200 : result.permission === "dangerous" || result.permission === "safe-write" ? 428 : result.permission === "blocked" ? 403 : 422).json(result);
+});
+
+router.post("/projects/:id/agent/runs", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const goal = typeof req.body?.goal === "string" ? req.body.goal.trim().slice(0, 800) : "Audit this project and report verified engineering findings.";
+  const issueId = typeof req.body?.issueId === "string" ? req.body.issueId : undefined;
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  let taskId = "";
+  const task = startTask(project.id, "agent", async () => {
+    const log = (message: string, progress: number) => appendTaskLog(taskId, message, progress);
+    const records: unknown[] = [];
+    log("Analyzing project and collecting deterministic evidence.", 10);
+    const scanResult = await executeAgentTool(project.path, projectToolHandlers(project), "scan");
+    records.push(scanResult);
+    if (!scanResult.ok) return { ok: false, message: "Agent scan failed; task is blocked.", output: JSON.stringify({ goal, records }, null, 2) };
+    const scan = scanResult.output as ProjectScan;
+    const context = await buildAgentContext(project, scan, issueId);
+    log(`Selected ${context.files.length} redacted context file(s), ${context.totalCharacters} characters.`, 24);
+    let plan: unknown;
+    try { plan = await buildLocalAIPlan(getWorkspaceRoot(), context, goal); log("Local AI plan generated from the active model.", 36); }
+    catch { plan = buildRulePlan(context); log("No active local model; using deterministic evidence plan.", 36); }
+    const lowerGoal = goal.toLowerCase();
+    const requestedChecks: Array<"sonar" | "graph" | "typecheck" | "test" | "build" | "health"> = lowerGoal.includes("release") || lowerGoal.includes("production") ? ["sonar", "graph", "typecheck", "test", "build", ...(scan.profile.scripts.start ? ["health" as const] : [])] : lowerGoal.includes("test") ? ["sonar", "graph", "typecheck", "test"] : ["sonar", "graph", "typecheck"];
+    for (let index = 0; index < requestedChecks.length; index += 1) {
+      const tool = requestedChecks[index];
+      log(`Running typed tool: ${tool}.`, 42 + Math.round((index / requestedChecks.length) * 35));
+      const result = await executeAgentTool(project.path, projectToolHandlers(project), tool);
+      records.push(result);
+      if (!result.ok && ["typecheck", "test", "build", "health"].includes(tool)) log(`${tool} did not pass; agent keeps evidence and avoids unsupported repair claims.`, 80);
+    }
+    const wantsFix = /\b(fix|repair|resolve|correct)\b/i.test(goal);
+    const targetIssue = issueId ? scan.issues.find((entry) => entry.id === issueId) : scan.issues.find((entry) => entry.severity === "critical" || entry.severity === "high");
+    if (wantsFix && targetIssue) {
+      log(`Evaluating safe patch rules for ${targetIssue.title}.`, 82);
+      const patch = await generateVerifiedPatch(project, targetIssue);
+      if (!patch) return { ok: false, message: "Agent stopped: the selected issue has no verified safe patch rule and requires review.", output: JSON.stringify({ goal, context, plan, records, targetIssue, status: "BLOCKED_MANUAL_REVIEW" }, null, 2) };
+      const quality = await evaluatePatchQuality(project.path, patch);
+      if (!quality.ok || patch.risk !== "safe") return { ok: false, message: "Agent stopped: Patch Quality Gate requires manual review.", output: JSON.stringify({ goal, context, plan, records, patch, quality, status: "BLOCKED_PATCH_QUALITY" }, null, 2) };
+      log(`Creating snapshot for ${patch.file}.`, 87);
+      const snapshot = await createSnapshot(project.path, [patch.file], `Before agent run ${taskId}: ${patch.id}`);
+      try {
+        log(`Applying verified patch to ${patch.file}.`, 91);
+        const applied = await validateAndApplyPatch(project.path, patch);
+        const verification: unknown[] = [];
+        const profile = await detectProjectProfile(project);
+        const verificationTools: Array<"typecheck" | "test" | "build" | "health"> = ["typecheck", "test", "build", ...(profile.scripts.start ? ["health" as const] : [])];
+        for (const tool of verificationTools) {
+          log(`Verifying with typed tool: ${tool}.`, 93);
+          const result = await executeAgentTool(project.path, projectToolHandlers(project), tool);
+          verification.push(result);
+          if (!result.ok) {
+            await restoreSnapshot(project.path, snapshot.id);
+            return { ok: false, message: "Verification failed; agent restored the snapshot.", output: JSON.stringify({ goal, context, plan, records, patch, quality, snapshot, applied, verification, rolledBack: true }, null, 2) };
+          }
+        }
+        return { ok: true, message: "Agent run completed with a verified safe patch.", output: JSON.stringify({ goal, context, plan, records, patch, quality, snapshot, applied, verification, rolledBack: false }, null, 2) };
+      } catch (error: unknown) {
+        await restoreSnapshot(project.path, snapshot.id).catch(() => undefined);
+        return { ok: false, message: "Agent patch failed; snapshot restored.", output: error instanceof Error ? error.message : "Unknown patch error." };
+      }
+    }
+    return { ok: true, message: "Agent run completed with evidence and typed-tool results.", output: JSON.stringify({ goal, context, plan, records, status: "COMPLETED_NO_AUTOFIX" }, null, 2) };
+  });
+  taskId = task.id;
+  return res.status(202).json({ task, goal, permissions: agentPermissions });
+});
+
 router.get("/projects/:id/agent/context", async (req, res) => {
   const project = await resolveProject(req.params.id);
   const issueId = typeof req.query.issueId === "string" ? req.query.issueId : undefined;
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   const scan = await scanProject(project);
   return res.json({ context: await buildAgentContext(project, scan, issueId), permissions: agentPermissions });
+});
+
+router.post("/projects/:id/problems/:problemId/explain", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const scan = await scanProject(project);
+  const problem = scan.issues.find((entry) => entry.id === req.params.problemId);
+  if (!problem) return res.status(404).json({ error: "Problem not found in the latest real scan." });
+  const context = await buildAgentContext(project, scan, problem.id);
+  try {
+    const generated = await generateWithLocalAI(getWorkspaceRoot(), "You explain a deterministic KForge Sonar diagnostic. Do not invent diagnostics, edits, test results, or secret values. Explain impact, risk, and a safe verification path using only the supplied evidence.", JSON.stringify({ diagnostic: problem, context }));
+    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, explanation: generated.content, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path) });
+  } catch {
+    const explanation = { mode: "evidence-based", finding: problem.title, severity: problem.severity, source: problem.source, rule: problem.rule, file: problem.file, line: problem.line, impact: problem.description, risk: problem.risk, proposedAction: problem.suggestion || "Review the diagnostic evidence and run the relevant project check.", verification: problem.category === "typecheck" ? ["typecheck", "test", "build"] : problem.category === "security" ? ["review scanner evidence", "scan", "test"] : ["scan", "test", "build"] };
+    return res.json({ mode: "rules", provider: "none", explanation, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path), notice: "No active local model is available. This is deterministic diagnostic evidence, not AI-generated explanation." });
+  }
 });
 
 router.post("/projects/:id/ask", async (req, res) => {
@@ -962,6 +1115,7 @@ router.post("/projects/open", async (req, res) => {
 });
 
 router.post("/projects/clone", async (req, res) => {
+  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return res.status(409).json({ error: "Remote cloning is disabled in Offline Mode. Open an existing local project instead, or explicitly switch to Online Optional." });
   const remoteUrl = typeof req.body?.remoteUrl === "string" ? req.body.remoteUrl.trim() : "";
   const targetName = typeof req.body?.targetName === "string" ? req.body.targetName.trim() : "";
   if (!/^https:\/\/(github\.com|gitlab\.com)\/.+/.test(remoteUrl) || !/^[A-Za-z0-9._-]+$/.test(targetName)) return res.status(400).json({ error: "Provide a supported HTTPS repository URL and a safe target folder name." });
@@ -976,7 +1130,8 @@ router.post("/projects/clone", async (req, res) => {
 });
 
 router.get("/projects", async (_req, res) => {
-  const response: WorkspaceResponse = { root: getWorkspaceRoot(), projects: await allProjects(), generatedAt: new Date().toISOString() };
+  const root = getWorkspaceRoot();
+  const response: WorkspaceResponse = { root, projects: await allProjects(), generatedAt: new Date().toISOString(), localPlatform: await getLocalPlatformStatus(root) };
   res.json(response);
 });
 

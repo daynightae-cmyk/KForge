@@ -1,0 +1,12 @@
+{
+  "name": "workspace-agent-safe",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node test/run.cjs",
+    "build": "tsc --outDir dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
