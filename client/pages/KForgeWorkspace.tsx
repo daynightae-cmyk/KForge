@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
+  Archive,
   ArrowDownUp,
   Bot,
   Box,
@@ -26,6 +27,7 @@ import {
   RefreshCw,
   Rocket,
   Search,
+  Star,
   Settings2,
   ShieldAlert,
   Terminal,
@@ -45,7 +47,7 @@ import type {
 } from "@shared/workspace";
 
 const NAVIGATION = [
-  { group: "Projects", items: [["Workspace", LayoutDashboard], ["Project health", HeartPulse], ["Recent projects", History], ["Open project", FolderOpen]] },
+  { group: "Projects", items: [["Workspace", LayoutDashboard], ["Project health", HeartPulse], ["Recent projects", History], ["Favorites", Star], ["Archive", Archive], ["Open project", FolderOpen]] },
   { group: "AI", items: [["AI providers", Bot], ["Models", Cpu], ["Agents", Bot], ["Tasks", Activity]] },
   { group: "Marketplace", items: [["Marketplace", Box]] },
   { group: "Intelligence", items: [["Project graph", Network], ["Ask KForge", MessageSquare], ["Architecture", Box]] },
@@ -461,6 +463,8 @@ function ProjectInspector({ project, scan, results, tasks, onRun, onTaskControl 
 function CapabilitySurface({ activeNav, project, projects, scan, tasks, results, platform, onPlatformModeChange, onOpenProject, onRun, onTaskControl }: { activeNav: string; project: ProjectSummary; projects: ProjectSummary[]; scan?: ProjectScan; tasks: TaskItem[]; results?: Partial<Record<WorkspaceAction, CommandResult>>; platform?: LocalPlatformStatus; onPlatformModeChange: (mode: LocalPlatformStatus["mode"]) => void; onOpenProject: () => void; onRun: (action: WorkspaceAction) => void; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) {
   if (activeNav === "Project health") return <ProjectHealthPanel project={project} />;
   if (activeNav === "Recent projects") return <RecentProjectsPanel projects={projects} />;
+  if (activeNav === "Favorites") return <CollectionProjectsPanel title="Favorite Projects" projects={projects.filter((entry) => entry.categories.favorite)} empty="No projects have been marked as favorite in the local workspace." icon={<Star size={17} />} />;
+  if (activeNav === "Archive") return <CollectionProjectsPanel title="Archived Projects" projects={projects.filter((entry) => entry.categories.archive)} empty="No projects have been archived in the local workspace." icon={<Archive size={17} />} />;
   if (activeNav === "Open project") return <OpenProjectPanel onOpen={onOpenProject} />;
   if (activeNav === "Terminal") return <TerminalOperationsPanel project={project} results={results} tasks={tasks} onRun={onRun} />;
   if (activeNav === "Tests") return <DeveloperActionPanel title="Test Lab" description="Runs the detected local test command for the selected project and records actual stdout, stderr, exit state, and duration." action="test" result={results?.test} tasks={tasks} onRun={onRun} />;
@@ -482,8 +486,12 @@ function ProjectHealthPanel({ project }: { project: ProjectSummary }) {
 }
 
 function RecentProjectsPanel({ projects }: { projects: ProjectSummary[] }) {
-  const recent = [...projects].sort((left, right) => new Date(right.lastActivity).getTime() - new Date(left.lastActivity).getTime()).slice(0, 12);
-  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><History size={17} /><h3>Recent Projects</h3></div><span>{recent.length} local record(s)</span></div>{recent.length ? <div className="kf-provider-grid">{recent.map((entry) => <article className="kf-provider-card" key={entry.id}><div><strong>{entry.name}</strong><span>{entry.projectType}</span></div><p>{entry.path}</p><small>{entry.branch} · {formatDate(entry.lastActivity)} · {entry.trust === "trusted" ? "trusted" : "read-only"}</small></article>)}</div> : <p className="kf-capability-copy">No projects have been opened in this local KForge workspace yet.</p>}</section>;
+  const recent = [...projects].filter((entry) => entry.categories.recent && !entry.archived).sort((left, right) => new Date(right.lastOpenedAt || 0).getTime() - new Date(left.lastOpenedAt || 0).getTime()).slice(0, 12);
+  return <CollectionProjectsPanel title="Recent Projects" projects={recent} empty="No projects have been opened in this local KForge workspace yet." icon={<History size={17} />} />;
+}
+
+function CollectionProjectsPanel({ title, projects, empty, icon }: { title: string; projects: ProjectSummary[]; empty: string; icon: React.ReactNode }) {
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div>{icon}<h3>{title}</h3></div><span>{projects.length} local record(s)</span></div>{projects.length ? <div className="kf-provider-grid">{projects.map((entry) => <article className="kf-provider-card" key={entry.id}><div><strong>{entry.name}</strong><span>{entry.projectType}</span></div><p>{entry.path}</p><small>{entry.branch} · {formatDate(entry.lastOpenedAt || entry.lastActivity)} · {entry.trust === "trusted" ? "trusted" : "read-only"}</small></article>)}</div> : <p className="kf-capability-copy">{empty}</p>}</section>;
 }
 
 function OpenProjectPanel({ onOpen }: { onOpen: () => void }) { return <section className="kf-capability-panel"><div className="kf-card-heading"><div><FolderOpen size={17} /><h3>Open Local Project</h3></div><span>Discovery on open</span></div><p className="kf-capability-copy">Choose a local folder. KForge detects technologies, source roots, package manager, scripts, Git state, remotes, Docker, environment files, and local test/build evidence before it is listed.</p><button className="kf-button kf-button--primary" onClick={onOpen}><FolderOpen size={16} />Choose local folder</button></section>; }
