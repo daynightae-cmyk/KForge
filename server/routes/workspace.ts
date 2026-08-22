@@ -765,12 +765,13 @@ router.post("/tasks/:taskId/retry", (req, res) => {
 });
 
 async function gitCenter(project: ProjectSummary) {
-  const [status, diffStat, branches, history, stash] = await Promise.all([
+  const [status, diffStat, branches, history, stash, tags] = await Promise.all([
     run("git", ["status", "--porcelain=v1", "--branch"], project.path),
     run("git", ["diff", "--stat"], project.path),
     run("git", ["branch", "--format=%(refname:short)"], project.path),
     run("git", ["log", "-20", "--pretty=format:%H%x09%h%x09%s%x09%cI"], project.path),
     run("git", ["stash", "list"], project.path),
+    run("git", ["tag", "--sort=-creatordate"], project.path),
   ]);
   return {
     status: status.output,
@@ -778,7 +779,21 @@ async function gitCenter(project: ProjectSummary) {
     branches: branches.output.split(/\r?\n/).filter(Boolean),
     commits: history.output.split(/\r?\n/).filter(Boolean).map((line) => { const [sha, shortSha, subject, committedAt] = line.split("\t"); return { sha, shortSha, subject, committedAt }; }),
     stashes: stash.output.split(/\r?\n/).filter(Boolean),
+    tags: tags.output.split(/\r?\n/).filter(Boolean),
   };
+}
+
+async function smartCommitPreview(project: ProjectSummary) {
+  const [status, diffStat] = await Promise.all([
+    run("git", ["status", "--porcelain=v1"], project.path),
+    run("git", ["diff", "--stat", "HEAD"], project.path),
+  ]);
+  const changes = status.output.split(/\r?\n/).filter(Boolean).map((line) => ({ status: line.slice(0, 2).trim() || "?", file: line.slice(3).trim() })).filter((entry) => entry.file);
+  const areas = [...new Set(changes.map((entry) => entry.file.split(/[\\/]/)[0] || "root"))];
+  const scope = areas.length === 1 ? areas[0].replace(/[^A-Za-z0-9_-]/g, "") || "workspace" : "workspace";
+  const title = changes.length ? `chore(${scope}): update ${changes.length} file${changes.length === 1 ? "" : "s"}` : "chore: no working tree changes";
+  const validations = Object.values(latestActions.get(project.id) || {}).filter((entry): entry is CommandResult => Boolean(entry)).map((entry) => ({ action: entry.action, ok: entry.ok, completedAt: entry.completedAt, message: entry.message }));
+  return { title, description: changes.length ? `Evidence-backed proposal generated from the current local Git status. Review the listed files and validation evidence before committing.` : "No local changes were detected; KForge will not propose an empty commit.", changedFiles: changes, diffStat: diffStat.output || "No tracked diff statistics are available.", validations, generatedAt: new Date().toISOString() };
 }
 
 function githubSlug(remoteUrl?: string) {
@@ -874,6 +889,20 @@ router.post("/projects/:id/problems/:problemId/apply", async (req, res) => {
   }
 });
 
+async function releasePreparation(project: ProjectSummary) {
+  const git = await gitCenter(project);
+  const baseline = git.tags[0];
+  const history = await run("git", baseline ? ["log", `${baseline}..HEAD`, "--pretty=format:%h%x09%s%x09%cI", "--max-count=80"] : ["log", "-20", "--pretty=format:%h%x09%s%x09%cI"], project.path);
+  const commits = history.output.split(/\r?\n/).filter(Boolean).map((line) => { const [shortSha, subject, committedAt] = line.split("\t"); return { shortSha, subject, committedAt }; });
+  const profile = await detectProjectProfile(project);
+  let version: string | undefined;
+  const packageManifest = profile.manifests.find((manifest) => manifest.endsWith("package.json"));
+  if (packageManifest) { try { const raw = JSON.parse(await fs.readFile(path.join(project.path, packageManifest), "utf8")); version = typeof raw.version === "string" ? raw.version : undefined; } catch { /* Manifest is reported through profile discovery; malformed JSON is not invented as a version. */ } }
+  const artifactNames = ["dist", "build", "out", "target", "release", "artifacts"];
+  const artifacts = (await Promise.all(artifactNames.map(async (name) => { const absolute = path.join(project.path, name); try { const stat = await fs.stat(absolute); return stat.isDirectory() ? name : undefined; } catch { return undefined; } }))).filter((entry): entry is string => Boolean(entry));
+  return { generatedAt: new Date().toISOString(), baselineTag: baseline || null, version: version || null, commits, artifacts, notes: commits.length ? commits.map((commit) => `- ${commit.subject} (${commit.shortSha})`).join("\n") : "No commits are available for a release note proposal.", notice: "This is a local preparation preview. It does not create a tag, commit, GitHub release, or remote request." };
+}
+
 router.post("/projects/:id/release-gate", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
@@ -894,6 +923,18 @@ router.post("/projects/:id/release-gate", async (req, res) => {
   return res.status(readiness === "BLOCKED" ? 422 : 200).json({ readiness, checks: verification.map((entry) => ({ action: entry.action, ok: entry.ok, message: entry.message })), missingChecks, security: scan.issues.filter((entry) => entry.category === "security"), dependencies: scan.issues.filter((entry) => entry.category === "dependency"), completeness: scan.issues.filter((entry) => entry.category === "completeness" || entry.category === "mock"), blockers, warnings, scan });
 });
 
+router.get("/projects/:id/release/preparation", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  return res.json({ projectId: project.id, preparation: await releasePreparation(project) });
+});
+
+router.get("/projects/:id/commit-preview", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  return res.json({ projectId: project.id, proposal: await smartCommitPreview(project) });
+});
+
 router.post("/projects/:id/pre-push-gate", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
@@ -901,11 +942,13 @@ router.post("/projects/:id/pre-push-gate", async (req, res) => {
   const typecheck = await executeProjectAction(project, "typecheck");
   const tests = await executeProjectAction(project, "test");
   const build = await executeProjectAction(project, "build");
+  const runtime = await executeProjectAction(project, "runtime");
   const scan = await scanProject(await makeProjectSummary(project.path));
   const git = await gitCenter(await makeProjectSummary(project.path));
   const secrets = scan.issues.filter((entry) => entry.category === "security" && (entry.severity === "critical" || entry.severity === "high"));
-  const ok = typecheck.ok && tests.ok && build.ok && secrets.length === 0;
-  return res.status(ok ? 200 : 422).json({ ok, checks: { typecheck: typecheck.ok, tests: tests.ok, build: build.ok, security: secrets.length === 0, secrets: secrets.length === 0, gitDiff: git.diffStat || "clean" }, scan, git });
+  const releaseGate = scan.health.release.state === "READY";
+  const ok = typecheck.ok && tests.ok && build.ok && runtime.ok && secrets.length === 0 && releaseGate;
+  return res.status(ok ? 200 : 422).json({ ok, checks: { typecheck: typecheck.ok, tests: tests.ok, build: build.ok, runtime: runtime.ok, security: secrets.length === 0, secrets: secrets.length === 0, releaseGate, gitDiff: git.diffStat || "clean" }, scan, git });
 });
 
 router.get("/ai/local", async (_req, res) => {
@@ -1273,6 +1316,13 @@ router.get("/projects/:id/profile", async (req, res) => {
   res.json({ profile: await detectProjectProfile(project) });
 });
 
+router.get("/projects/:id/health", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const scan = await scanProject(project);
+  return res.json({ projectId: project.id, health: scan.health, scannedAt: scan.scannedAt, issueCount: scan.issues.length, tools: scan.tools });
+});
+
 router.get("/projects/:id/documentation", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
@@ -1347,6 +1397,25 @@ router.get("/projects/:id/graph/impact", async (req, res) => {
   if (!file) return res.status(400).json({ error: "Provide a project-relative file path." });
   const graph = await buildProjectGraph(project.path);
   return res.json({ projectId: project.id, impact: analyzeImpact(graph, file) });
+});
+
+router.get("/projects/:id/architecture", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const graph = await buildProjectGraph(project.path);
+  const fileNodes = graph.nodes.filter((node) => node.type === "file" || node.type === "test");
+  const moduleCounts = new Map<string, number>();
+  fileNodes.forEach((node) => { const area = node.path?.split("/")[0] || "root"; moduleCounts.set(area, (moduleCounts.get(area) || 0) + 1); });
+  const modules = [...moduleCounts.entries()].map(([name, files]) => ({ name, files })).sort((left, right) => right.files - left.files);
+  const imports = graph.edges.filter((edge) => edge.type === "imports");
+  const importPairs = new Set(imports.map((edge) => `${edge.from}|${edge.to}`));
+  const directCycles = imports.filter((edge) => importPairs.has(`${edge.to}|${edge.from}`)).map((edge) => [edge.from.replace(/^file:/, ""), edge.to.replace(/^file:/, "")]).filter(([from, to], index, entries) => from < to && entries.findIndex(([candidateFrom, candidateTo]) => candidateFrom === from && candidateTo === to) === index);
+  const incoming = new Map<string, number>();
+  imports.forEach((edge) => incoming.set(edge.to, (incoming.get(edge.to) || 0) + 1));
+  const highCoupling = [...incoming.entries()].filter(([, count]) => count >= 5).map(([id, dependents]) => ({ file: id.replace(/^file:/, ""), dependents })).sort((left, right) => right.dependents - left.dependents);
+  const apiBoundaries = graph.nodes.filter((node) => node.type === "api").map((node) => ({ path: node.label, owner: node.path }));
+  const routeBoundaries = graph.nodes.filter((node) => node.type === "route").map((node) => ({ path: node.label, owner: node.path }));
+  return res.json({ projectId: project.id, generatedAt: graph.generatedAt, modules, apiBoundaries, routeBoundaries, directCycles, highCoupling, limitations: ["Architecture evidence is static and import-based.", "Symbol-level ownership, transitive dependency cycles, and duplicated responsibility detection require language-aware analysis not yet available in this local engine."] });
 });
 
 router.get("/projects/:id/problems", async (req, res) => {
