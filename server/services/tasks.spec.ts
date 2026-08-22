@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { promises as fs } from "fs";
 import path from "path";
-import { initializeTaskStore, listTasks } from "./tasks";
+import { flushTaskStore, initializeTaskStore, listTasks } from "./tasks";
 
 describe("KForge task recovery", () => {
   it("marks an interrupted persisted agent mission as blocked and preserves its evidence", async () => {
@@ -18,7 +18,8 @@ describe("KForge task recovery", () => {
       expect(restored?.error).toContain("Interrupted by a previous KForge session");
       expect(restored?.logs.some((entry) => entry.message.includes("Inspect the task evidence"))).toBe(true);
     } finally {
-      await fs.rm(root, { recursive: true, force: true });
+      await flushTaskStore();
+      await fs.rm(root, { recursive: true, force: true, maxRetries: 4, retryDelay: 75 });
     }
   });
 });

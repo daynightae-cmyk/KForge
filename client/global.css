@@ -589,3 +589,55 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Knoux Forge installation experience — uses the supplied logo artwork as the source identity. */
+.kf-installation {
+  --install-violet: #5d20e8;
+  --install-bright: #7a39ff;
+  position: relative;
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  padding: clamp(18px, 4vw, 54px);
+  background: #030205;
+  color: #17101f;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+.kf-installation.is-leaving { opacity: 0; transform: scale(.992); pointer-events: none; }
+.kf-installation-orb {
+  position: absolute;
+  z-index: -2;
+  width: min(1120px, 95vw);
+  aspect-ratio: 1;
+  border: 9px solid rgba(159, 112, 255, .78);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 29%, #fff 0, #fbf7ff 37%, #f2e8ff 74%, #d7bbff 100%);
+  box-shadow: 0 0 0 3px rgba(255,255,255,.92) inset, 0 0 34px rgba(130, 65, 255, .75), 0 0 120px rgba(95, 32, 232, .42);
+}
+.kf-installation-inner { position: absolute; inset: 18px; border: 3px solid rgba(255,255,255,.97); border-radius: inherit; }
+.kf-installation-card { display: grid; width: min(660px, 100%); justify-items: center; text-align: center; animation: kf-installation-enter 420ms cubic-bezier(.2,.8,.2,1) both; }
+.kf-installation-logo { position: relative; width: clamp(116px, 15vw, 150px); height: clamp(144px, 18vw, 182px); overflow: hidden; margin: 0 0 clamp(5px, 1vw, 12px); }
+.kf-installation-logo img { position: absolute; width: clamp(453px, 57vw, 565px); max-width: none; left: clamp(-195px, -24.7vw, -164px); top: clamp(-69px, -8.7vw, -54px); user-select: none; pointer-events: none; }
+.kf-installation-brand { margin: 0; font: 800 clamp(47px, 7vw, 84px)/.95 "SF Pro Display", Inter, ui-sans-serif, sans-serif; letter-spacing: -.075em; }
+.kf-installation-brand span { color: #09080b; }
+.kf-installation-brand strong { margin-left: .22em; color: var(--install-violet); font-weight: 800; }
+.kf-installation-tagline { margin: 14px 0 0; color: #554c6c; font-size: clamp(15px, 2vw, 21px); font-weight: 550; letter-spacing: -.025em; }
+.kf-installation-check { display: grid; width: clamp(62px, 7.5vw, 84px); height: clamp(62px, 7.5vw, 84px); place-items: center; margin: clamp(28px, 4vw, 46px) 0 clamp(18px, 2.5vw, 28px); border: 1px solid rgba(130, 82, 245, .22); border-radius: 50%; background: linear-gradient(145deg, #fff, #eee4ff); color: var(--install-violet); box-shadow: 0 12px 24px rgba(92,31,231,.23), 0 0 22px rgba(121,57,255,.33); }
+.kf-installation-card h2 { margin: 0; color: #4f1bdd; font-size: clamp(31px, 4.7vw, 52px); line-height: 1.06; letter-spacing: -.045em; font-weight: 820; }
+.kf-installation-copy { max-width: 560px; margin: 12px 0 0; color: #514866; font-size: clamp(14px, 1.75vw, 19px); line-height: 1.5; font-weight: 520; }
+.kf-installation-features { margin: 17px 0 0; color: #735ea1; font-size: clamp(12px, 1.45vw, 15px); font-weight: 700; letter-spacing: .02em; }
+.kf-installation-features b { padding: 0 5px; color: #9b6bff; }
+.kf-installation-cta { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-width: min(100%, 360px); min-height: 62px; margin-top: clamp(26px, 4vw, 40px); padding: 0 28px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: linear-gradient(180deg, #7529f4, #4610bd); color: #fff; box-shadow: 0 11px 21px rgba(73, 15, 193, .36), 0 0 28px rgba(119, 46, 255, .44); font: 800 clamp(16px, 2vw, 21px)/1 Inter, "SF Pro Display", sans-serif; letter-spacing: .02em; cursor: pointer; transition: transform 220ms ease, box-shadow 220ms ease, filter 220ms ease; }
+.kf-installation-cta:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.05); box-shadow: 0 15px 28px rgba(73,15,193,.43), 0 0 39px rgba(119,46,255,.66); }
+.kf-installation-cta:active:not(:disabled) { transform: scale(.98); }
+.kf-installation-cta:focus-visible { outline: 3px solid #20104a; outline-offset: 5px; }
+.kf-installation-cta:disabled { cursor: progress; opacity: .84; }
+.kf-installation-cta-check { display: grid; width: 35px; height: 35px; place-items: center; border-radius: 50%; background: #fff; color: var(--install-violet); }
+.kf-installation-particles { position: absolute; z-index: -1; inset: 50% auto auto 50%; width: min(770px, 80vw); aspect-ratio: 1.7; transform: translate(-50%, 24%); pointer-events: none; }
+.kf-installation-particles i { position: absolute; display: block; width: 8px; aspect-ratio: 1; border-radius: 50%; background: rgba(116,62,239,.38); box-shadow: 0 0 11px rgba(123,63,255,.28); }
+.kf-installation-particles .p1 { left: 8%; top: 31%; } .kf-installation-particles .p2 { left: 18%; top: 48%; width: 6px; } .kf-installation-particles .p3 { left: 31%; top: 21%; width: 5px; } .kf-installation-particles .p4 { left: 48%; top: 50%; } .kf-installation-particles .p5 { left: 64%; top: 25%; width: 5px; } .kf-installation-particles .p6 { left: 76%; top: 57%; } .kf-installation-particles .p7 { left: 88%; top: 35%; width: 5px; } .kf-installation-particles .p8 { left: 55%; top: 70%; width: 5px; }
+@keyframes kf-installation-enter { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
+@media (max-width: 640px) { .kf-installation { padding: 22px 16px; } .kf-installation-orb { width: 126vw; border-width: 6px; } .kf-installation-inner { inset: 12px; border-width: 2px; } .kf-installation-logo { margin-bottom: 2px; } .kf-installation-tagline { margin-top: 11px; } .kf-installation-copy { max-width: 340px; } .kf-installation-cta { min-width: min(100%, 310px); min-height: 57px; padding: 0 20px; } }
+@media (prefers-reduced-motion: reduce) { .kf-installation, .kf-installation-card { animation: none; transition-duration: .01ms; } }

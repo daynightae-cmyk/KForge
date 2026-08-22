@@ -73,6 +73,10 @@ export async function initializeTaskStore(workspaceRoot: string) {
   return { interrupted };
 }
 
+export function flushTaskStore() {
+  return persistenceQueue;
+}
+
 export function listTasks(projectId?: string) {
   return [...tasks.values()].filter((task) => !projectId || task.projectId === projectId).sort((left, right) => right.startedAt.localeCompare(left.startedAt));
 }
