@@ -5,7 +5,7 @@ import { KnouxSidebar } from "@/components/knoux/KnouxSidebar";
 import { KnouxPreview } from "@/components/knoux/KnouxPreview";
 import { KnouxTimeline } from "@/components/knoux/KnouxTimeline";
 import { KnouxInspectorPanel } from "@/components/knoux/KnouxInspectorPanel";
-import { KnouxProjectState } from "@/lib/knouxDataTypes";
+import type { KnouxClipData, KnouxProjectState } from "@/lib/knouxDataTypes";
 import { KNOUX_BRANDING } from "@/lib/knouxBrandingConstants";
 
 export default function KnouxVideoEditor() {
@@ -96,7 +96,7 @@ export default function KnouxVideoEditor() {
     // Implement redo functionality
   }, []);
 
-  const selectedClip = selectedClipId
+  const selectedClip: KnouxClipData | undefined = selectedClipId
     ? projectState.timeline?.tracks
         ?.flatMap((track) => track.clips)
         ?.find((clip) => clip.id === selectedClipId)

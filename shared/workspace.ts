@@ -1,4 +1,7 @@
-export type WorkspaceStatus = "pass" | "warning" | "fail" | "unknown" | "running";
+export type WorkspaceStatus = "pass" | "warning" | "fail" | "unknown" | "running" | "unavailable";
+export type DiagnosticSeverity = "critical" | "high" | "medium" | "low" | "info";
+export type DiagnosticCategory = "security" | "dependency" | "quality" | "configuration" | "typecheck" | "test" | "build" | "runtime" | "git" | "completeness";
+export type Fixability = "automatic" | "guided" | "manual" | "unavailable";
 
 export interface ProjectSummary {
   id: string;
@@ -21,24 +24,84 @@ export interface ProjectSummary {
   lastScan?: string;
 }
 
+export interface ProjectCommands {
+  typecheck?: string;
+  test?: string;
+  build?: string;
+  dev?: string;
+  production?: string;
+}
+
+export interface ProjectProfile {
+  projectId: string;
+  rootPath: string;
+  framework: string[];
+  languages: string[];
+  packageManager: string | null;
+  dependencies: Array<{ name: string; version: string; kind: "production" | "development" }>;
+  scripts: Record<string, string>;
+  commands: ProjectCommands;
+  envFiles: string[];
+  ci: string[];
+  docker: string[];
+  deployment: string[];
+  sourceFileCount: number;
+  totalFileCount: number;
+  projectSizeBytes: number;
+  sourceRoots: string[];
+  detectedAt: string;
+}
+
 export interface ScanIssue {
   id: string;
-  severity: "critical" | "high" | "medium" | "low" | "info";
-  category: "security" | "dependency" | "quality" | "configuration";
+  severity: DiagnosticSeverity;
+  category: DiagnosticCategory;
   title: string;
   message: string;
+  description: string;
   file?: string;
   line?: number;
+  confidence: "high" | "medium" | "low";
+  fixability: Fixability;
+  source: string;
+  status: "open" | "resolved" | "ignored";
   suggestion?: string;
+}
+
+export interface HealthMetric {
+  key: "codeQuality" | "security" | "dependencies" | "tests" | "build" | "runtime" | "git" | "documentation" | "architecture" | "completeness";
+  label: string;
+  status: WorkspaceStatus;
+  score: number | null;
+  weight: number;
+  evidence: string[];
+  findings: string[];
+  lastScan: string;
+}
+
+export interface ProjectHealth {
+  score: number | null;
+  evidenceCoverage: number;
+  metrics: HealthMetric[];
+  calculatedAt: string;
+}
+
+export interface ToolAvailability {
+  name: "typescript" | "eslint" | "npm-audit" | "gitleaks" | "semgrep" | "sonar";
+  available: boolean;
+  version?: string;
+  reason?: string;
 }
 
 export interface ProjectScan {
   projectId: string;
   scannedAt: string;
-  healthScore: number;
+  profile: ProjectProfile;
+  health: ProjectHealth;
   technology: string[];
   git: {
     branch: string;
+    remoteUrl?: string;
     modifiedFiles: number;
     untrackedFiles: number;
     ahead: number;
@@ -50,11 +113,13 @@ export interface ProjectScan {
     dependencies: WorkspaceStatus;
     tests: WorkspaceStatus;
     build: WorkspaceStatus;
+    typecheck: WorkspaceStatus;
   };
+  tools: ToolAvailability[];
 }
 
 export interface CommandResult {
-  action: "scan" | "test" | "build" | "pull" | "push";
+  action: "scan" | "test" | "build" | "typecheck" | "pull" | "push" | "runtime";
   projectId: string;
   ok: boolean;
   startedAt: string;
@@ -73,7 +138,7 @@ export interface WorkspaceResponse {
 export interface WorkspaceActivity {
   id: string;
   at: string;
-  kind: "scan" | "test" | "build" | "git" | "system";
+  kind: "scan" | "test" | "build" | "git" | "system" | "runtime" | "typecheck";
   title: string;
   detail: string;
 }
@@ -84,7 +149,7 @@ export interface ProjectDetailResponse {
   activities: WorkspaceActivity[];
 }
 
-export const WORKSPACE_ACTIONS = ["scan", "test", "build", "pull", "push"] as const;
+export const WORKSPACE_ACTIONS = ["scan", "test", "build", "typecheck", "pull", "push", "runtime"] as const;
 export type WorkspaceAction = (typeof WORKSPACE_ACTIONS)[number];
 
 export function isWorkspaceAction(value: unknown): value is WorkspaceAction {

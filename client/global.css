@@ -509,3 +509,30 @@
   @media (max-width: 900px) { .kf-app { grid-template-columns: 76px minmax(0, 1fr); } .kf-sidebar { padding-left: 9px; padding-right: 9px; } .kf-brand { justify-content: center; padding: 0; } .kf-brand > span:last-child, .kf-workspace-switcher, .kf-nav-label, .kf-nav-item > span, .kf-sidebar-footer > span { display: none; } .kf-nav-item { justify-content: center; padding: 0; } .kf-sidebar-footer { justify-content: center; } .kf-topbar { grid-template-columns: 1fr minmax(220px, 400px); } .kf-topbar-state { display: none; } .kf-inspector-grid { grid-template-columns: 1fr; } }
   @media (max-width: 650px) { .kf-app { display: block; } .kf-sidebar { position: sticky; z-index: 20; top: 0; height: 54px; display: flex; flex-direction: row; align-items: center; padding: 0 12px; border-right: 0; border-bottom: 1px solid var(--kf-border); overflow: visible; } .kf-brand { width: auto; } .kf-nav { display: flex; flex: 1; flex-direction: row; justify-content: flex-end; gap: 1px; } .kf-nav section { display: contents; } .kf-nav section:nth-child(n+2), .kf-sidebar-footer { display: none; } .kf-nav-item { width: 32px; min-height: 32px; } .kf-topbar { position: relative; display: block; min-height: 53px; padding: 9px 12px; } .kf-breadcrumb { display: none; } .kf-command-trigger { width: 100%; } .kf-content { padding: 23px 12px 36px; } .kf-page-heading, .kf-inspector-header { align-items: flex-start; flex-direction: column; gap: 15px; } .kf-heading-actions, .kf-inspector-actions { justify-content: flex-start; } .kf-page-heading h1 { font-size: 24px; } .kf-toolbar { flex-wrap: wrap; padding: 12px; } .kf-search { max-width: none; flex-basis: 100%; } .kf-toolbar select { flex: 1; } .kf-table th { top: 0; } .kf-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kf-inspector { padding: 14px; } .kf-overlay { padding: 10vh 12px 12px; } }
 }
+
+
+@layer components {
+  .kf-task-controls { display: flex; justify-content: flex-end; gap: 7px; padding: 0 12px 10px; }
+  .kf-task-controls button { border: 1px solid var(--kf-border-strong); border-radius: 5px; background: #fff; color: #4f5969; padding: 4px 7px; font: 10px inherit; font-weight: 700; cursor: pointer; }
+  .kf-task-controls button:hover { border-color: #b7c7ef; background: var(--kf-primary-soft); color: var(--kf-primary); }
+  .kf-status--unavailable { background: #f1f3f6; color: #7b8493; }
+}
+
+
+@layer components {
+  .kf-problem-filters { display: grid; grid-template-columns: minmax(150px, 1fr) repeat(3, minmax(100px, auto)); gap: 7px; padding: 10px 12px; border-bottom: 1px solid var(--kf-border); background: #fcfcfd; }
+  .kf-problem-filters input, .kf-problem-filters select { min-width: 0; height: 31px; padding: 0 8px; border: 1px solid var(--kf-border-strong); border-radius: 6px; outline-color: var(--kf-primary); background: #fff; color: #555e6c; font: 10px inherit; }
+  .kf-agent-panel { display: grid; gap: 8px; padding: 12px; border-bottom: 1px solid var(--kf-border); }
+  .kf-agent-panel textarea { width: 100%; min-height: 52px; resize: vertical; padding: 8px; border: 1px solid var(--kf-border-strong); border-radius: 6px; outline-color: var(--kf-primary); color: #3c4656; font: 11px/1.45 inherit; }
+  .kf-agent-panel > .kf-button { justify-self: start; min-height: 30px; }
+  .kf-agent-panel p { margin: 0; color: var(--kf-muted); font-size: 10px; line-height: 1.45; }
+  .kf-agent-panel pre { max-height: 210px; margin: 0; overflow: auto; padding: 8px; border-radius: 6px; background: #171c26; color: #c9d6ed; font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+  @media (max-width: 650px) { .kf-problem-filters { grid-template-columns: 1fr 1fr; } .kf-problem-filters input { grid-column: 1 / -1; } }
+}
+
+
+@layer components {
+  .kf-solution-button { margin-top: 2px; border: 1px solid #bfd0f8; border-radius: 5px; background: var(--kf-primary-soft); color: #2256cc; padding: 5px 7px; font: 10px inherit; font-weight: 700; cursor: pointer; }
+  .kf-solution-button:hover { background: #e4edff; }
+  .kf-solution-status { margin: 9px 12px 11px; color: var(--kf-success); font-size: 10px; font-weight: 650; }
+}

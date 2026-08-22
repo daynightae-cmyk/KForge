@@ -74,6 +74,7 @@ export interface KnouxEffect {
 export interface KnouxAISettings {
   faceFX?: KnouxFaceFXSettings;
   bodyFX?: KnouxBodyFXSettings;
+  bodyTracking?: KnouxBodyTrackingSettings;
   makeupFX?: KnouxMakeupSettings;
   lipSync?: KnouxLipSyncSettings;
   expression?: KnouxExpressionSettings;
@@ -111,6 +112,12 @@ export interface KnouxBodyFXSettings {
     legLength: number;
   };
   presets: "slim" | "sport" | "fashion" | "natural";
+}
+
+export interface KnouxBodyTrackingSettings {
+  enabled: boolean;
+  trackingPoints: Array<{ x: number; y: number; confidence?: number }>;
+  smoothing: number;
 }
 
 export interface KnouxMakeupSettings {

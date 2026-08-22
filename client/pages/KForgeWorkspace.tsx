@@ -34,8 +34,10 @@ import type {
   CommandResult,
   ProjectScan,
   ProjectSummary,
+  ScanIssue,
   WorkspaceAction,
   WorkspaceResponse,
+  WorkspaceStatus,
 } from "@shared/workspace";
 
 const NAVIGATION = [
@@ -46,17 +48,51 @@ const NAVIGATION = [
   { group: "Remote", items: [["Git", GitBranch], ["GitHub", Github], ["Agent tasks", Bot]] },
 ] as const;
 
-type Status = "pass" | "warning" | "fail" | "unknown" | "running";
+type Status = WorkspaceStatus;
 type SortKey = "name" | "projectType" | "branch" | "lastActivity" | "sync";
 
 interface TaskItem {
   id: string;
   projectId: string;
   action: WorkspaceAction;
-  state: "running" | "success" | "error";
+  state: "queued" | "running" | "success" | "error" | "cancelled";
+  progress: number;
   output: string;
   message: string;
   startedAt: string;
+  finishedAt?: string;
+  retryOf?: string;
+}
+
+interface ServerTask {
+  id: string;
+  projectId: string;
+  kind: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  progress: number;
+  logs: Array<{ at: string; message: string }>;
+  output?: string;
+  error?: string;
+  startedAt: string;
+  finishedAt?: string;
+  retryOf?: string;
+}
+
+function taskFromServer(task: ServerTask): TaskItem | null {
+  if (!["scan", "test", "build", "typecheck", "runtime", "pull", "push"].includes(task.kind)) return null;
+  const action = task.kind as WorkspaceAction;
+  return {
+    id: task.id,
+    projectId: task.projectId,
+    action,
+    state: task.status === "succeeded" ? "success" : task.status === "failed" ? "error" : task.status,
+    progress: task.progress,
+    output: task.output || "",
+    message: task.error || task.logs.at(-1)?.message || "Queued…",
+    startedAt: task.startedAt,
+    finishedAt: task.finishedAt,
+    retryOf: task.retryOf,
+  };
 }
 
 function formatDate(value?: string) {
@@ -66,7 +102,7 @@ function formatDate(value?: string) {
 }
 
 function statusLabel(status: Status) {
-  return ({ pass: "Pass", warning: "Warning", fail: "Needs review", unknown: "Not run", running: "Running" } as const)[status];
+  return ({ pass: "Pass", warning: "Warning", fail: "Needs review", unknown: "Not run", running: "Running", unavailable: "Unavailable" } as const)[status];
 }
 
 function statusClass(status: Status) {
@@ -172,35 +208,48 @@ export default function KForgeWorkspace() {
     });
   };
 
-  const runAction = async (project: ProjectSummary, action: WorkspaceAction) => {
-    const taskId = `${project.id}-${action}-${Date.now()}`;
-    setTasks((previous) => [{ id: taskId, projectId: project.id, action, state: "running", output: "", message: "Starting…", startedAt: new Date().toISOString() }, ...previous]);
+  const refreshTasks = async () => {
     try {
-      const response = await fetch(`/api/workspace/projects/${project.id}/actions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const payload: CommandResult | { error?: string; message?: string; output?: string } = await response.json();
-      const result = payload as CommandResult;
-      setActionResults((previous) => ({ ...previous, [project.id]: { ...previous[project.id], [action]: result } }));
-      if (action === "scan" && result.output) {
-        try {
-          const scan: ProjectScan = JSON.parse(result.output);
-          setScans((previous) => ({ ...previous, [project.id]: scan }));
-        } catch {
-          // Output stays available in the activity record when the scan result cannot be decoded.
+      const response = await fetch(`/api/workspace/tasks${activeProjectId ? `?projectId=${encodeURIComponent(activeProjectId)}` : ""}`);
+      if (!response.ok) return;
+      const payload = await response.json() as { tasks?: ServerTask[] };
+      const mapped = (payload.tasks || []).map(taskFromServer).filter((task): task is TaskItem => task !== null);
+      setTasks(mapped);
+      mapped.filter((task) => task.state === "success" || task.state === "error").forEach((task) => {
+        const result: CommandResult = { action: task.action, projectId: task.projectId, ok: task.state === "success", startedAt: task.startedAt, completedAt: task.finishedAt || task.startedAt, output: task.output, message: task.message };
+        setActionResults((previous) => ({ ...previous, [task.projectId]: { ...previous[task.projectId], [task.action]: result } }));
+        if (task.action === "scan" && task.state === "success" && task.output) {
+          try { setScans((previous) => ({ ...previous, [task.projectId]: JSON.parse(task.output) as ProjectScan })); } catch { /* The task remains available with its original command output. */ }
         }
-      }
-      setTasks((previous) => previous.map((task) => task.id === taskId ? {
-        ...task,
-        state: response.ok && result.ok ? "success" : "error",
-        output: result.output || "",
-        message: result.message || (payload as any).error || "Action completed.",
-      } : task));
-      await refreshProjects();
-    } catch (cause: any) {
-      setTasks((previous) => previous.map((task) => task.id === taskId ? { ...task, state: "error", message: cause.message || "The action could not start." } : task));
+      });
+    } catch { /* The workspace stays usable when a transient task poll fails. */ }
+  };
+
+  const runAction = async (project: ProjectSummary, action: WorkspaceAction) => {
+    try {
+      const response = await fetch(`/api/workspace/projects/${project.id}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "The task could not be started.");
+      await refreshTasks();
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : "The task could not be started.");
+    }
+  };
+
+  useEffect(() => {
+    void refreshTasks();
+    const timer = window.setInterval(() => void refreshTasks(), 1_500);
+    return () => window.clearInterval(timer);
+  }, [activeProjectId]);
+
+  const controlTask = async (task: TaskItem, control: "cancel" | "retry") => {
+    try {
+      const response = await fetch(`/api/workspace/tasks/${task.id}/${control}`, { method: "POST" });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || `Task ${control} failed.`);
+      await refreshTasks();
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : "Task control failed.");
     }
   };
 
@@ -322,7 +371,7 @@ export default function KForgeWorkspace() {
             <div className="kf-group-header kf-group-header--collapsed"><button onClick={() => setOpenGroups((state) => ({ ...state, others: !state.others }))}>{openGroups.others ? <ChevronDown size={16} /> : <ChevronRight size={16} />}<span>Connected & recent</span><small>{projects.filter((project) => project.provider === "GitHub").length}</small></button><span>{openGroups.others ? "GitHub-connected repositories appear in the local projects list." : ""}</span></div>
           </section>
 
-          {activeProject && <ProjectInspector project={activeProject} scan={activeScan} results={actionResults[activeProject.id]} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} />}
+          {activeProject && <ProjectInspectorV2 project={activeProject} scan={activeScan} results={actionResults[activeProject.id]} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} />}
         </section>
       </main>
 
@@ -345,14 +394,64 @@ function ProjectRow({ project, selected, active, scan, results, columns, onSelec
 
 function GitState({ project }: { project: ProjectSummary }) { const changed = project.modifiedFiles + project.untrackedFiles; return <div className="kf-git-state"><span className={changed ? "is-warning" : "is-good"}>{changed ? `${changed} changed` : "Clean"}</span>{project.behind > 0 && <small>{project.behind} behind</small>}{project.ahead > 0 && <small>{project.ahead} ahead</small>}</div>; }
 
-function ProjectInspector({ project, scan, results, tasks, onRun }: { project: ProjectSummary; scan?: ProjectScan; results?: Partial<Record<WorkspaceAction, CommandResult>>; tasks: TaskItem[]; onRun: (action: WorkspaceAction) => void }) {
+function ProjectInspector({ project, scan, results, tasks, onRun, onTaskControl }: { project: ProjectSummary; scan?: ProjectScan; results?: Partial<Record<WorkspaceAction, CommandResult>>; tasks: TaskItem[]; onRun: (action: WorkspaceAction) => void; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) {
   const issues = scan?.issues || [];
   const critical = issues.filter((issue) => issue.severity === "critical" || issue.severity === "high");
-  const health = scan?.healthScore;
+  const health = scan?.health.score;
   return <section className="kf-inspector"><div className="kf-inspector-header"><div><p className="kf-eyebrow">Project intelligence</p><h2>{project.name}</h2><p>{project.path}</p></div><div className="kf-inspector-actions"><button className="kf-button kf-button--primary" onClick={() => onRun("scan")}><ShieldAlert size={16} />Scan</button><button className="kf-button kf-button--ghost" onClick={() => onRun("test")}><TestTube2 size={16} />Test</button><button className="kf-button kf-button--ghost" onClick={() => onRun("build")}><Play size={16} />Build</button></div></div>
   <div className="kf-metrics"><Metric icon={<HeartPulse size={18} />} label="Project health" value={health === undefined ? "Not scanned" : `${health}%`} tone={health === undefined ? "neutral" : health >= 85 ? "good" : health >= 60 ? "warning" : "bad"} /><Metric icon={<ShieldAlert size={18} />} label="Security" value={scan ? `${critical.length} priority` : "Not scanned"} tone={critical.length ? "bad" : scan ? "good" : "neutral"} /><Metric icon={<TestTube2 size={18} />} label="Tests" value={results?.test ? (results.test.ok ? "Pass" : "Failed") : "Not run"} tone={!results?.test ? "neutral" : results.test.ok ? "good" : "bad"} /><Metric icon={<Play size={18} />} label="Build" value={results?.build ? (results.build.ok ? "Pass" : "Failed") : "Not run"} tone={!results?.build ? "neutral" : results.build.ok ? "good" : "bad"} /><Metric icon={<GitBranch size={18} />} label="Git" value={project.modifiedFiles + project.untrackedFiles ? `${project.modifiedFiles + project.untrackedFiles} changes` : "Clean"} tone={project.modifiedFiles + project.untrackedFiles ? "warning" : "good"} /></div>
   <div className="kf-inspector-grid"><article className="kf-inspector-card"><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>KForge Sonar</h3></div>{scan && <span>Last scan {formatDate(scan.scannedAt)}</span>}</div>{!scan ? <div className="kf-card-empty"><p>No audit result is loaded for this project.</p><button onClick={() => onRun("scan")}>Run full scan</button></div> : issues.length === 0 ? <div className="kf-card-empty kf-card-empty--good"><p>No security, dependency, or local Git findings were detected by this scan.</p></div> : <div className="kf-issues">{issues.slice(0, 5).map((issue) => <details key={issue.id} className="kf-issue"><summary><span className={`kf-severity kf-severity--${issue.severity}`}>{issue.severity}</span><span><strong>{issue.title}</strong><small>{issue.file || issue.category}</small></span><ChevronRight size={15} /></summary><div><p>{issue.message}</p>{issue.suggestion && <p className="kf-suggestion"><Wrench size={14} />{issue.suggestion}</p>}</div></details>)}</div>}</article>
-  <article className="kf-inspector-card"><div className="kf-card-heading"><div><Bot size={17} /><h3>Agent workspace</h3></div><span>Task center</span></div>{tasks.length === 0 ? <div className="kf-card-empty"><p>Actions initiated in KForge are tracked here with their real command output.</p><button onClick={() => onRun("scan")}>Start audit task</button></div> : <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span className="kf-task-indicator">{task.state === "running" ? <RefreshCw size={14} className="kf-spin" /> : <Activity size={14} />}</span><span><strong>{task.action} · {task.state === "success" ? "completed" : task.state}</strong><small>{task.message}</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for command output…"}</pre></details>)}</div>}</article></div></section>;
+  <article className="kf-inspector-card"><div className="kf-card-heading"><div><Bot size={17} /><h3>Agent workspace</h3></div><span>Task center</span></div>{tasks.length === 0 ? <div className="kf-card-empty"><p>Actions initiated in KForge are tracked here with their real command output.</p><button onClick={() => onRun("scan")}>Start audit task</button></div> : <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span className="kf-task-indicator">{task.state === "running" ? <RefreshCw size={14} className="kf-spin" /> : <Activity size={14} />}</span><span><strong>{task.action} · {task.state === "success" ? "completed" : task.state}</strong><small>{task.message} · {task.progress}%</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for command output…"}</pre><div className="kf-task-controls">{task.state === "queued" && <button onClick={() => onTaskControl(task, "cancel")}>Cancel</button>}{(task.state === "success" || task.state === "error" || task.state === "cancelled") && <button onClick={() => onTaskControl(task, "retry")}>Retry</button>}</div></details>)}</div>}</article></div></section>;
+}
+
+function ProjectInspectorV2({ project, scan, results, tasks, onRun, onTaskControl }: { project: ProjectSummary; scan?: ProjectScan; results?: Partial<Record<WorkspaceAction, CommandResult>>; tasks: TaskItem[]; onRun: (action: WorkspaceAction) => void; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) {
+  const health = scan?.health.score;
+  const critical = (scan?.issues || []).filter((entry) => entry.severity === "critical" || entry.severity === "high");
+  return <section className="kf-inspector"><div className="kf-inspector-header"><div><p className="kf-eyebrow">Project intelligence</p><h2>{project.name}</h2><p>{project.path}</p></div><div className="kf-inspector-actions"><button className="kf-button kf-button--primary" onClick={() => onRun("scan")}><ShieldAlert size={16} />Scan</button><button className="kf-button kf-button--ghost" onClick={() => onRun("typecheck")}>Typecheck</button><button className="kf-button kf-button--ghost" onClick={() => onRun("test")}><TestTube2 size={16} />Test</button><button className="kf-button kf-button--ghost" onClick={() => onRun("build")}><Play size={16} />Build</button></div></div><div className="kf-metrics"><Metric icon={<HeartPulse size={18} />} label="Project health" value={health === undefined || health === null ? "Evidence pending" : `${health}%`} tone={health === undefined || health === null ? "neutral" : health >= 85 ? "good" : health >= 60 ? "warning" : "bad"} /><Metric icon={<ShieldAlert size={18} />} label="Problems" value={scan ? `${critical.length} priority` : "Not scanned"} tone={critical.length ? "bad" : scan ? "good" : "neutral"} /><Metric icon={<TestTube2 size={18} />} label="Tests" value={results?.test ? (results.test.ok ? "Pass" : "Failed") : "Not run"} tone={!results?.test ? "neutral" : results.test.ok ? "good" : "bad"} /><Metric icon={<Play size={18} />} label="Build" value={results?.build ? (results.build.ok ? "Pass" : "Failed") : "Not run"} tone={!results?.build ? "neutral" : results.build.ok ? "good" : "bad"} /><Metric icon={<GitBranch size={18} />} label="Git" value={project.modifiedFiles + project.untrackedFiles ? `${project.modifiedFiles + project.untrackedFiles} changes` : "Clean"} tone={project.modifiedFiles + project.untrackedFiles ? "warning" : "good"} /></div><div className="kf-inspector-grid"><article className="kf-inspector-card"><ProblemsCenter projectId={project.id} issues={scan?.issues || []} scannedAt={scan?.scannedAt} /></article><article className="kf-inspector-card"><AgentPanel projectId={project.id} /><div className="kf-card-heading"><div><Activity size={17} /><h3>Task center</h3></div><span>{tasks.length} task(s)</span></div>{tasks.length === 0 ? <div className="kf-card-empty"><p>Long-running KForge operations appear here with their actual process output.</p><button onClick={() => onRun("scan")}>Start audit task</button></div> : <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span className="kf-task-indicator">{task.state === "running" ? <RefreshCw size={14} className="kf-spin" /> : <Activity size={14} />}</span><span><strong>{task.action} · {task.state === "success" ? "completed" : task.state}</strong><small>{task.message} · {task.progress}%</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for command output…"}</pre><div className="kf-task-controls">{task.state === "queued" && <button onClick={() => onTaskControl(task, "cancel")}>Cancel</button>}{(task.state === "success" || task.state === "error" || task.state === "cancelled") && <button onClick={() => onTaskControl(task, "retry")}>Retry</button>}</div></details>)}</div>}</article></div></section>;
+}
+
+function ProblemsCenter({ projectId, issues, scannedAt }: { projectId: string; issues: ScanIssue[]; scannedAt?: string }) {
+  const [query, setQuery] = useState("");
+  const [severity, setSeverity] = useState("all");
+  const [source, setSource] = useState("all");
+  const [category, setCategory] = useState("all");
+  const filtered = issues.filter((entry) => (severity === "all" || entry.severity === severity) && (source === "all" || entry.source === source) && (category === "all" || entry.category === category) && `${entry.title} ${entry.message} ${entry.file || ""}`.toLowerCase().includes(query.toLowerCase()));
+  const sources = [...new Set(issues.map((entry) => entry.source))];
+  const categories = [...new Set(issues.map((entry) => entry.category))];
+  const [solutionStatus, setSolutionStatus] = useState("");
+  const applyEnvironmentTemplate = async (entry: ScanIssue) => {
+    try {
+      const previewResponse = await fetch(`/api/workspace/projects/${projectId}/problems/${entry.id}/preview`, { method: "POST" });
+      const previewPayload = await previewResponse.json() as { error?: string; preview?: { file?: string } };
+      if (!previewResponse.ok) throw new Error(previewPayload.error || "Preview is unavailable.");
+      const confirmed = window.confirm(`Create ${previewPayload.preview?.file || ".env.example"} from environment variable names only? A snapshot will be created first.`);
+      if (!confirmed) return;
+      const applyResponse = await fetch(`/api/workspace/projects/${projectId}/problems/${entry.id}/apply`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ verify: true }) });
+      const applyPayload = await applyResponse.json() as { ok?: boolean; rolledBack?: boolean; error?: string; snapshot?: { id?: string } };
+      if (!applyResponse.ok) throw new Error(applyPayload.error || "The solution was not applied.");
+      setSolutionStatus(`Applied with snapshot ${applyPayload.snapshot?.id || "created"}.`);
+    } catch (cause: unknown) { setSolutionStatus(cause instanceof Error ? cause.message : "Solution action failed."); }
+  };
+  return <><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>Problems center</h3></div><span>{scannedAt ? `Scan ${formatDate(scannedAt)}` : "Run scan to load"}</span></div>{!scannedAt ? <div className="kf-card-empty"><p>No normalized diagnostics are loaded for this project.</p></div> : <><div className="kf-problem-filters"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search diagnostics" aria-label="Search problems" /><select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="all">All severity</option>{["critical", "high", "medium", "low", "info"].map((value) => <option key={value}>{value}</option>)}</select><select value={source} onChange={(event) => setSource(event.target.value)}><option value="all">All sources</option>{sources.map((value) => <option key={value}>{value}</option>)}</select><select value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select></div><div className="kf-issues">{filtered.length ? <>{filtered.map((entry) => <details key={entry.id} className="kf-issue"><summary><span className={`kf-severity kf-severity--${entry.severity}`}>{entry.severity}</span><span><strong>{entry.title}</strong><small>{entry.source} · {entry.file || entry.category}</small></span><ChevronRight size={15} /></summary><div><p>{entry.description}</p><p className="kf-suggestion"><Wrench size={14} />{entry.fixability === "automatic" ? "Automatic patch may be available after review." : entry.suggestion || "Manual review is required."}</p>{entry.id.endsWith(":missing-env-example") && <button className="kf-solution-button" onClick={() => void applyEnvironmentTemplate(entry)}>Preview + Apply safe template</button>}</div></details>)}{solutionStatus && <p className="kf-solution-status">{solutionStatus}</p>}</> : <div className="kf-card-empty"><p>No problems match the selected filters.</p></div>}</div></>}</>;
+}
+
+function AgentPanel({ projectId }: { projectId: string }) {
+  const [mission, setMission] = useState("Review diagnostics and produce a safe implementation plan.");
+  const [result, setResult] = useState("");
+  const [status, setStatus] = useState("KForge Engineer reads project context and uses a local model only when one is available.");
+  const [working, setWorking] = useState(false);
+  const plan = async () => {
+    setWorking(true);
+    try {
+      const response = await fetch(`/api/workspace/projects/${projectId}/agent/plan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mission }) });
+      const payload = await response.json() as { plan?: string; error?: string; provider?: { provider?: string; reason?: string } };
+      if (!response.ok) { setResult(""); setStatus(payload.error || payload.provider?.reason || "Local AI is unavailable."); return; }
+      setResult(payload.plan || "");
+      setStatus(`Plan generated by local ${payload.provider?.provider || "AI"}.`);
+    } catch (cause: unknown) { setStatus(cause instanceof Error ? cause.message : "Local AI request failed."); }
+    finally { setWorking(false); }
+  };
+  return <><div className="kf-card-heading"><div><Bot size={17} /><h3>KForge Engineer</h3></div><span>Read + plan</span></div><div className="kf-agent-panel"><textarea value={mission} onChange={(event) => setMission(event.target.value)} aria-label="KForge Engineer mission" /><button className="kf-button kf-button--ghost" onClick={() => void plan()} disabled={working}>{working ? "Planning…" : "Generate plan"}</button><p>{status}</p>{result && <pre>{result}</pre>}</div></>;
 }
 
 function Metric({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone: "good" | "warning" | "bad" | "neutral" }) { return <div className={`kf-metric kf-metric--${tone}`}><span>{icon}</span><small>{label}</small><strong>{value}</strong></div>; }

@@ -168,7 +168,7 @@ export function KnouxTimeline({
             <div
               ref={timelineRef}
               className="relative cursor-pointer"
-              style={{ width: Math.max(timelineWidth, "100%") }}
+              style={{ width: `${Math.max(timelineWidth, 100)}px` }}
               onClick={handleTimelineClick}
             >
               {tracks.map((track, trackIndex) => (

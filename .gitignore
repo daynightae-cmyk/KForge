@@ -35,5 +35,6 @@ pnpm-debug.log*
 .config/
 
 # Local Manus audit metadata
+.kforge/
 _Knoux_Audit/
 _Knoux_Extracted/
