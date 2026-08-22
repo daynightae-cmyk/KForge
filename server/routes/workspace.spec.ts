@@ -4,6 +4,7 @@ import path from "path";
 import { createSnapshot, restoreSnapshot } from "../services/snapshots";
 import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
+import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
 import { detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject } from "./workspace";
 
@@ -104,6 +105,24 @@ describe("KForge Workspace engines", () => {
       expect(applied.verified).toBe(true);
     } finally {
       await fs.writeFile(readme, original, "utf8");
+    }
+  });
+
+  it("persists project collections and derives truthful category membership", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-collections-"));
+    const projectPath = path.join(workspaceRoot, "project");
+    try {
+      await fs.mkdir(projectPath);
+      await recordProjectOpened(workspaceRoot, projectPath);
+      await updateProjectCollection(workspaceRoot, projectPath, { favorite: true, pinned: true, archived: false });
+      const restored = await getProjectCollectionEntry(workspaceRoot, projectPath);
+      expect(restored.favorite).toBe(true);
+      expect(restored.pinned).toBe(true);
+      expect(restored.archived).toBe(false);
+      expect(restored.lastOpenedAt).toEqual(expect.any(String));
+      expect(collectionCategories(restored)).toEqual({ recent: true, favorite: true, pinned: true, archive: false });
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
     }
   });
 

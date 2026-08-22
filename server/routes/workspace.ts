@@ -35,6 +35,7 @@ import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } fr
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
 import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../services/securityTools";
 import { getMarketplace, previewMarketplaceInstall } from "../services/marketplace";
+import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, updateProjectCollection } from "../services/projectCollections";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -345,10 +346,11 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
 export async function makeProjectSummary(projectPath: string): Promise<ProjectSummary> {
   const [git, profile, trust] = await Promise.all([
     gitInfo(projectPath),
-    detectProjectProfile({ id: projectId(projectPath), name: path.basename(projectPath), trust: "untrusted", path: projectPath, provider: "Local", branch: "", lastActivity: "", projectType: "", modifiedFiles: 0, untrackedFiles: 0, ahead: 0, behind: 0, healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: "unknown" }),
+    detectProjectProfile({ id: projectId(projectPath), name: path.basename(projectPath), trust: "untrusted", path: projectPath, provider: "Local", branch: "", lastActivity: "", projectType: "", modifiedFiles: 0, untrackedFiles: 0, ahead: 0, behind: 0, healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: "unknown", favorite: false, pinned: false, archived: false, categories: { recent: false, favorite: false, pinned: false, archive: false } }),
     getProjectTrust(getWorkspaceRoot(), projectPath),
   ]);
   const stats = await fs.stat(projectPath);
+  const collection = await getProjectCollectionEntry(getWorkspaceRoot(), projectPath);
   const provider = git.remoteUrl?.includes("github.com") ? "GitHub" : git.isGit ? "Git" : "Local";
   return {
     id: projectId(projectPath), name: path.basename(projectPath), trust, path: projectPath, provider, remoteUrl: git.remoteUrl, branch: git.branch,
@@ -356,11 +358,13 @@ export async function makeProjectSummary(projectPath: string): Promise<ProjectSu
     projectType: [...profile.framework, ...profile.languages.filter((language) => !profile.framework.includes(language))].join(" + ") || "Local project",
     modifiedFiles: git.modifiedFiles, untrackedFiles: git.untrackedFiles, ahead: git.ahead, behind: git.behind,
     healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: !git.isGit ? "unknown" : git.behind > 0 ? "warning" : "pass",
+    lastOpenedAt: collection.lastOpenedAt, favorite: collection.favorite, pinned: collection.pinned, archived: collection.archived, categories: collectionCategories(collection),
   };
 }
 
 async function candidateProjectPaths(root = getWorkspaceRoot()) {
   const candidates = new Set<string>([...openedPaths]);
+  (await listProjectCollectionEntries(root)).forEach((entry) => candidates.add(entry.path));
   if (await pathExists(path.join(root, "package.json"))) candidates.add(root);
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => [] as Dirent[]);
   for (const entry of entries.filter((item) => item.isDirectory() && !item.name.startsWith(".")).slice(0, 100)) {
@@ -1332,12 +1336,24 @@ router.post("/projects/:id/trust", async (req, res) => {
   return res.json({ project: await makeProjectSummary(project.path), trust: "trusted" });
 });
 
+router.post("/projects/:id/collection", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const allowed = ["favorite", "pinned", "archived"] as const;
+  const patch: Partial<Record<(typeof allowed)[number], boolean>> = {};
+  for (const key of allowed) if (typeof req.body?.[key] === "boolean") patch[key] = req.body[key];
+  if (!Object.keys(patch).length) return res.status(400).json({ error: "Provide at least one boolean collection field: favorite, pinned, or archived." });
+  const collection = await updateProjectCollection(getWorkspaceRoot(), project.path, patch);
+  return res.json({ project: await makeProjectSummary(project.path), collection });
+});
+
 router.post("/projects/open", async (req, res) => {
   const requestedPath = typeof req.body?.path === "string" ? path.resolve(req.body.path) : "";
   if (!requestedPath || !(await pathExists(requestedPath))) return res.status(400).json({ error: "Provide an existing local project directory." });
   try {
     if (!(await fs.stat(requestedPath)).isDirectory()) return res.status(400).json({ error: "The selected path is not a directory." });
     openedPaths.add(requestedPath);
+    await recordProjectOpened(getWorkspaceRoot(), requestedPath);
     return res.json({ project: await makeProjectSummary(requestedPath) });
   } catch { return res.status(400).json({ error: "KForge could not read the selected project directory." }); }
 });
@@ -1352,6 +1368,7 @@ router.post("/projects/clone", async (req, res) => {
   const result = await run("git", ["clone", remoteUrl, targetPath], getWorkspaceRoot(), commandTimeoutMs);
   if (!result.ok) return res.status(422).json({ error: "Clone failed.", output: result.output });
   openedPaths.add(targetPath);
+  await recordProjectOpened(getWorkspaceRoot(), targetPath);
   const project = await makeProjectSummary(targetPath);
   addActivity(project.id, { kind: "git", title: "Repository cloned", detail: remoteUrl });
   return res.status(201).json({ project, output: result.output });

@@ -26,6 +26,16 @@ export interface ProjectSummary {
   testStatus: WorkspaceStatus;
   syncStatus: WorkspaceStatus;
   lastScan?: string;
+  lastOpenedAt?: string;
+  favorite: boolean;
+  pinned: boolean;
+  archived: boolean;
+  categories: {
+    recent: boolean;
+    favorite: boolean;
+    pinned: boolean;
+    archive: boolean;
+  };
 }
 
 export interface ProjectCommands {
