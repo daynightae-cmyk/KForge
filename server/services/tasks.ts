@@ -21,6 +21,7 @@ export interface KForgeTask {
   artifacts?: string[];
   retryOf?: string;
   interrupted?: boolean;
+  recovery?: { strategy: "replay-action" | "inspect-only"; action?: string; detail: string };
 }
 
 export interface TaskExecutionResult {
@@ -63,7 +64,9 @@ export async function initializeTaskStore(workspaceRoot: string) {
       task.interrupted = true;
       task.finishedAt = new Date().toISOString();
       task.durationMs = new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime();
-      task.error = "Interrupted by a previous KForge session. Inspect the task evidence, then rerun or roll back the related snapshot if applicable.";
+      task.error = task.recovery?.strategy === "replay-action"
+        ? "Interrupted by a previous KForge session. Inspect the task evidence, then replay this explicit project action only after retry and current trust checks."
+        : "Interrupted by a previous KForge session. Inspect the task evidence and related snapshots before creating a new mission or rollback action.";
       append(task, task.error, "stderr");
       interrupted += 1;
     }
@@ -94,8 +97,8 @@ export function appendTaskLog(taskId: string, message: string, progress?: number
   return task;
 }
 
-export function startTask(projectId: string, kind: TaskKind, executor: () => Promise<TaskExecutionResult>, retryOf?: string): KForgeTask {
-  const task: KForgeTask = { id: randomUUID(), projectId, kind, status: retryOf ? "retrying" : "queued", progress: 0, logs: [], startedAt: new Date().toISOString(), retryOf };
+export function startTask(projectId: string, kind: TaskKind, executor: () => Promise<TaskExecutionResult>, retryOf?: string, recovery?: KForgeTask["recovery"]): KForgeTask {
+  const task: KForgeTask = { id: randomUUID(), projectId, kind, status: retryOf ? "retrying" : "queued", progress: 0, logs: [], startedAt: new Date().toISOString(), retryOf, recovery };
   tasks.set(task.id, task);
   executors.set(task.id, executor);
   queuePersist();

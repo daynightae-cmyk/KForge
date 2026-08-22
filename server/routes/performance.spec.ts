@@ -16,6 +16,26 @@ async function timed<T>(name: string, action: () => Promise<T>) {
 }
 
 describe("KForge large-project benchmark", () => {
+  it("reuses a graph cache only while source fingerprints match and invalidates it after a source edit", async () => {
+    const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-cache-"));
+    try {
+      await fs.mkdir(path.join(root, "src"));
+      await fs.writeFile(path.join(root, "src", "a.ts"), "export const value = 1;\n", "utf8");
+      const initial = await buildProjectGraph(root);
+      const reused = await buildProjectGraph(root);
+      expect(reused.generatedAt).toBe(initial.generatedAt);
+      await new Promise((resolve) => setTimeout(resolve, 12));
+      await fs.writeFile(path.join(root, "src", "b.ts"), 'import { value } from "./a"; export const next = value + 1;\n', "utf8");
+      const refreshed = await buildProjectGraph(root);
+      expect(refreshed.generatedAt).not.toBe(initial.generatedAt);
+      expect(refreshed.summary.files).toBe(2);
+      expect(projectCacheStatus(root).find((entry) => entry.key === "graph")).toMatchObject({ version: 1, projectPath: root });
+    } finally {
+      clearProjectCache(root);
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it.skipIf(process.env.KFORGE_RUN_BENCHMARK !== "1")("measures discovery, bounded graph indexing, scan, cache, and memory on an actual generated multi-package project", async () => {
     const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-large-benchmark-"));
     const count = 5_000;

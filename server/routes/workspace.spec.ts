@@ -20,11 +20,18 @@ describe("KForge Workspace engines", () => {
     expect(scan.profile.sourceFileCount).toBeGreaterThan(0);
   });
 
-  it("normalizes a TypeScript compiler failure into a typecheck diagnostic", async () => {
-    const project = await makeProjectSummary(fixture("workspace-broken-typescript"));
-    const scan = await scanProject(project);
-    expect(scan.summaries.typecheck).toBe("fail");
-    expect(scan.issues.some((entry) => entry.category === "typecheck" && entry.source === "TypeScript")).toBe(true);
+  it("normalizes a TypeScript compiler failure into a typecheck diagnostic after explicit trust", async () => {
+    const projectPath = fixture("workspace-broken-typescript");
+    const workspaceRoot = path.resolve(process.cwd(), "..");
+    try {
+      await setProjectTrust(workspaceRoot, projectPath, "trusted");
+      const project = await makeProjectSummary(projectPath);
+      const scan = await scanProject(project);
+      expect(scan.summaries.typecheck).toBe("fail");
+      expect(scan.issues.some((entry) => entry.category === "typecheck" && entry.source === "TypeScript")).toBe(true);
+    } finally {
+      await setProjectTrust(workspaceRoot, projectPath, "untrusted");
+    }
   }, 45_000);
 
   it("detects TODO-based project completeness findings", async () => {
@@ -110,6 +117,24 @@ describe("KForge Workspace engines", () => {
       await expect(getProjectTrust(workspaceRoot, projectPath)).resolves.toBe("trusted");
     } finally {
       await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps untrusted projects read-only while detecting hardcoded credential evidence", async () => {
+    const projectPath = await fs.mkdtemp(path.join(process.cwd(), "kforge-security-"));
+    try {
+      await fs.mkdir(path.join(projectPath, "src"));
+      const keyName = ["API", "KEY"].join("_");
+      const keyValue = ["fixture", "secret", "value", "123456"].join("-");
+      await fs.writeFile(path.join(projectPath, "src", "keys.ts"), `export const ${keyName} = "${keyValue}";\n`, "utf8");
+      const project = await makeProjectSummary(projectPath);
+      const scan = await scanProject(project);
+      expect(project.trust).toBe("untrusted");
+      expect(scan.issues.some((entry) => entry.rule === "kforge/hardcoded-secret" && entry.file === "src/keys.ts")).toBe(true);
+      expect(scan.tools.find((entry) => entry.name === "typescript")?.available).toBe(false);
+      expect(scan.tools.find((entry) => entry.name === "typescript")?.reason).toContain("Untrusted Project Mode");
+    } finally {
+      await fs.rm(projectPath, { recursive: true, force: true });
     }
   });
 

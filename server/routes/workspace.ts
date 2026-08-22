@@ -33,6 +33,8 @@ import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatfor
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
+import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../services/securityTools";
+import { getMarketplace, previewMarketplaceInstall } from "../services/marketplace";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -405,19 +407,21 @@ function issue(projectId: string, seed: string, severity: DiagnosticSeverity, ca
 }
 
 async function toolAvailability(project: ProjectSummary, profile: ProjectProfile): Promise<ToolAvailability[]> {
-  const typescriptAvailable = Boolean(profile.scripts.typecheck) || (await pathExists(path.join(project.path, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc")));
-  const eslintAvailable = Boolean(profile.scripts.lint) || (await pathExists(path.join(project.path, "node_modules", ".bin", process.platform === "win32" ? "eslint.cmd" : "eslint")));
-  const auditAvailable = profile.packageManager === "npm" && await pathExists(path.join(project.path, "package-lock.json"));
-  const probe = async (name: ToolAvailability["name"], command: string, args: string[]): Promise<ToolAvailability> => {
-    const result = await run(command, args, project.path, 5_000);
-    return result.ok ? { name, available: true, version: result.output.split(/\r?\n/)[0] } : { name, available: false, reason: "Not available in the local environment." };
+  const trusted = project.trust === "trusted";
+  const typescriptAvailable = trusted && (Boolean(profile.scripts.typecheck) || (await pathExists(path.join(project.path, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc"))));
+  const eslintAvailable = trusted && (Boolean(profile.scripts.lint) || (await pathExists(path.join(project.path, "node_modules", ".bin", process.platform === "win32" ? "eslint.cmd" : "eslint"))));
+  const auditAvailable = trusted && profile.packageManager === "npm" && await pathExists(path.join(project.path, "package-lock.json"));
+  const security = await detectSecurityTools(project.path, trusted);
+  const external = (name: "gitleaks" | "semgrep" | "sonar") => {
+    const tool = security.find((entry) => entry.id === name)!;
+    return { name, available: tool.state === "AVAILABLE", version: tool.version, reason: tool.detail };
   };
-  const [gitleaks, semgrep, sonar] = await Promise.all([probe("gitleaks", "gitleaks", ["version"]), probe("semgrep", "semgrep", ["--version"]), probe("sonar", "sonar-scanner", ["--version"])]);
+  const blocked = "Execution is blocked in Untrusted Project Mode; read-only analysis remains available.";
   return [
-    { name: "typescript", available: typescriptAvailable, reason: typescriptAvailable ? undefined : "No TypeScript compiler or typecheck script detected." },
-    { name: "eslint", available: eslintAvailable, reason: eslintAvailable ? undefined : "No ESLint command or lint script detected." },
-    { name: "npm-audit", available: auditAvailable, reason: auditAvailable ? undefined : "npm audit requires a package-lock.json file." },
-    gitleaks, semgrep, sonar,
+    { name: "typescript", available: typescriptAvailable, reason: typescriptAvailable ? undefined : trusted ? "No TypeScript compiler or typecheck script detected." : blocked },
+    { name: "eslint", available: eslintAvailable, reason: eslintAvailable ? undefined : trusted ? "No ESLint command or lint script detected." : blocked },
+    { name: "npm-audit", available: auditAvailable, reason: auditAvailable ? undefined : trusted ? "npm audit requires a package-lock.json file." : blocked },
+    external("gitleaks"), external("semgrep"), external("sonar"),
   ];
 }
 
@@ -506,27 +510,30 @@ async function lintIssues(project: ProjectSummary, profile: ProjectProfile, tool
   return parsed.length ? parsed : [issue(project.id, "eslint-command", "medium", "quality", "ESLint command failed", result.output || "The lint command exited unsuccessfully.", { source: "ESLint", rule: "eslint/command", confidence: "high", fixability: "guided", risk: "review", suggestion: "Inspect lint output before applying fixes." })];
 }
 
-async function externalScannerIssues(project: ProjectSummary, tools: ToolAvailability[]) {
+async function externalScannerIssues(_project: ProjectSummary, _tools: ToolAvailability[]) {
+  // External security scanners are intentionally explicit. Automatic scan flows only report availability;
+  // the dedicated Security Tool Manager captures an approved tool run and normalized evidence.
+  return [] as ScanIssue[];
+}
+
+async function secretLiteralIssues(project: ProjectSummary) {
+  const candidates = await findFiles(project.path, (relative) => /(?:\.(?:[cm]?[jt]sx?|py|java|go|rs|cs|php|env)|(?:^|\/)\.env(?:\.|$))$/i.test(relative) && !relative.startsWith("node_modules/") && !relative.startsWith(".git/"), 5_000);
+  const patterns: Array<{ rule: string; expression: RegExp; title: string; severity: DiagnosticSeverity }> = [
+    { rule: "kforge/private-key", expression: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, title: "Private key material detected", severity: "critical" },
+    { rule: "kforge/github-token", expression: /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/, title: "GitHub token pattern detected", severity: "high" },
+    { rule: "kforge/aws-access-key", expression: /\bAKIA[0-9A-Z]{16}\b/, title: "AWS access-key pattern detected", severity: "high" },
+    { rule: "kforge/hardcoded-secret", expression: /(?:api[_-]?key|token|secret|password|private[_-]?key)\s*[:=]\s*["'][^"'\s]{12,}["']/i, title: "Hardcoded credential pattern detected", severity: "high" },
+  ];
   const findings: ScanIssue[] = [];
-  const gitleaks = tools.find((entry) => entry.name === "gitleaks");
-  if (gitleaks?.available) {
-    const result = await run("gitleaks", ["detect", "--no-git", "--report-format", "json", "--report-path", "-"], project.path, 60_000);
-    if (!result.ok && result.output) findings.push(issue(project.id, "gitleaks-findings", "high", "security", "Gitleaks reported potential secrets", "Gitleaks exited unsuccessfully; inspect its raw output in Task Center.", { source: "Gitleaks", rule: "gitleaks/detect", confidence: "medium", fixability: "guided", risk: "approval", suggestion: "Review the scanner output, revoke exposed secrets, and remove sensitive files from source control." }));
-  }
-  const semgrep = tools.find((entry) => entry.name === "semgrep");
-  if (semgrep?.available) {
-    const result = await run("semgrep", ["--json", "--config", "auto", "--quiet"], project.path, 90_000);
-    try {
-      const parsed: unknown = JSON.parse(result.output);
-      const rows = Array.isArray((parsed as { results?: unknown[] }).results) ? (parsed as { results: Array<Record<string, unknown>> }).results : [];
-      rows.forEach((row, index) => {
-        const extra = recordOf(row.extra);
-        const start = recordOf(row.start);
-        const severityRaw = asString(extra.severity).toLowerCase();
-        const severity: DiagnosticSeverity = severityRaw === "error" ? "high" : severityRaw === "warning" ? "medium" : "low";
-        findings.push(issue(project.id, `semgrep-${index}-${asString(row.check_id)}`, severity, "security", asString(extra.message) || "Semgrep finding", asString(extra.message) || "Semgrep reported a finding.", { file: asString(row.path), line: typeof start.line === "number" ? start.line : undefined, source: "Semgrep", rule: asString(row.check_id), confidence: "high", fixability: "guided", risk: "review", suggestion: "Review the Semgrep rule and surrounding code before applying a patch." }));
-      });
-    } catch { if (!result.ok) findings.push(issue(project.id, "semgrep-command", "medium", "security", "Semgrep command failed", result.output || "Semgrep failed without JSON output.", { source: "Semgrep", rule: "semgrep/command", confidence: "high", fixability: "manual", risk: "approval" })); }
+  for (const relative of candidates) {
+    const content = await fs.readFile(path.join(project.path, relative), "utf8").catch(() => "");
+    content.split(/\r?\n/).forEach((line, index) => {
+      for (const pattern of patterns) {
+        if (!pattern.expression.test(line)) continue;
+        findings.push(issue(project.id, `secret-${pattern.rule}-${relative}-${index + 1}`, pattern.severity, "security", pattern.title, `${pattern.title} at ${relative}:${index + 1}. Sensitive value content is not retained in KForge diagnostics.`, { file: relative, line: index + 1, source: "KForge secret scanner", rule: pattern.rule, confidence: "medium", fixability: "guided", risk: "approval", suggestion: "Remove the secret from source control, rotate it if real, and keep only a safe environment-variable reference." }));
+        break;
+      }
+    });
   }
   return findings;
 }
@@ -596,9 +603,10 @@ export async function scanProject(project: ProjectSummary): Promise<ProjectScan>
     if (!execution.ok) diagnostics.push(...parseTypecheckDiagnostics(project.id, execution.output));
     if (!execution.ok && !diagnostics.length) diagnostics.push(issue(project.id, "typecheck-command", "high", "typecheck", "Typecheck command failed", execution.output || "The TypeScript command exited with a non-zero status.", { source: "TypeScript", fixability: "guided", suggestion: "Inspect the TypeScript output and correct the project types before continuing." }));
   }
-  const [sensitiveFiles, dependencyIssues, completeness, advancedCompletion, eslintFindings, externalFindings] = await Promise.all([trackedSensitiveFiles(project), npmAuditIssues(project, profile), completenessIssues(project, profile), advancedCompletionIssues(project), lintIssues(project, profile, tools), externalScannerIssues(project, tools)]);
+  const safeReadOnly = project.trust !== "trusted";
+  const [sensitiveFiles, secretLiterals, dependencyIssues, completeness, advancedCompletion, eslintFindings, externalFindings] = await Promise.all([trackedSensitiveFiles(project), secretLiteralIssues(project), safeReadOnly ? Promise.resolve([] as ScanIssue[]) : npmAuditIssues(project, profile), completenessIssues(project, profile), advancedCompletionIssues(project), safeReadOnly ? Promise.resolve([] as ScanIssue[]) : lintIssues(project, profile, tools), externalScannerIssues(project, tools)]);
   sensitiveFiles.forEach((file) => diagnostics.push(issue(project.id, `tracked-sensitive-${file}`, "high", "security", "Potentially sensitive file is tracked by Git", `${file} is version-controlled and requires review.`, { file, source: "Git", rule: "git/tracked-sensitive-file", fixability: "guided", risk: "approval", suggestion: "Move secrets to an ignored local file and rotate any exposed credentials." })));
-  diagnostics.push(...dependencyIssues, ...completeness, ...advancedCompletion, ...eslintFindings, ...externalFindings);
+  diagnostics.push(...secretLiterals, ...dependencyIssues, ...completeness, ...advancedCompletion, ...eslintFindings, ...externalFindings);
   if (project.modifiedFiles + project.untrackedFiles > 0) diagnostics.push(issue(project.id, "working-tree-changed", "info", "git", "Local changes are present", `${project.modifiedFiles} modified and ${project.untrackedFiles} untracked file(s) are present.`, { source: "Git", fixability: "manual", suggestion: "Review the diff before pulling, pushing, or creating a release." }));
   if (project.behind > 0) diagnostics.push(issue(project.id, "remote-behind", "medium", "git", "Remote updates are available", `The current branch is ${project.behind} commit(s) behind its upstream branch.`, { source: "Git", fixability: "guided", suggestion: "Pull and resolve conflicts before dependent work." }));
   const health = await calculateHealth(project, profile, diagnostics, actionState, typecheckStatus);
@@ -668,6 +676,38 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
   addActivity(project.id, { kind, title: result.ok ? `${action} completed` : `${action} failed`, detail: result.message });
   return result;
 }
+
+router.get("/projects/:id/security/tools", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const tools = await detectSecurityTools(project.path, project.trust === "trusted");
+  return res.json({ projectId: project.id, trust: project.trust, tools });
+});
+
+router.post("/projects/:id/security/tools/:tool/run", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (!isSecurityToolId(req.params.tool)) return res.status(400).json({ error: "Unknown security tool." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Security tool execution"));
+  const result = await runSecurityTool(project.path, true, await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()), req.params.tool);
+  const status = result.state === "PASSED" || result.state === "AVAILABLE" || result.state === "CONFIGURED" ? 200 : result.state === "BLOCKED" ? 409 : 422;
+  return res.status(status).json({ projectId: project.id, tool: result });
+});
+
+router.get("/marketplace", async (_req, res) => {
+  const workspaceRoot = getWorkspaceRoot();
+  return res.json(await getMarketplace(workspaceRoot, await isOptionalOnlineFeatureEnabled(workspaceRoot)));
+});
+
+router.get("/marketplace/items/:id/install-preview", async (req, res) => {
+  const workspaceRoot = getWorkspaceRoot();
+  try {
+    const preview = await previewMarketplaceInstall(workspaceRoot, await isOptionalOnlineFeatureEnabled(workspaceRoot), req.params.id);
+    return res.json(preview);
+  } catch (error: unknown) {
+    return res.status(404).json({ error: error instanceof Error ? error.message : "Marketplace item was not found." });
+  }
+});
 
 router.get("/platform", async (_req, res) => {
   res.json(await getLocalPlatformStatus(getWorkspaceRoot()));
@@ -758,10 +798,19 @@ router.post("/tasks/:taskId/cancel", (req, res) => {
   return res.json({ task: result.task });
 });
 
-router.post("/tasks/:taskId/retry", (req, res) => {
-  const task = retryTask(req.params.taskId);
-  if (!task) return res.status(409).json({ error: "This task is not eligible for retry." });
-  return res.status(202).json({ task });
+router.post("/tasks/:taskId/retry", async (req, res) => {
+  const original = getTask(req.params.taskId);
+  if (!original) return res.status(404).json({ error: "Task not found." });
+  const inSession = retryTask(req.params.taskId);
+  if (inSession) return res.status(202).json({ task: inSession });
+  const action = original.recovery?.strategy === "replay-action" ? original.recovery.action : undefined;
+  if (!action || !isWorkspaceAction(action)) return res.status(409).json({ error: "This interrupted task requires inspection or snapshot rollback; KForge will not replay an unsupported operation automatically.", task: original });
+  const project = await resolveProject(original.projectId);
+  if (!project) return res.status(404).json({ error: "Project for the interrupted task is no longer available." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Interrupted task replay"));
+  const task = startTask(project.id, original.kind, () => executeProjectAction(project, action), original.id, original.recovery);
+  appendTaskLog(task.id, `Recovered from interrupted task ${original.id}; replaying explicit ${action} action after current trust validation.`, 5);
+  return res.status(202).json({ task, recoveredFrom: original.id });
 });
 
 async function gitCenter(project: ProjectSummary) {
@@ -1169,12 +1218,23 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
     if (mission === "prepare-release") {
       const profile = scan.profile;
       const verification: CommandResult[] = [];
-      if (profile.scripts.typecheck) { log("Running typecheck.", 45); verification.push(await executeProjectAction(project, "typecheck")); }
-      if (profile.scripts.test) { log("Running tests.", 60); verification.push(await executeProjectAction(project, "test")); }
-      if (profile.scripts.build) { log("Running production build.", 75); verification.push(await executeProjectAction(project, "build")); }
-      if (profile.scripts.start) { log("Running runtime verification.", 88); verification.push(await executeProjectAction(project, "runtime")); }
-      const failed = verification.filter((entry) => !entry.ok);
-      return { ok: failed.length === 0, message: failed.length ? "Release preparation found failed verification steps." : "Release preparation completed.", output: JSON.stringify({ mission, verification, scan }, null, 2) };
+      const chain: Array<{ action: WorkspaceAction; label: string; progress: number; enabled: boolean }> = [
+        { action: "typecheck", label: "typecheck", progress: 45, enabled: Boolean(profile.scripts.typecheck) },
+        { action: "test", label: "tests", progress: 60, enabled: Boolean(profile.scripts.test) },
+        { action: "build", label: "production build", progress: 75, enabled: Boolean(profile.scripts.build) },
+        { action: "runtime", label: "runtime verification", progress: 88, enabled: Boolean(profile.scripts.start) },
+      ];
+      for (const step of chain.filter((entry) => entry.enabled)) {
+        log(`Running ${step.label}.`, step.progress);
+        const result = await executeProjectAction(project, step.action);
+        verification.push(result);
+        if (!result.ok) {
+          const skipped = chain.filter((entry) => entry.enabled && entry.progress > step.progress).map((entry) => entry.action);
+          log(`${step.label} failed. Dependent steps are blocked: ${skipped.join(", ") || "none"}.`, step.progress + 1);
+          return { ok: false, message: `Release preparation stopped after ${step.label} failed; dependent steps were not executed.`, output: JSON.stringify({ mission, verification, blocked: skipped, scan }, null, 2) };
+        }
+      }
+      return { ok: true, message: "Release preparation completed through all detected verification steps.", output: JSON.stringify({ mission, verification, blocked: [], scan }, null, 2) };
     }
     const target = scan.issues.find((entry) => entry.severity === "critical" || entry.severity === "high");
     if (!target) return { ok: true, message: "No critical or high issue is available for deterministic safe repair.", output: JSON.stringify({ mission, scan }, null, 2) };
@@ -1432,7 +1492,7 @@ router.post("/projects/:id/tasks", async (req, res) => {
   if (!isWorkspaceAction(action)) return res.status(400).json({ error: "Unsupported KForge action." });
   if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Task execution"));
   const kind: TaskKind = action === "pull" || action === "push" ? "git" : action;
-  const task = startTask(project.id, kind, () => executeProjectAction(project, action));
+  const task = startTask(project.id, kind, () => executeProjectAction(project, action), undefined, { strategy: "replay-action", action, detail: `Replays the explicit ${action} action only after retry and current project trust checks.` });
   return res.status(202).json({ task });
 });
 

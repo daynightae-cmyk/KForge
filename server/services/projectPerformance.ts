@@ -14,24 +14,43 @@ export function chooseProjectPerformance(totalFiles: number, projectSizeBytes: n
   return { scale: "small", parallelism: 4, maxIndexedFiles: 2_000, graphDepth: 6, scannerConcurrency: 4, cacheEnabled: true, rationale: `Small: ${totalFiles.toLocaleString()} files / ${Math.round(megabytes)} MB; full local indexing is available.` };
 }
 
+const CACHE_FORMAT_VERSION = 1;
+
 export interface CacheEntry<T> {
+  version: number;
+  projectPath: string;
   value: T;
   fingerprint: string;
   createdAt: string;
   hits: number;
+  invalidations: number;
 }
 
 const caches = new Map<string, CacheEntry<unknown>>();
 
+function identityFromKey(key: string) {
+  const separator = key.lastIndexOf(":");
+  return separator > 0 ? key.slice(0, separator) : "unknown";
+}
+
 export function readCache<T>(key: string, fingerprint: string): T | undefined {
   const entry = caches.get(key);
-  if (!entry || entry.fingerprint !== fingerprint) return undefined;
+  if (!entry) return undefined;
+  if (entry.version !== CACHE_FORMAT_VERSION || entry.projectPath !== identityFromKey(key) || typeof entry.fingerprint !== "string") {
+    caches.delete(key);
+    return undefined;
+  }
+  if (entry.fingerprint !== fingerprint) {
+    entry.invalidations += 1;
+    caches.delete(key);
+    return undefined;
+  }
   entry.hits += 1;
   return entry.value as T;
 }
 
 export function writeCache<T>(key: string, fingerprint: string, value: T) {
-  caches.set(key, { value, fingerprint, createdAt: new Date().toISOString(), hits: 0 });
+  caches.set(key, { version: CACHE_FORMAT_VERSION, projectPath: identityFromKey(key), value, fingerprint, createdAt: new Date().toISOString(), hits: 0, invalidations: 0 });
   return value;
 }
 
@@ -44,5 +63,5 @@ export function clearProjectCache(projectPath: string) {
 }
 
 export function projectCacheStatus(projectPath: string) {
-  return [...caches.entries()].filter(([key]) => key.startsWith(`${projectPath}:`)).map(([key, entry]) => ({ key: key.slice(projectPath.length + 1), createdAt: entry.createdAt, hits: entry.hits, fingerprint: entry.fingerprint }));
+  return [...caches.entries()].filter(([key]) => key.startsWith(`${projectPath}:`)).map(([key, entry]) => ({ key: key.slice(projectPath.length + 1), version: entry.version, projectPath: entry.projectPath, createdAt: entry.createdAt, hits: entry.hits, invalidations: entry.invalidations, fingerprint: entry.fingerprint }));
 }

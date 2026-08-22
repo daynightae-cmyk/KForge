@@ -47,6 +47,7 @@ import type {
 const NAVIGATION = [
   { group: "Projects", items: [["Workspace", LayoutDashboard], ["Project health", HeartPulse], ["Recent projects", History], ["Open project", FolderOpen]] },
   { group: "AI", items: [["AI providers", Bot], ["Models", Cpu], ["Agents", Bot], ["Tasks", Activity]] },
+  { group: "Marketplace", items: [["Marketplace", Box]] },
   { group: "Intelligence", items: [["Project graph", Network], ["Ask KForge", MessageSquare], ["Architecture", Box]] },
   { group: "Quality", items: [["KForge Sonar", ShieldAlert], ["Problems", ShieldAlert], ["Solutions", Wrench], ["Snapshots", History]] },
   { group: "Release", items: [["Release Gate", Rocket]] },
@@ -534,13 +535,15 @@ function CapabilityPanel({ activeNav, project, scan, tasks, platform, onPlatform
   if (activeNav === "Settings") return <LocalPlatformPanel platform={platform} onModeChange={onPlatformModeChange} />;
   if (activeNav === "AI providers") return <AICenter view="providers" onlineOptional={platform?.mode === "online-optional"} />;
   if (activeNav === "Models") return <LocalAIOnboarding onlineOptional={platform?.mode === "online-optional"} />;
+  if (activeNav === "Marketplace") return <MarketplacePanel />;
   if (activeNav === "Agents") return <AgentMissionCenter project={project} />;
   if (activeNav === "Tasks") return <TaskCenterPanel tasks={tasks} onTaskControl={onTaskControl} />;
   if (activeNav === "Project graph") return <GraphPanel project={project} />;
   if (activeNav === "Architecture") return <ArchitecturePanel project={project} />;
   if (activeNav === "Ask KForge") return <AskKForgePanel project={project} />;
   if (activeNav === "Release Gate") return <ReleaseGatePanel project={project} />;
-  if (activeNav === "KForge Sonar" || activeNav === "Problems" || activeNav === "Solutions" || activeNav === "Security scan" || activeNav === "Dependencies") return <QualityPanel title={activeNav} scan={scan} onScan={() => onRun("scan")} />;
+  if (activeNav === "KForge Sonar") return <SecurityToolsPanel project={project} scan={scan} onScan={() => onRun("scan")} />;
+  if (activeNav === "Problems" || activeNav === "Solutions" || activeNav === "Security scan" || activeNav === "Dependencies") return <QualityPanel title={activeNav} scan={scan} onScan={() => onRun("scan")} />;
   return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>{activeNav}</h3></div><span>Workspace</span></div><p className="kf-capability-copy">This Workspace section stays connected to the selected project and local engineering engine.</p></section>;
 }
 
@@ -623,6 +626,48 @@ function ReleaseGatePanel({ project }: { project: ProjectSummary }) {
   const run = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/release-gate`, { method: "POST" }); const payload = await response.json(); setResult(JSON.stringify({ readiness: payload.readiness, checks: payload.checks, missingChecks: payload.missingChecks, blockers: payload.blockers?.map((entry: ScanIssue) => entry.title), warnings: payload.warnings?.map((entry: ScanIssue) => entry.title) }, null, 2)); } catch (cause: unknown) { setResult(cause instanceof Error ? cause.message : "Release Gate failed."); } };
   const prepare = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/release/preparation`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Release preparation is unavailable."); setPreparation(payload.preparation); } catch (cause: unknown) { setResult(cause instanceof Error ? cause.message : "Release preparation failed."); } };
   return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Rocket size={17} /><h3>KForge Release Gate</h3></div><span>Typecheck · Tests · Build · Runtime · Security</span></div><p className="kf-capability-copy">The gate reports blockers and warnings from actual local verification. Release preparation creates a local preview only; it does not create tags, commits, GitHub releases, or any remote request.</p><div className="kf-inline-controls"><button className="kf-button kf-button--primary" onClick={() => void run()}>Run Release Gate</button><button onClick={() => void prepare()}>Prepare release notes</button></div>{result && <pre className="kf-release-output">{result}</pre>}{preparation && <article className="kf-command-evidence"><strong>Release preparation</strong><pre>{JSON.stringify(preparation, null, 2)}</pre></article>}</section>;
+}
+
+type MarketplaceItemView = { id: string; category: string; name: string; description: string; source: string; sourceUrl?: string; version?: string; license?: string; capabilities: string[]; requirements: string[]; compatibility: string; permissions: Array<{ id: string; required: boolean; detail: string }>; trust: string; installed: boolean; enabled: boolean; local: boolean; installAction: string; dataState: string };
+
+function MarketplacePanel() {
+  const [items, setItems] = useState<MarketplaceItemView[]>([]);
+  const [providers, setProviders] = useState<Array<{ id: string; label: string; state: string; detail: string; sourceUrl?: string }>>([]);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [message, setMessage] = useState("Loading configured Marketplace providers…");
+  const load = async () => { try { const response = await fetch("/api/workspace/marketplace"); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Marketplace is unavailable."); setItems(payload.items || []); setProviders(payload.providers || []); setMessage(""); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Marketplace could not be loaded."); } };
+  useEffect(() => { void load(); }, []);
+  const inspect = async (item: MarketplaceItemView) => { try { const response = await fetch(`/api/workspace/marketplace/items/${encodeURIComponent(item.id)}/install-preview`); const payload = await response.json(); const permissions = item.permissions.map((permission) => `${permission.id}${permission.required ? " (required)" : ""}`).join(", "); setMessage(`${payload.reason || "Install preview unavailable."} Permissions: ${permissions || "none"}.`); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Marketplace inspection failed."); } };
+  const visible = items.filter((item) => (filter === "all" || item.category === filter) && `${item.name} ${item.description} ${item.capabilities.join(" ")}`.toLowerCase().includes(query.toLowerCase()));
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Box size={17} /><h3>Knoux Forge Marketplace</h3></div><button onClick={() => void load()}>Refresh registry</button></div><p className="kf-capability-copy">Marketplace data is sourced from local runtime metadata or a declared official provider. It never invents ratings, prices, downloads, or install state. Remote installs remain disabled in Offline Mode and always require review.</p><div className="kf-hardware-grid">{providers.map((provider) => <span key={provider.id}><strong>{provider.label}</strong>{provider.state}</span>)}</div><div className="kf-inline-controls"><input aria-label="Search Marketplace" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search models and capabilities" /><select aria-label="Marketplace category" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All categories</option><option value="models">Models</option><option value="agents">Agents</option><option value="tools">Tools</option><option value="plugins">Plugins</option></select></div>{message && <p className="kf-capability-message">{message}</p>}<div className="kf-provider-grid">{visible.map((item) => <article className="kf-provider-card" key={item.id}><div><strong>{item.name}</strong><span>{item.installed ? "INSTALLED" : item.dataState}</span></div><p>{item.description}</p><small>{item.source} · {item.version || "version not supplied"} · {item.license || "license not supplied"}</small><small>Trust: {item.trust} · {item.compatibility}</small><div className="kf-inline-controls"><button onClick={() => void inspect(item)}>{item.installed ? "Inspect local item" : "Review install"}</button>{item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">Source</a>}</div><details><summary>Capabilities, requirements & permissions</summary><pre>{JSON.stringify({ capabilities: item.capabilities, requirements: item.requirements, permissions: item.permissions }, null, 2)}</pre></details></article>)}</div>{!visible.length && <p className="kf-capability-copy">No configured Marketplace item matches the current search and filters.</p>}</section>;
+}
+
+type SecurityToolView = { id: string; label: string; state: string; executable?: string; version?: string; detail: string; lastRun?: string; exitCode?: number; stdout?: string; stderr?: string; findings?: unknown[] };
+
+function SecurityToolsPanel({ project, scan, onScan }: { project: ProjectSummary; scan?: ProjectScan; onScan: () => void }) {
+  const [tools, setTools] = useState<SecurityToolView[]>([]);
+  const [trust, setTrust] = useState<string>(project.trust);
+  const [message, setMessage] = useState("Detecting local security tools…");
+  const refresh = async () => {
+    try {
+      const response = await fetch(`/api/workspace/projects/${project.id}/security/tools`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Security Tool Manager is unavailable.");
+      setTools(payload.tools || []); setTrust(payload.trust || project.trust); setMessage("");
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Security tool detection failed."); }
+  };
+  useEffect(() => { void refresh(); }, [project.id]);
+  const runTool = async (id: string) => {
+    try {
+      setMessage(`Running ${id} with captured local evidence…`);
+      const response = await fetch(`/api/workspace/projects/${project.id}/security/tools/${id}/run`, { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || payload.tool?.detail || `${id} did not complete.`);
+      setTools((current) => current.map((tool) => tool.id === id ? payload.tool : tool)); setMessage("");
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Security tool run failed."); }
+  };
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>Knoux Sonar · Security Tool Manager</h3></div><button onClick={() => void refresh()}>Detect local tools</button></div><p className="kf-capability-copy">No tool is downloaded or run silently. UNAVAILABLE means no executable was found; BLOCKED preserves the trust or offline policy; PASSED appears only after an explicit local scan succeeds.</p>{message && <p className="kf-capability-message">{message}</p>}<div className="kf-hardware-grid"><span><strong>Project trust</strong>{trust}</span><span><strong>Detected tools</strong>{tools.length}</span><span><strong>Available</strong>{tools.filter((tool) => tool.state === "AVAILABLE").length}</span><span><strong>Passed</strong>{tools.filter((tool) => tool.state === "PASSED").length}</span></div><div className="kf-provider-grid">{tools.map((tool) => <article className="kf-provider-card" key={tool.id}><div><strong>{tool.label}</strong><span>{tool.state}</span></div><p>{tool.version || tool.executable || "No local executable path available"}</p><small>{tool.detail}</small><button disabled={!(["AVAILABLE", "CONFIGURED"] as string[]).includes(tool.state)} onClick={() => void runTool(tool.id)}>Run explicit scan</button>{tool.lastRun && <details><summary>Captured evidence · exit {tool.exitCode}</summary><pre>{JSON.stringify({ findings: tool.findings, stdout: tool.stdout, stderr: tool.stderr }, null, 2)}</pre></details>}</article>)}</div><QualityPanel title="Current normalized security findings" scan={scan} onScan={onScan} /></section>;
 }
 
 function QualityPanel({ title, scan, onScan }: { title: string; scan?: ProjectScan; onScan: () => void }) { const issues = scan?.issues || []; return <section className="kf-capability-panel"><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>{title}</h3></div><button onClick={onScan}>Run current scan</button></div>{scan ? <div className="kf-issues">{issues.slice(0, 8).map((entry) => <details key={entry.id} className="kf-issue"><summary><span className={`kf-severity kf-severity--${entry.severity}`}>{entry.severity}</span><span><strong>{entry.title}</strong><small>{entry.source} · {entry.rule || entry.category}</small></span><ChevronRight size={15} /></summary><p>{entry.suggestion || entry.description}</p></details>)}</div> : <p className="kf-capability-copy">No scan is loaded. Start a real local scan to populate this panel.</p>}</section>; }
