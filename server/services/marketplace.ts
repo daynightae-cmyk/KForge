@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { getModelCenter } from "./aiCenter";
+import { listAgentTools } from "./agentTools";
 
 export type MarketplaceCategory = "models" | "agents" | "tools" | "plugins" | "scanners" | "integrations" | "templates" | "presets";
 export type MarketplaceSourceState = "AVAILABLE" | "DATA_UNAVAILABLE" | "OFFLINE";
@@ -60,6 +61,48 @@ function modelPermissions(): MarketplacePermission[] {
   ];
 }
 
+function localExtensionPermissions(): MarketplacePermission[] {
+  return [{ id: "project-read", required: true, detail: "Runs only against the explicitly selected local project context." }, { id: "process", required: false, detail: "No process access unless the individual capability declares it." }];
+}
+
+function localEngineItems(): MarketplaceItem[] {
+  const tools: MarketplaceItem[] = listAgentTools().map((tool) => ({
+    id: `tool:kforge:${tool.name}`,
+    category: "tools",
+    name: tool.name,
+    description: tool.description,
+    source: "KForge local agent tool registry",
+    capabilities: [tool.permission, tool.requiresConfirmation ? "explicit-confirmation" : "autonomous-safe"],
+    requirements: [tool.unavailableReason || "KForge Workspace local engine"],
+    compatibility: tool.permission === "blocked" ? "Unavailable by policy" : "Available in the current KForge build",
+    permissions: localExtensionPermissions(),
+    trust: tool.permission === "blocked" ? "PARTIALLY_TRUSTED" : "TRUSTED",
+    installed: true,
+    enabled: tool.permission !== "blocked",
+    local: true,
+    installAction: "MANAGE_LOCAL",
+    dataState: "AVAILABLE",
+  }));
+  const agents: MarketplaceItem[] = [{
+    id: "agent:kforge:engineer",
+    category: "agents",
+    name: "KForge Engineer",
+    description: "Evidence-backed local planning and bounded verification agent exposed by the installed KForge server.",
+    source: "KForge local agent engine",
+    capabilities: ["project-diagnostics", "rule-backed-plans", "local-ai-optional", "verified-patches"],
+    requirements: ["KForge Workspace server"],
+    compatibility: "Available in the current KForge build",
+    permissions: [{ id: "project-read", required: true, detail: "Receives bounded, redacted project context." }, { id: "project-write", required: true, detail: "Write-capable operations remain trust- and confirmation-gated." }],
+    trust: "TRUSTED",
+    installed: true,
+    enabled: true,
+    local: true,
+    installAction: "MANAGE_LOCAL",
+    dataState: "AVAILABLE",
+  }];
+  return [...agents, ...tools];
+}
+
 export async function getMarketplace(workspaceRoot: string, onlineOptional: boolean) {
   const [modelCenter, registered] = await Promise.all([getModelCenter(workspaceRoot), readLocalRegistry(workspaceRoot)]);
   const installedIds = new Set(modelCenter.ollama.models.map((model) => model.id));
@@ -84,7 +127,9 @@ export async function getMarketplace(workspaceRoot: string, onlineOptional: bool
     { id: "ollama-official", label: "Ollama official library", sourceUrl: "https://ollama.com/library", state: onlineOptional ? "DATA_UNAVAILABLE" : "OFFLINE", detail: onlineOptional ? "KForge has official source links but no configured official remote catalog adapter; it will not claim live versions or downloads." : "Remote marketplace data is disabled in Offline Mode.", lastChecked: new Date().toISOString() },
     { id: "extension-registries", label: "Extension registries", state: "DATA_UNAVAILABLE", detail: "No official extension registry has been configured. KForge shows no fabricated plugin, price, rating, or download data.", lastChecked: new Date().toISOString() },
   ];
-  return { providers, items: [...installed, ...recommendations.filter((item) => !known.has(item.id)), ...registered] };
+  const localExtensions = localEngineItems();
+  const knownItems = new Set([...installed, ...localExtensions].map((item) => item.id));
+  return { providers, items: [...installed, ...localExtensions, ...recommendations.filter((item) => !knownItems.has(item.id)), ...registered] };
 }
 
 export async function previewMarketplaceInstall(workspaceRoot: string, onlineOptional: boolean, itemId: string) {
