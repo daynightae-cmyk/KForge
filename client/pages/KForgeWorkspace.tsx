@@ -52,8 +52,8 @@ const NAVIGATION = [
   { group: "AI", items: [["AI providers", Bot], ["Models", Cpu], ["Agents", Bot], ["Tasks", Activity]] },
   { group: "Marketplace", items: [["Marketplace", Box]] },
   { group: "Intelligence", items: [["Project graph", Network], ["Dependencies", Box], ["Impact analysis", Network], ["Code understanding", Code2], ["Ask KForge", MessageSquare], ["Architecture", Box]] },
-  { group: "Quality", items: [["KForge Sonar", ShieldAlert], ["Problems", ShieldAlert], ["Solutions", Wrench], ["Snapshots", History]] },
-  { group: "Release", items: [["Release Gate", Rocket]] },
+  { group: "Quality", items: [["KForge Sonar", ShieldAlert], ["Problems", ShieldAlert], ["Solutions", Wrench], ["Security", ShieldAlert], ["Performance", Activity], ["Technical debt", Wrench], ["Snapshots", History]] },
+  { group: "Release", items: [["Release Gate", Rocket], ["Release preparation", Rocket], ["Artifacts", Box], ["Versioning", GitBranch]] },
   { group: "Developer tools", items: [["Terminal", Terminal], ["Tests", TestTube2], ["Build", Play]] },
   { group: "Remote", items: [["Git", GitBranch], ["GitHub", Github]] },
 ] as const;
@@ -566,8 +566,12 @@ function CapabilityPanel({ activeNav, project, scan, tasks, platform, onPlatform
   if (activeNav === "Architecture") return <ArchitecturePanel project={project} />;
   if (activeNav === "Ask KForge") return <AskKForgePanel project={project} />;
   if (activeNav === "Release Gate") return <ReleaseGatePanel project={project} />;
+  if (activeNav === "Release preparation" || activeNav === "Artifacts" || activeNav === "Versioning") return <ReleasePreparationPanel project={project} view={activeNav} />;
   if (activeNav === "KForge Sonar") return <SecurityToolsPanel project={project} scan={scan} onScan={() => onRun("scan")} />;
-  if (activeNav === "Problems" || activeNav === "Solutions" || activeNav === "Security scan" || activeNav === "Dependencies") return <QualityPanel title={activeNav} scan={scan} onScan={() => onRun("scan")} />;
+  if (activeNav === "Security") return <SecurityToolsPanel project={project} scan={scan} onScan={() => onRun("scan")} />;
+  if (activeNav === "Performance") return <QualityCategoryPanel title="Performance Evidence" description="Performance diagnostics are shown only when the local scanner produces performance evidence; no synthetic score is assigned." categories={["performance"]} scan={scan} onScan={() => onRun("scan")} />;
+  if (activeNav === "Technical debt") return <QualityCategoryPanel title="Technical Debt Evidence" description="Technical debt is derived from the scanner's explicit completeness, quality, complexity, and architecture findings." categories={["completeness", "quality", "architecture"]} scan={scan} onScan={() => onRun("scan")} />;
+  if (activeNav === "Problems" || activeNav === "Solutions" || activeNav === "Security scan") return <QualityPanel title={activeNav} scan={scan} onScan={() => onRun("scan")} />;
   return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>{activeNav}</h3></div><span>Workspace</span></div><p className="kf-capability-copy">This Workspace section stays connected to the selected project and local engineering engine.</p></section>;
 }
 
@@ -672,6 +676,15 @@ function ReleaseGatePanel({ project }: { project: ProjectSummary }) {
   return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Rocket size={17} /><h3>KForge Release Gate</h3></div><span>Typecheck · Tests · Build · Runtime · Security</span></div><p className="kf-capability-copy">The gate reports blockers and warnings from actual local verification. Release preparation creates a local preview only; it does not create tags, commits, GitHub releases, or any remote request.</p><div className="kf-inline-controls"><button className="kf-button kf-button--primary" onClick={() => void run()}>Run Release Gate</button><button onClick={() => void prepare()}>Prepare release notes</button></div>{result && <pre className="kf-release-output">{result}</pre>}{preparation && <article className="kf-command-evidence"><strong>Release preparation</strong><pre>{JSON.stringify(preparation, null, 2)}</pre></article>}</section>;
 }
 
+function ReleasePreparationPanel({ project, view }: { project: ProjectSummary; view: "Release preparation" | "Artifacts" | "Versioning" }) {
+  const [preparation, setPreparation] = useState<Record<string, unknown> | null>(null);
+  const [message, setMessage] = useState("Loading local release preparation evidence…");
+  const refresh = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/release/preparation`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Release preparation is unavailable."); setPreparation(payload.preparation); setMessage(""); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Release preparation failed."); } };
+  useEffect(() => { void refresh(); }, [project.id]);
+  const value = view === "Artifacts" ? preparation?.artifacts : view === "Versioning" ? { baselineTag: preparation?.baselineTag, version: preparation?.version } : preparation;
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Rocket size={17} /><h3>{view}</h3></div><button onClick={() => void refresh()}>Refresh evidence</button></div><p className="kf-capability-copy">This is a local, read-only release preparation preview. It does not create tags, artifacts, releases, or remote requests.</p>{message && <p className="kf-capability-message">{message}</p>}{preparation && <article className="kf-command-evidence"><strong>Local release evidence</strong><pre>{JSON.stringify(value, null, 2)}</pre></article>}</section>;
+}
+
 type MarketplaceItemView = { id: string; category: string; name: string; description: string; source: string; sourceUrl?: string; version?: string; license?: string; capabilities: string[]; requirements: string[]; compatibility: string; permissions: Array<{ id: string; required: boolean; detail: string }>; trust: string; installed: boolean; enabled: boolean; local: boolean; installAction: string; dataState: string };
 
 function MarketplacePanel() {
@@ -715,6 +728,11 @@ function SecurityToolsPanel({ project, scan, onScan }: { project: ProjectSummary
 }
 
 function QualityPanel({ title, scan, onScan }: { title: string; scan?: ProjectScan; onScan: () => void }) { const issues = scan?.issues || []; return <section className="kf-capability-panel"><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>{title}</h3></div><button onClick={onScan}>Run current scan</button></div>{scan ? <div className="kf-issues">{issues.slice(0, 8).map((entry) => <details key={entry.id} className="kf-issue"><summary><span className={`kf-severity kf-severity--${entry.severity}`}>{entry.severity}</span><span><strong>{entry.title}</strong><small>{entry.source} · {entry.rule || entry.category}</small></span><ChevronRight size={15} /></summary><p>{entry.suggestion || entry.description}</p></details>)}</div> : <p className="kf-capability-copy">No scan is loaded. Start a real local scan to populate this panel.</p>}</section>; }
+
+function QualityCategoryPanel({ title, description, categories, scan, onScan }: { title: string; description: string; categories: string[]; scan?: ProjectScan; onScan: () => void }) {
+  const findings = (scan?.issues || []).filter((entry) => categories.includes(entry.category));
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>{title}</h3></div><button onClick={onScan}>Run current scan</button></div><p className="kf-capability-copy">{description}</p>{scan ? findings.length ? <div className="kf-issues">{findings.map((entry) => <details key={entry.id} className="kf-issue"><summary><span className={`kf-severity kf-severity--${entry.severity}`}>{entry.severity}</span><span><strong>{entry.title}</strong><small>{entry.source} · {entry.file || entry.category}</small></span><ChevronRight size={15} /></summary><p>{entry.description}</p></details>)}</div> : <p className="kf-capability-copy">No matching local scanner evidence was produced by the current scan.</p> : <p className="kf-capability-copy">Run a real local scan to populate this panel.</p>}</section>;
+}
 
 function ProjectInspectorV2({ project, scan, results, tasks, onRun, onTaskControl }: { project: ProjectSummary; scan?: ProjectScan; results?: Partial<Record<WorkspaceAction, CommandResult>>; tasks: TaskItem[]; onRun: (action: WorkspaceAction) => void; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) {
   const health = scan?.health.score;
