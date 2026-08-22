@@ -27,10 +27,11 @@ describe("KForge large-project benchmark", () => {
         await fs.writeFile(path.join(packageRoot, "package.json"), JSON.stringify({ name: `pkg-${packageIndex}`, private: true }));
       }
       for (let index = 0; index < count; index += 1) {
-        const packageName = `pkg-${index % 5}`;
+        const packageIndex = index % 5;
+        const packageName = `pkg-${packageIndex}`;
         const dir = path.join(root, "packages", packageName, "src");
         await fs.mkdir(dir, { recursive: true });
-        const previous = index === 0 ? "" : `import { value as prior } from \"./module-${index - 1}\";\n`;
+        const previous = index < 5 ? "" : `import { value as prior } from \"./module-${index - 5}\";\n`;
         await fs.writeFile(path.join(dir, `module-${index}.ts`), `${previous}export const value = ${index};\n`);
       }
       await fs.mkdir(path.join(root, "tests"), { recursive: true });
@@ -45,6 +46,7 @@ describe("KForge large-project benchmark", () => {
       expect(profile.workspaceKind).toBe("monorepo");
       expect(profile.sourceFileCount).toBeGreaterThanOrEqual(count);
       expect(graph.summary.files).toBe(2_000);
+      expect(graph.summary.imports).toBeGreaterThan(1_500);
       expect(cachedGraph.generatedAt).toBe(graph.generatedAt);
       expect(projectCacheStatus(root).some((entry) => entry.key === "graph")).toBe(true);
       expect(scan.profile.performance.scale).toBe("large");
