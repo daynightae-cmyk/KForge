@@ -807,6 +807,7 @@ router.post("/projects/:id/git/branches", async (req, res) => {
 router.get("/projects/:id/github", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return res.status(428).json({ error: "GitHub metadata is disabled in Offline Mode. Enable Online Optional after reviewing purpose, data, and destination.", permission: "online-optional" });
   const slug = githubSlug(project.remoteUrl);
   if (!slug) return res.status(422).json({ error: "This project has no GitHub origin remote." });
   const [repository, issues, pullRequests, actions] = await Promise.all([
