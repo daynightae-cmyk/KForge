@@ -52,6 +52,15 @@ export interface OllamaRuntimeStatus {
   reason?: string;
 }
 
+export interface ModelUpdateStatus {
+  state: "UNKNOWN";
+  currentVersion: string;
+  latestKnownVersion: "UNKNOWN";
+  source: "DATA_UNAVAILABLE";
+  changelog: "DATA_UNAVAILABLE";
+  checkedAt: string;
+}
+
 export interface RecommendedModel {
   id: string;
   label: string;
@@ -69,6 +78,12 @@ export interface RecommendedModel {
   compatibility: CompatibilityClass;
   compatible: boolean;
   reason: string;
+  family: string;
+  variant: string;
+  quantization: "UNSPECIFIED";
+  categories: string[];
+  recommendedUse: string[];
+  update: ModelUpdateStatus;
 }
 
 export interface ModelHealth {
@@ -96,12 +111,14 @@ const providerDefinitions: Array<Pick<AIProviderInfo, "id" | "name" | "kind" | "
   { id: "openrouter", name: "OpenRouter", kind: "cloud", capabilities: ["chat", "generate"], privacy: "Cloud: project context may leave this machine only after explicit configuration and confirmation." },
 ];
 
-const catalog: Array<Omit<RecommendedModel, "compatibility" | "compatible" | "reason">> = [
-  { id: "qwen2.5-coder:1.5b", label: "Qwen2.5-Coder 1.5B", provider: "ollama", pullName: "qwen2.5-coder:1.5b", parameterCount: "1.5B", estimatedDownloadBytes: 1_100_000_000, estimatedRamBytes: 4_000_000_000, contextLength: 32_768, expectedSpeed: "Usable on CPU", license: "Apache-2.0", sourceUrl: "https://ollama.com/library/qwen2.5-coder", local: true },
-  { id: "qwen2.5-coder:3b", label: "Qwen2.5-Coder 3B", provider: "ollama", pullName: "qwen2.5-coder:3b", parameterCount: "3B", estimatedDownloadBytes: 2_000_000_000, estimatedRamBytes: 6_000_000_000, contextLength: 32_768, expectedSpeed: "Moderate on CPU", license: "Apache-2.0", sourceUrl: "https://ollama.com/library/qwen2.5-coder", local: true },
-  { id: "qwen2.5-coder:7b", label: "Qwen2.5-Coder 7B", provider: "ollama", pullName: "qwen2.5-coder:7b", parameterCount: "7B", estimatedDownloadBytes: 4_700_000_000, estimatedRamBytes: 10_000_000_000, contextLength: 32_768, expectedSpeed: "Slow on CPU", license: "Apache-2.0", sourceUrl: "https://ollama.com/library/qwen2.5-coder", local: true },
-  { id: "deepseek-coder:6.7b", label: "DeepSeek Coder 6.7B", provider: "ollama", pullName: "deepseek-coder:6.7b", parameterCount: "6.7B", estimatedDownloadBytes: 3_800_000_000, estimatedRamBytes: 10_000_000_000, contextLength: 16_384, expectedSpeed: "Slow on CPU", license: "Model license — review before use", sourceUrl: "https://github.com/deepseek-ai/deepseek-coder", local: true },
-  { id: "starcoder2:3b", label: "StarCoder2 3B", provider: "ollama", pullName: "starcoder2:3b", parameterCount: "3B", estimatedDownloadBytes: 2_000_000_000, estimatedRamBytes: 6_000_000_000, contextLength: 16_384, expectedSpeed: "Moderate on CPU", license: "OpenRAIL", sourceUrl: "https://huggingface.co/blog/starcoder2", local: true },
+type CatalogDefinition = Omit<RecommendedModel, "compatibility" | "compatible" | "reason" | "update">;
+
+const catalog: CatalogDefinition[] = [
+  { id: "qwen2.5-coder:1.5b", label: "Qwen2.5-Coder 1.5B", provider: "ollama", pullName: "qwen2.5-coder:1.5b", parameterCount: "1.5B", estimatedDownloadBytes: 1_100_000_000, estimatedRamBytes: 4_000_000_000, contextLength: 32_768, expectedSpeed: "Usable on CPU", license: "Apache-2.0", sourceUrl: "https://ollama.com/library/qwen2.5-coder", local: true, family: "Qwen2.5-Coder", variant: "1.5B", quantization: "UNSPECIFIED", categories: ["Coding", "Small", "Fast", "Local Agent"], recommendedUse: ["Code review", "Small local agent workflows"] },
+  { id: "qwen2.5-coder:3b", label: "Qwen2.5-Coder 3B", provider: "ollama", pullName: "qwen2.5-coder:3b", parameterCount: "3B", estimatedDownloadBytes: 2_000_000_000, estimatedRamBytes: 6_000_000_000, contextLength: 32_768, expectedSpeed: "Moderate on CPU", license: "Apache-2.0", sourceUrl: "https://ollama.com/library/qwen2.5-coder", local: true, family: "Qwen2.5-Coder", variant: "3B", quantization: "UNSPECIFIED", categories: ["Coding", "Local Agent"], recommendedUse: ["General code assistance", "Project-grounded questions"] },
+  { id: "qwen2.5-coder:7b", label: "Qwen2.5-Coder 7B", provider: "ollama", pullName: "qwen2.5-coder:7b", parameterCount: "7B", estimatedDownloadBytes: 4_700_000_000, estimatedRamBytes: 10_000_000_000, contextLength: 32_768, expectedSpeed: "Slow on CPU", license: "Apache-2.0", sourceUrl: "https://ollama.com/library/qwen2.5-coder", local: true, family: "Qwen2.5-Coder", variant: "7B", quantization: "UNSPECIFIED", categories: ["Coding", "Large", "Local Agent"], recommendedUse: ["Complex code review", "Longer project analysis"] },
+  { id: "deepseek-coder:6.7b", label: "DeepSeek Coder 6.7B", provider: "ollama", pullName: "deepseek-coder:6.7b", parameterCount: "6.7B", estimatedDownloadBytes: 3_800_000_000, estimatedRamBytes: 10_000_000_000, contextLength: 16_384, expectedSpeed: "Slow on CPU", license: "Model license — review before use", sourceUrl: "https://github.com/deepseek-ai/deepseek-coder", local: true, family: "DeepSeek Coder", variant: "6.7B", quantization: "UNSPECIFIED", categories: ["Coding", "Large", "Specialized"], recommendedUse: ["Code generation", "Repository exploration"] },
+  { id: "starcoder2:3b", label: "StarCoder2 3B", provider: "ollama", pullName: "starcoder2:3b", parameterCount: "3B", estimatedDownloadBytes: 2_000_000_000, estimatedRamBytes: 6_000_000_000, contextLength: 16_384, expectedSpeed: "Moderate on CPU", license: "OpenRAIL", sourceUrl: "https://huggingface.co/blog/starcoder2", local: true, family: "StarCoder2", variant: "3B", quantization: "UNSPECIFIED", categories: ["Coding", "Small", "Specialized"], recommendedUse: ["Local completion", "Code explanation"] },
 ];
 
 function settingsPath(workspaceRoot: string) { return path.join(workspaceRoot, ".kforge", "ai-settings.json"); }
@@ -190,8 +207,12 @@ function classifyModel(model: typeof catalog[number], hardware: HardwareInfo): P
 
 export async function getModelCenter(workspaceRoot: string) {
   const [hardware, providers, settings, ollama] = await Promise.all([getHardwareInfo(), listAIProviders(), readSettings(workspaceRoot), getOllamaRuntimeStatus()]);
-  const recommendations = catalog.map((model) => ({ ...model, ...classifyModel(model, hardware) }));
-  return { hardware, providers, ollama, active: settings.active, fallback: settings.fallback, modelHealth: settings.modelHealth || {}, recommendations, onboarding: ollama.installed ? (ollama.serviceReachable ? "runtime-ready" : "start-ollama-service") : "install-ollama", downloadUrl: "https://ollama.com/download/windows" };
+  const checkedAt = new Date().toISOString();
+  const recommendations = catalog.map((model) => ({ ...model, ...classifyModel(model, hardware), update: { state: "UNKNOWN" as const, currentVersion: model.variant, latestKnownVersion: "UNKNOWN" as const, source: "DATA_UNAVAILABLE" as const, changelog: "DATA_UNAVAILABLE" as const, checkedAt } }));
+  const byFamily = new Map<string, typeof recommendations>();
+  recommendations.forEach((model) => byFamily.set(model.family, [...(byFamily.get(model.family) || []), model]));
+  const families = [...byFamily.entries()].map(([family, variants]) => ({ family, provider: "ollama" as const, variants, updateSource: "DATA_UNAVAILABLE" as const, detail: "No verified remote catalog adapter is configured, so latest-version and changelog data remain UNKNOWN." }));
+  return { hardware, providers, ollama, active: settings.active, fallback: settings.fallback, modelHealth: settings.modelHealth || {}, recommendations, families, onboarding: ollama.installed ? (ollama.serviceReachable ? "runtime-ready" : "start-ollama-service") : "install-ollama", downloadUrl: "https://ollama.com/download/windows" };
 }
 
 export async function setActiveModel(workspaceRoot: string, provider: AIProviderId, model: string, fallback?: boolean) {
