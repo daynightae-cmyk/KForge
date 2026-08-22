@@ -878,14 +878,15 @@ router.get("/projects/:id/github", async (req, res) => {
   if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return res.status(428).json({ error: "GitHub metadata is disabled in Offline Mode. Enable Online Optional after reviewing purpose, data, and destination.", permission: "online-optional" });
   const slug = githubSlug(project.remoteUrl);
   if (!slug) return res.status(422).json({ error: "This project has no GitHub origin remote." });
-  const [repository, issues, pullRequests, actions] = await Promise.all([
+  const [repository, issues, pullRequests, actions, releases] = await Promise.all([
     run("gh", ["api", `repos/${slug}`], project.path, 20_000),
     run("gh", ["api", `repos/${slug}/issues?state=open&per_page=20`], project.path, 20_000),
     run("gh", ["api", `repos/${slug}/pulls?state=open&per_page=20`], project.path, 20_000),
     run("gh", ["api", `repos/${slug}/actions/runs?per_page=10`], project.path, 20_000),
+    run("gh", ["api", `repos/${slug}/releases?per_page=10`], project.path, 20_000),
   ]);
   const parse = (execution: CommandExecution) => { try { return execution.ok ? JSON.parse(execution.output) : { error: execution.output }; } catch { return { error: execution.output || "GitHub returned invalid JSON." }; } };
-  return res.json({ slug, repository: parse(repository), issues: parse(issues), pullRequests: parse(pullRequests), actions: parse(actions) });
+  return res.json({ slug, repository: parse(repository), issues: parse(issues), pullRequests: parse(pullRequests), actions: parse(actions), releases: parse(releases) });
 });
 
 async function environmentExamplePreview(project: ProjectSummary, problem: ScanIssue) {
