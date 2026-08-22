@@ -1,0 +1,9 @@
+{
+  "name": "example/kforge-php-fixture",
+  "require": {
+    "laravel/framework": "^11.0"
+  },
+  "scripts": {
+    "test": "php artisan test"
+  }
+}

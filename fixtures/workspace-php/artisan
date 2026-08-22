@@ -1,0 +1,4 @@
+#!/usr/bin/env php
+<?php
+
+print "kforge-php-fixture\n";

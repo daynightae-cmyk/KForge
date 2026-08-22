@@ -28,9 +28,11 @@ import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snap
 import { buildAgentContext, buildLocalAIPlan, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
-import { appendTaskLog, cancelTask, getTask, listTasks, retryTask, startTask, type TaskKind } from "../services/tasks";
+import { appendTaskLog, cancelTask, getTask, initializeTaskStore, listTasks, retryTask, startTask, type TaskKind } from "../services/tasks";
 import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
+import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
+import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -52,6 +54,8 @@ type JsonRecord = Record<string, unknown>;
 function getWorkspaceRoot() {
   return path.resolve(process.env.KFORGE_WORKSPACE_ROOT || path.resolve(process.cwd(), ".."));
 }
+
+void initializeTaskStore(getWorkspaceRoot());
 
 function projectId(projectPath: string) {
   return Buffer.from(projectPath).toString("base64url");
@@ -228,22 +232,35 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
   if (has("vue") || has("@vue/cli-service")) frameworks.push("Vue");
   if (has("@angular/core")) frameworks.push("Angular");
   if (packageJson) frameworks.push("Node.js");
+  if (has("express")) frameworks.push("Express");
+  if (has("@nestjs/core")) frameworks.push("NestJS");
+  if (has("electron")) frameworks.push("Electron");
+  if (rootNames.has("src-tauri") || has("@tauri-apps/api")) frameworks.push("Tauri");
   if (rootNames.has("pyproject.toml") || rootNames.has("requirements.txt") || rootNames.has("setup.py")) {
     languages.push("Python");
     const pythonManifest = await Promise.all(["pyproject.toml", "requirements.txt", "setup.py"].map((name) => fs.readFile(path.join(root, name), "utf8").catch(() => "")));
     const content = pythonManifest.join("\n");
     if (/fastapi/i.test(content)) frameworks.push("FastAPI");
     if (/django/i.test(content)) frameworks.push("Django");
+    if (/flask/i.test(content)) frameworks.push("Flask");
+    if (/(?:pytest|\[tool\.pytest)/i.test(content) || rootNames.has("pytest.ini")) frameworks.push("pytest");
   }
   if (rootNames.has("pom.xml") || rootNames.has("build.gradle") || rootNames.has("build.gradle.kts")) {
     languages.push("Java");
     const javaFiles = await findFiles(root, (relative) => relative.endsWith(".java"), 20);
-    if (javaFiles.length && await fileContains(path.join(root, rootNames.has("pom.xml") ? "pom.xml" : rootNames.has("build.gradle") ? "build.gradle" : "build.gradle.kts"), /spring/i)) frameworks.push("Spring");
+    if (rootNames.has("pom.xml")) frameworks.push("Maven");
+    if (rootNames.has("build.gradle") || rootNames.has("build.gradle.kts")) frameworks.push("Gradle");
+    if (javaFiles.length && await fileContains(path.join(root, rootNames.has("pom.xml") ? "pom.xml" : rootNames.has("build.gradle") ? "build.gradle" : "build.gradle.kts"), /spring(?:\s*-?boot)?/i)) frameworks.push("Spring Boot");
   }
   if (rootNames.has("go.mod")) { languages.push("Go"); frameworks.push("Go"); }
   if (rootNames.has("Cargo.toml")) { languages.push("Rust"); frameworks.push("Rust"); }
   if ([...rootNames].some((name) => name.endsWith(".sln") || name.endsWith(".csproj"))) { languages.push("C#"); frameworks.push(".NET"); }
-  if (rootNames.has("composer.json")) { languages.push("PHP"); frameworks.push("PHP"); }
+  if (rootNames.has("composer.json")) {
+    languages.push("PHP"); frameworks.push("PHP", "Composer");
+    const composer = await readJson(path.join(root, "composer.json"));
+    const composerDependencies = { ...stringRecord(composer?.require), ...stringRecord(composer?.["require-dev"]) };
+    if (composerDependencies["laravel/framework"] || rootNames.has("artisan")) frameworks.push("Laravel");
+  }
   if (has("typescript") || rootNames.has("tsconfig.json")) languages.push("TypeScript");
   if (packageJson) languages.push("JavaScript");
 
@@ -254,11 +271,44 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
   const ci = allFiles.filter((relative) => relative.startsWith(".github/workflows/") || /(^|\/)(\.gitlab-ci\.yml|azure-pipelines\.yml|\.circleci\/config\.yml)$/.test(relative));
   const docker = allFiles.filter((relative) => /(^|\/)(Dockerfile|docker-compose(?:\.[\w-]+)?\.ya?ml)$/.test(relative));
   const deployment = allFiles.filter((relative) => /(^|\/)(vercel\.json|netlify\.toml|fly\.toml|render\.yaml|app\.yaml)$/.test(relative));
+  const manifests = ["package.json", "pyproject.toml", "requirements.txt", "pytest.ini", "go.mod", "Cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "composer.json", "Makefile", "Dockerfile", "*.csproj"].filter((name) => rootNames.has(name) || [...rootNames].some((entry) => name === "*.csproj" && entry.endsWith(".csproj")));
+  const lockfiles = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "poetry.lock", "Cargo.lock", "composer.lock", "gradle.lockfile"].filter((name) => rootNames.has(name));
+  const testRoots = [...new Set(allFiles.map((relative) => relative.split("/")[0]).filter((name) => /^(test|tests|__tests__|spec|specs)$/i.test(name)))];
+  const childManifests = allFiles.filter((relative) => /(^|\/)(package\.json|pyproject\.toml|go\.mod|Cargo\.toml|pom\.xml|composer\.json)$/.test(relative) && relative.includes("/"));
+  const workspaceMarker = Boolean(packageJson?.workspaces) || ["pnpm-workspace.yaml", "lerna.json", "nx.json", "turbo.json", "settings.gradle", "settings.gradle.kts"].some((name) => rootNames.has(name));
+  const workspaceKind = childManifests.length > 1 ? "monorepo" as const : workspaceMarker ? "workspace" as const : "single" as const;
   let projectSizeBytes = 0;
   for (const relative of allFiles.slice(0, 20_000)) {
     try { projectSizeBytes += (await fs.stat(path.join(root, relative))).size; } catch { /* unreadable file is excluded from size evidence */ }
   }
-  const commandNames = { typecheck: "typecheck", test: "test", build: "build", dev: "dev", production: scripts.start ? "start" : "" };
+  const commands: Record<string, string> = {};
+  const commandEvidence: Array<{ kind: "typecheck" | "test" | "build" | "dev" | "production" | "runtime"; command?: string; source: string; known: boolean; detail: string }> = [];
+  const register = (kind: "typecheck" | "test" | "build" | "dev" | "production" | "runtime", command: string | undefined, source: string, detail: string) => {
+    if (command) commands[kind] = command;
+    const existing = commandEvidence.findIndex((entry) => entry.kind === kind);
+    const evidence = { kind, command, source, known: Boolean(command), detail };
+    if (existing >= 0 && (command || !commandEvidence[existing].known)) commandEvidence[existing] = evidence;
+    else if (existing < 0) commandEvidence.push(evidence);
+  };
+  const scriptCommand = (name: string) => scripts[name] ? `${manager || "npm"} run ${name}` : undefined;
+  register("typecheck", scriptCommand("typecheck"), "package.json", scripts.typecheck ? "Explicit package script." : "UNKNOWN: no explicit typecheck metadata.");
+  register("test", scriptCommand("test"), "package.json", scripts.test ? "Explicit package script." : "UNKNOWN: no explicit package test script.");
+  register("build", scriptCommand("build"), "package.json", scripts.build ? "Explicit package script." : "UNKNOWN: no explicit package build script.");
+  register("dev", scriptCommand("dev"), "package.json", scripts.dev ? "Explicit package script." : "UNKNOWN: no explicit package development script.");
+  register("production", scriptCommand("start"), "package.json", scripts.start ? "Explicit package production script." : "UNKNOWN: no explicit package production script.");
+  register("runtime", scriptCommand("start"), "package.json", scripts.start ? "Runtime entrypoint is the explicit start script." : "UNKNOWN: no explicit runtime entrypoint.");
+  const hasCommand = (kind: string) => Boolean(commands[kind]);
+  if (rootNames.has("go.mod")) { if (!hasCommand("test")) register("test", "go test ./...", "go.mod", "Go module convention."); if (!hasCommand("build")) register("build", "go build ./...", "go.mod", "Go module convention."); }
+  if (rootNames.has("Cargo.toml")) { if (!hasCommand("test")) register("test", "cargo test", "Cargo.toml", "Cargo manifest convention."); if (!hasCommand("build")) register("build", "cargo build --release", "Cargo.toml", "Cargo manifest convention."); }
+  if (rootNames.has("pom.xml")) { if (!hasCommand("test")) register("test", "mvn test", "pom.xml", "Maven lifecycle metadata."); if (!hasCommand("build")) register("build", "mvn package -DskipTests", "pom.xml", "Maven lifecycle metadata."); }
+  if (rootNames.has("build.gradle") || rootNames.has("build.gradle.kts")) { const wrapper = rootNames.has(process.platform === "win32" ? "gradlew.bat" : "gradlew") ? (process.platform === "win32" ? "gradlew.bat" : "./gradlew") : undefined; if (!hasCommand("test")) register("test", wrapper ? `${wrapper} test` : undefined, "Gradle wrapper", wrapper ? "Explicit project wrapper." : "UNKNOWN: Gradle wrapper not present."); if (!hasCommand("build")) register("build", wrapper ? `${wrapper} build -x test` : undefined, "Gradle wrapper", wrapper ? "Explicit project wrapper." : "UNKNOWN: Gradle wrapper not present."); }
+  if ([...rootNames].some((name) => name.endsWith(".csproj") || name.endsWith(".sln"))) { if (!hasCommand("test")) register("test", "dotnet test", "*.csproj", ".NET project metadata."); if (!hasCommand("build")) register("build", "dotnet build --configuration Release", "*.csproj", ".NET project metadata."); }
+  const pythonMetadata = ["pyproject.toml", "requirements.txt", "pytest.ini"].map((name) => path.join(root, name));
+  const pythonText = (await Promise.all(pythonMetadata.map((file) => fs.readFile(file, "utf8").catch(() => "")))).join("\n");
+  if (/(?:pytest|\[tool\.pytest)/i.test(pythonText) && !hasCommand("test")) register("test", "python -m pytest", "pyproject.toml/pytest.ini", "pytest metadata detected.");
+  if (rootNames.has("composer.json")) { const composer = await readJson(path.join(root, "composer.json")); const composerScripts = stringRecord(composer?.scripts); if (composerScripts.test && !hasCommand("test")) register("test", "composer test", "composer.json", "Explicit Composer test script."); if (composerScripts.build && !hasCommand("build")) register("build", "composer build", "composer.json", "Explicit Composer build script."); }
+  const runtimeEntrypoint = scripts.start ? "package.json#scripts.start" : rootNames.has("main.go") ? "main.go" : rootNames.has("Cargo.toml") ? "src/main.rs" : rootNames.has("artisan") ? "artisan" : undefined;
+  const performance = chooseProjectPerformance(allFiles.length, projectSizeBytes);
   return {
     projectId: project.id,
     rootPath: root,
@@ -270,7 +320,14 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
       ...Object.entries(stringRecord(packageJson?.devDependencies)).map(([name, version]) => ({ name, version, kind: "development" as const })),
     ].sort((left, right) => left.name.localeCompare(right.name)),
     scripts,
-    commands: Object.fromEntries(Object.entries(commandNames).filter(([, script]) => script && scripts[script]).map(([key, script]) => [key, `${manager || "npm"} run ${script}`])),
+    commands,
+    commandEvidence,
+    manifests,
+    lockfiles,
+    workspaceKind,
+    testRoots,
+    runtimeEntrypoint,
+    performance,
     envFiles,
     ci,
     docker,
@@ -1213,6 +1270,67 @@ router.get("/projects/:id/profile", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   res.json({ profile: await detectProjectProfile(project) });
+});
+
+router.get("/projects/:id/documentation", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const profile = await detectProjectProfile(project);
+  return res.json({ audit: await auditDocumentation(project.path, profile), profile: { manifests: profile.manifests, commands: profile.commands } });
+});
+
+router.post("/projects/:id/documentation/:findingId/preview", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const profile = await detectProjectProfile(project);
+  const audit = await auditDocumentation(project.path, profile);
+  return res.json(await previewDocumentationFix(project.path, audit, req.params.findingId));
+});
+
+router.post("/projects/:id/documentation/:findingId/apply", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Documentation fix"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Documentation edits require explicit confirmation after preview.", permission: "ask" });
+  const profile = await detectProjectProfile(project);
+  const audit = await auditDocumentation(project.path, profile);
+  const result = await applyDocumentationFix(project.path, profile, audit, req.params.findingId);
+  return res.status(result.applied && result.verified ? 200 : 422).json(result);
+});
+
+router.get("/search", async (req, res) => {
+  const query = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase().slice(0, 120) : "";
+  if (!query) return res.json({ results: [] });
+  const results: Array<{ kind: string; title: string; detail: string; projectId: string; score: number }> = [];
+  for (const project of (await allProjects()).slice(0, 25)) {
+    const add = (kind: string, title: string, detail: string) => {
+      const haystack = `${title} ${detail}`.toLowerCase();
+      const exact = title.toLowerCase() === query ? 100 : title.toLowerCase().startsWith(query) ? 80 : haystack.includes(query) ? 50 : 0;
+      if (exact) results.push({ kind, title, detail, projectId: project.id, score: exact });
+    };
+    add("project", project.name, project.projectType);
+    const profile = await detectProjectProfile(project);
+    profile.dependencies.forEach((entry) => add("dependency", entry.name, `${entry.version} · ${project.name}`));
+    profile.framework.forEach((entry) => add("technology", entry, project.name));
+    const graph = await buildProjectGraph(project.path);
+    graph.nodes.forEach((entry) => add(entry.type, entry.label, `${entry.path || ""} · ${project.name}`));
+    listTasks(project.id).forEach((task) => add("task", `${task.kind} · ${task.status}`, task.error || task.logs.at(-1)?.message || project.name));
+  }
+  return res.json({ results: results.sort((left, right) => right.score - left.score || left.title.localeCompare(right.title)).slice(0, 100) });
+});
+
+router.get("/projects/:id/cache", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  return res.json({ entries: projectCacheStatus(project.path) });
+});
+
+router.post("/projects/:id/cache/clear", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Clear cache"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Clearing local project cache requires explicit confirmation.", permission: "ask" });
+  return res.json(clearProjectCache(project.path));
 });
 
 router.get("/projects/:id/graph", async (req, res) => {

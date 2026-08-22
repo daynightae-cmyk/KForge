@@ -1,4 +1,6 @@
 import { randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
 
 export type TaskKind = "scan" | "audit" | "test" | "build" | "typecheck" | "runtime" | "git" | "github" | "clone" | "agent" | "snapshot";
 export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked" | "retrying";
@@ -18,6 +20,7 @@ export interface KForgeTask {
   output?: string;
   artifacts?: string[];
   retryOf?: string;
+  interrupted?: boolean;
 }
 
 export interface TaskExecutionResult {
@@ -31,10 +34,43 @@ export interface TaskExecutionResult {
 
 const tasks = new Map<string, KForgeTask>();
 const executors = new Map<string, () => Promise<TaskExecutionResult>>();
+let storeFile: string | undefined;
+let persistenceQueue = Promise.resolve();
 
 function append(task: KForgeTask, message: string, stream: "system" | "stdout" | "stderr" = "system") {
   task.logs.push({ at: new Date().toISOString(), message, stream });
   task.logs = task.logs.slice(-200);
+}
+
+function queuePersist() {
+  if (!storeFile) return;
+  persistenceQueue = persistenceQueue.then(async () => {
+    const directory = path.dirname(storeFile!);
+    await fs.mkdir(directory, { recursive: true });
+    const temporary = `${storeFile}.tmp`;
+    await fs.writeFile(temporary, JSON.stringify({ tasks: [...tasks.values()] }, null, 2), "utf8");
+    await fs.rename(temporary, storeFile!);
+  }).catch(() => undefined);
+}
+
+export async function initializeTaskStore(workspaceRoot: string) {
+  storeFile = path.join(workspaceRoot, ".kforge", "tasks.json");
+  const saved = await fs.readFile(storeFile, "utf8").then((text) => JSON.parse(text) as { tasks?: KForgeTask[] }).catch(() => ({ tasks: [] }));
+  let interrupted = 0;
+  for (const task of saved.tasks || []) {
+    if (["queued", "running", "retrying"].includes(task.status)) {
+      task.status = "blocked";
+      task.interrupted = true;
+      task.finishedAt = new Date().toISOString();
+      task.durationMs = new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime();
+      task.error = "Interrupted by a previous KForge session. Inspect the task evidence, then rerun or roll back the related snapshot if applicable.";
+      append(task, task.error, "stderr");
+      interrupted += 1;
+    }
+    tasks.set(task.id, task);
+  }
+  queuePersist();
+  return { interrupted };
 }
 
 export function listTasks(projectId?: string) {
@@ -50,6 +86,7 @@ export function appendTaskLog(taskId: string, message: string, progress?: number
   if (!task) return undefined;
   if (typeof progress === "number") task.progress = Math.max(task.progress, Math.min(99, Math.round(progress)));
   append(task, message);
+  queuePersist();
   return task;
 }
 
@@ -57,11 +94,13 @@ export function startTask(projectId: string, kind: TaskKind, executor: () => Pro
   const task: KForgeTask = { id: randomUUID(), projectId, kind, status: retryOf ? "retrying" : "queued", progress: 0, logs: [], startedAt: new Date().toISOString(), retryOf };
   tasks.set(task.id, task);
   executors.set(task.id, executor);
+  queuePersist();
   queueMicrotask(async () => {
     if (task.status === "cancelled") return;
     task.status = "running";
     task.progress = 10;
     append(task, retryOf ? `${kind} retry started.` : `${kind} started.`);
+    queuePersist();
     try {
       const result = await executor();
       task.progress = 100;
@@ -82,6 +121,7 @@ export function startTask(projectId: string, kind: TaskKind, executor: () => Pro
       task.finishedAt = new Date().toISOString();
       task.durationMs = new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime();
     }
+    queuePersist();
   });
   return task;
 }
@@ -94,6 +134,7 @@ export function cancelTask(taskId: string) {
   task.finishedAt = new Date().toISOString();
   append(task, "Task was cancelled before execution started.");
   task.durationMs = new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime();
+  queuePersist();
   return { task, cancellable: true };
 }
 

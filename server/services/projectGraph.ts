@@ -1,5 +1,7 @@
 import { promises as fs, type Dirent } from "fs";
 import path from "path";
+import { createHash } from "crypto";
+import { readCache, writeCache } from "./projectPerformance";
 
 export type GraphNodeType = "file" | "route" | "api" | "test" | "config";
 
@@ -44,6 +46,14 @@ async function sourceFiles(root: string, limit = 2_000) {
   return files;
 }
 
+async function sourceFingerprint(root: string, files: string[]) {
+  const state = await Promise.all(files.map(async (file) => {
+    const stat = await fs.stat(path.join(root, file)).catch(() => undefined);
+    return stat ? `${file}:${stat.size}:${Math.round(stat.mtimeMs)}` : file;
+  }));
+  return createHash("sha1").update(state.join("|"), "utf8").digest("hex");
+}
+
 function resolveImport(from: string, target: string, known: Set<string>) {
   if (!target.startsWith(".")) return undefined;
   const base = path.posix.normalize(path.posix.join(path.posix.dirname(from), target));
@@ -53,6 +63,10 @@ function resolveImport(from: string, target: string, known: Set<string>) {
 
 export async function buildProjectGraph(projectPath: string): Promise<ProjectGraph> {
   const files = await sourceFiles(projectPath);
+  const fingerprint = await sourceFingerprint(projectPath, files);
+  const cacheKey = `${projectPath}:graph`;
+  const cached = readCache<ProjectGraph>(cacheKey, fingerprint);
+  if (cached) return { ...cached, generatedAt: cached.generatedAt };
   const known = new Set(files);
   const nodes: GraphNode[] = files.map((file) => ({ id: `file:${file}`, type: /(?:\.test|\.spec)\./.test(file) ? "test" : /(?:config|\.config\.)/.test(file) ? "config" : "file", label: path.posix.basename(file), path: file }));
   const edges: GraphEdge[] = [];
@@ -81,7 +95,7 @@ export async function buildProjectGraph(projectPath: string): Promise<ProjectGra
       edges.push({ from: `file:${file}`, to: id, type: "defines" });
     }
   }
-  return { generatedAt: new Date().toISOString(), nodes, edges, summary: { files: files.length, imports: edges.filter((edge) => edge.type === "imports").length, routes: nodes.filter((node) => node.type === "route").length, apis: nodes.filter((node) => node.type === "api").length, tests: nodes.filter((node) => node.type === "test").length } };
+  return writeCache(cacheKey, fingerprint, { generatedAt: new Date().toISOString(), nodes, edges, summary: { files: files.length, imports: edges.filter((edge) => edge.type === "imports").length, routes: nodes.filter((node) => node.type === "route").length, apis: nodes.filter((node) => node.type === "api").length, tests: nodes.filter((node) => node.type === "test").length } });
 }
 
 export function analyzeImpact(graph: ProjectGraph, file: string) {

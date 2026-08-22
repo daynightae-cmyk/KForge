@@ -1,0 +1,48 @@
+import type { ProjectPerformanceStrategy } from "../../shared/workspace";
+
+export function chooseProjectPerformance(totalFiles: number, projectSizeBytes: number): ProjectPerformanceStrategy {
+  const megabytes = projectSizeBytes / (1024 * 1024);
+  if (totalFiles >= 20_000 || megabytes >= 1_024) {
+    return { scale: "very-large", parallelism: 2, maxIndexedFiles: 20_000, graphDepth: 2, scannerConcurrency: 1, cacheEnabled: true, rationale: `Very Large: ${totalFiles.toLocaleString()} files / ${Math.round(megabytes)} MB; bounded indexing and shallow graph protect interactivity.` };
+  }
+  if (totalFiles >= 5_000 || megabytes >= 256) {
+    return { scale: "large", parallelism: 3, maxIndexedFiles: 12_000, graphDepth: 3, scannerConcurrency: 2, cacheEnabled: true, rationale: `Large: ${totalFiles.toLocaleString()} files / ${Math.round(megabytes)} MB; incremental cached analysis is enabled.` };
+  }
+  if (totalFiles >= 1_000 || megabytes >= 64) {
+    return { scale: "medium", parallelism: 4, maxIndexedFiles: 6_000, graphDepth: 4, scannerConcurrency: 3, cacheEnabled: true, rationale: `Medium: ${totalFiles.toLocaleString()} files / ${Math.round(megabytes)} MB; standard caching and bounded graph depth apply.` };
+  }
+  return { scale: "small", parallelism: 4, maxIndexedFiles: 2_000, graphDepth: 6, scannerConcurrency: 4, cacheEnabled: true, rationale: `Small: ${totalFiles.toLocaleString()} files / ${Math.round(megabytes)} MB; full local indexing is available.` };
+}
+
+export interface CacheEntry<T> {
+  value: T;
+  fingerprint: string;
+  createdAt: string;
+  hits: number;
+}
+
+const caches = new Map<string, CacheEntry<unknown>>();
+
+export function readCache<T>(key: string, fingerprint: string): T | undefined {
+  const entry = caches.get(key);
+  if (!entry || entry.fingerprint !== fingerprint) return undefined;
+  entry.hits += 1;
+  return entry.value as T;
+}
+
+export function writeCache<T>(key: string, fingerprint: string, value: T) {
+  caches.set(key, { value, fingerprint, createdAt: new Date().toISOString(), hits: 0 });
+  return value;
+}
+
+export function clearProjectCache(projectPath: string) {
+  let removed = 0;
+  for (const key of caches.keys()) {
+    if (key.startsWith(`${projectPath}:`)) { caches.delete(key); removed += 1; }
+  }
+  return { removed };
+}
+
+export function projectCacheStatus(projectPath: string) {
+  return [...caches.entries()].filter(([key]) => key.startsWith(`${projectPath}:`)).map(([key, entry]) => ({ key: key.slice(projectPath.length + 1), createdAt: entry.createdAt, hits: entry.hits, fingerprint: entry.fingerprint }));
+}

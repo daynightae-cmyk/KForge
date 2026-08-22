@@ -1,0 +1,8 @@
+{
+  "name": "kforge-documentation-fixture",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "test": "node --test"
+  }
+}

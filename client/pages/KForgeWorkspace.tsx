@@ -135,6 +135,8 @@ export default function KForgeWorkspace() {
   const [activeNav, setActiveNav] = useState("Workspace");
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
+  const [globalResults, setGlobalResults] = useState<Array<{ kind: string; title: string; detail: string; projectId: string; score: number }>>([]);
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
   const [actionResults, setActionResults] = useState<Record<string, Partial<Record<WorkspaceAction, CommandResult>>>>({});
   const [scans, setScans] = useState<Record<string, ProjectScan>>({});
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -179,6 +181,20 @@ export default function KForgeWorkspace() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!commandOpen || commandQuery.trim().length < 2) { setGlobalResults([]); setGlobalSearchLoading(false); return; }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setGlobalSearchLoading(true);
+      void fetch(`/api/workspace/search?q=${encodeURIComponent(commandQuery.trim())}`, { signal: controller.signal })
+        .then(async (response) => response.ok ? response.json() as Promise<{ results?: Array<{ kind: string; title: string; detail: string; projectId: string; score: number }> }> : { results: [] })
+        .then((payload) => setGlobalResults(payload.results || []))
+        .catch(() => { if (!controller.signal.aborted) setGlobalResults([]); })
+        .finally(() => { if (!controller.signal.aborted) setGlobalSearchLoading(false); });
+    }, 180);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [commandOpen, commandQuery]);
 
   const projects = workspace?.projects || [];
   const activeProject = projects.find((project) => project.id === activeProjectId) || projects[0];
@@ -412,7 +428,7 @@ export default function KForgeWorkspace() {
         </section>
       </main>
 
-      {commandOpen && <div className="kf-overlay" role="dialog" aria-modal="true" aria-label="KForge command palette"><div className="kf-command-palette"><div className="kf-command-input"><Command size={18} /><input autoFocus placeholder="Type a command…" value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} /><button onClick={() => setCommandOpen(false)}><X size={16} /></button></div><div className="kf-command-list">{commandItems.map((command) => <button key={command.label} onClick={() => executeCommand(command.label, command.callback)}><span>{command.label}</span><small>{command.meta}</small></button>)}{commandItems.length === 0 && <p>No command found.</p>}</div><p className="kf-command-help"><kbd>↑↓</kbd> navigate <kbd>Enter</kbd> run <kbd>Esc</kbd> close</p></div></div>}
+      {commandOpen && <div className="kf-overlay" role="dialog" aria-modal="true" aria-label="KForge command palette"><div className="kf-command-palette"><div className="kf-command-input"><Command size={18} /><input autoFocus aria-label="Search commands and local workspace" placeholder="Search commands, files, problems, tasks…" value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} /><button aria-label="Close command palette" onClick={() => setCommandOpen(false)}><X size={16} /></button></div><div className="kf-command-list">{commandItems.map((command) => <button key={command.label} onClick={() => executeCommand(command.label, command.callback)}><span>{command.label}</span><small>{command.meta}</small></button>)}{globalSearchLoading && <p role="status">Searching local workspace…</p>}{globalResults.map((result) => <button key={`${result.projectId}:${result.kind}:${result.title}:${result.detail}`} onClick={() => { setActiveProjectId(result.projectId); setCommandOpen(false); setCommandQuery(""); }}><span>{result.title}</span><small>{result.kind} · {result.detail}</small></button>)}{commandItems.length === 0 && !globalSearchLoading && globalResults.length === 0 && <p>No local result found.</p>}</div><p className="kf-command-help"><kbd>Ctrl/Cmd K</kbd> search · <kbd>Esc</kbd> close</p></div></div>}
       {modal && <ProjectModal mode={modal} localPath={localPath} setLocalPath={setLocalPath} remoteUrl={remoteUrl} setRemoteUrl={setRemoteUrl} targetName={targetName} setTargetName={setTargetName} submitting={submitting} onClose={() => setModal(null)} onSubmit={modal === "open" ? () => void openProject() : () => void cloneProject()} />}
     </div>
   );
@@ -447,7 +463,8 @@ function CapabilityPanel({ activeNav, project, scan, tasks, platform, onPlatform
   if (activeNav === "Models") return <AICenter view="models" onlineOptional={platform?.mode === "online-optional"} />;
   if (activeNav === "Agents") return <AgentMissionCenter project={project} />;
   if (activeNav === "Tasks") return <TaskCenterPanel tasks={tasks} onTaskControl={onTaskControl} />;
-  if (activeNav === "Project graph" || activeNav === "Architecture") return <GraphPanel project={project} />;
+  if (activeNav === "Project graph") return <GraphPanel project={project} />;
+  if (activeNav === "Architecture") return <DocumentationPanel project={project} />;
   if (activeNav === "Ask KForge") return <AskKForgePanel project={project} />;
   if (activeNav === "Release Gate") return <ReleaseGatePanel project={project} />;
   if (activeNav === "KForge Sonar" || activeNav === "Problems" || activeNav === "Solutions" || activeNav === "Security scan" || activeNav === "Dependencies") return <QualityPanel title={activeNav} scan={scan} onScan={() => onRun("scan")} />;
@@ -492,6 +509,15 @@ function AgentMissionCenter({ project }: { project: ProjectSummary }) {
 }
 
 function TaskCenterPanel({ tasks, onTaskControl }: { tasks: TaskItem[]; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) { return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>Task Center v2</h3></div><span>{tasks.length} selected-project task(s)</span></div>{tasks.length ? <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span><strong>{task.action} · {task.state}</strong><small>{task.message} · {task.progress}%{task.finishedAt ? ` · ${Math.max(0, Math.round((new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime()) / 1000))}s` : ""}</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for process output…"}</pre>{task.state === "queued" && <button onClick={() => onTaskControl(task, "cancel")}>Cancel queued task</button>}{["success", "error", "cancelled", "blocked"].includes(task.state) && <button onClick={() => onTaskControl(task, "retry")}>Retry task</button>}</details>)}</div> : <p className="kf-capability-copy">Agent and project tasks appear here after they start. Logs and output come from the actual local process.</p>}</section>; }
+
+function DocumentationPanel({ project }: { project: ProjectSummary }) {
+  const [audit, setAudit] = useState<{ findings: Array<{ id: string; sourceDocument: string; claim: string; evidence: string; actualState: string; severity: string; suggestedFix: string }> } | null>(null);
+  const [message, setMessage] = useState("Loading local documentation evidence…");
+  const refresh = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/documentation`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Documentation audit failed."); setAudit(payload.audit); setMessage(""); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Documentation audit failed."); } };
+  useEffect(() => { void refresh(); }, [project.id]);
+  const previewAndApply = async (findingId: string) => { try { const previewResponse = await fetch(`/api/workspace/projects/${project.id}/documentation/${findingId}/preview`, { method: "POST" }); const preview = await previewResponse.json(); if (!previewResponse.ok || !preview.patch) throw new Error(preview.reason || "This evidence requires manual review."); if (!window.confirm(`Apply documentation fix?\n\n${preview.patch.before}\n→ ${preview.patch.after}`)) return; const applyResponse = await fetch(`/api/workspace/projects/${project.id}/documentation/${findingId}/apply`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true }) }); const applied = await applyResponse.json(); if (!applyResponse.ok || !applied.verified) throw new Error(applied.reason || "Documentation verification failed."); setMessage("Documentation fix applied and re-audited."); await refresh(); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Documentation fix failed."); } };
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Box size={17} /><h3>Documentation Audit V2</h3></div><button onClick={() => void refresh()}>Refresh</button></div>{message && <p className="kf-capability-message" role="status">{message}</p>}{!audit ? <p className="kf-capability-copy">Loading documentation evidence…</p> : audit.findings.length === 0 ? <p className="kf-capability-copy">No semantic contradictions, missing local links, or stale package commands were detected.</p> : <div className="kf-issues">{audit.findings.map((finding) => <details className="kf-issue" key={finding.id}><summary><span className={`kf-severity kf-severity--${finding.severity === "high" ? "high" : finding.severity === "medium" ? "medium" : "low"}`}>{finding.severity}</span><span><strong>{finding.sourceDocument}</strong><small>{finding.claim}</small></span><ChevronRight size={15} /></summary><div><p><strong>Evidence:</strong> {finding.evidence}</p><p><strong>Actual state:</strong> {finding.actualState}</p><p className="kf-suggestion"><Wrench size={14} />{finding.suggestedFix}</p>{project.trust === "trusted" && <button className="kf-solution-button" onClick={() => void previewAndApply(finding.id)}>Preview + Apply + Verify</button>}{project.trust !== "trusted" && <p className="kf-capability-copy">Blocked until this project is trusted for a write operation.</p>}</div></details>)}</div>}</section>;
+}
 
 function GraphPanel({ project }: { project: ProjectSummary }) { const [data, setData] = useState<{ graph?: { summary: { files: number; imports: number; routes: number; apis: number; tests: number } } } | null>(null); const [message, setMessage] = useState(""); useEffect(() => { void (async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/graph`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Graph unavailable."); setData(payload); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Graph request failed."); } })(); }, [project.id]); const summary = data?.graph?.summary; return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Network size={17} /><h3>Project Graph</h3></div><span>Actual static evidence</span></div>{summary ? <div className="kf-hardware-grid"><span><strong>Files</strong>{summary.files}</span><span><strong>Imports</strong>{summary.imports}</span><span><strong>Routes</strong>{summary.routes}</span><span><strong>APIs</strong>{summary.apis}</span><span><strong>Tests</strong>{summary.tests}</span></div> : <p className="kf-capability-copy">{message || "Building graph…"}</p>}</section>; }
 

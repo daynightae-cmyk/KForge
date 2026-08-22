@@ -1,0 +1,12 @@
+{
+  "name": "kforge-node-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "build": "node -e \"process.stdout.write('build')\"",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

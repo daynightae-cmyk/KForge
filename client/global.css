@@ -574,3 +574,18 @@
   .kf-provider-model button { border: 1px solid #c8d2e6; border-radius: 4px; background: #fff; color: #43516a; padding: 3px 6px; font: 9px inherit; font-weight: 700; cursor: pointer; }
   .kf-provider-model button:hover { border-color: #9ebbf4; color: #1d58cf; background: #f3f7ff; }
 }
+
+/* Keyboard and motion accessibility for the KForge surface. */
+.kf-app :where(button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid #2864e8;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-app *, .kf-app *::before, .kf-app *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

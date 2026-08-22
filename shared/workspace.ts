@@ -34,6 +34,27 @@ export interface ProjectCommands {
   build?: string;
   dev?: string;
   production?: string;
+  runtime?: string;
+}
+
+export interface CommandEvidence {
+  kind: "typecheck" | "test" | "build" | "dev" | "production" | "runtime";
+  command?: string;
+  source: string;
+  known: boolean;
+  detail: string;
+}
+
+export type ProjectScale = "small" | "medium" | "large" | "very-large";
+
+export interface ProjectPerformanceStrategy {
+  scale: ProjectScale;
+  parallelism: number;
+  maxIndexedFiles: number;
+  graphDepth: number;
+  scannerConcurrency: number;
+  cacheEnabled: boolean;
+  rationale: string;
 }
 
 export interface ProjectProfile {
@@ -45,6 +66,13 @@ export interface ProjectProfile {
   dependencies: Array<{ name: string; version: string; kind: "production" | "development" }>;
   scripts: Record<string, string>;
   commands: ProjectCommands;
+  commandEvidence: CommandEvidence[];
+  manifests: string[];
+  lockfiles: string[];
+  workspaceKind: "single" | "workspace" | "monorepo";
+  testRoots: string[];
+  runtimeEntrypoint?: string;
+  performance: ProjectPerformanceStrategy;
   envFiles: string[];
   ci: string[];
   docker: string[];
