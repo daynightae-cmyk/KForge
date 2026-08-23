@@ -6,7 +6,8 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject } from "./workspace";
+import { actionEvidenceFromTasks, detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject } from "./workspace";
+import type { KForgeTask } from "../services/tasks";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 const fixture = (name: string) => path.join(fixturesRoot, name);
@@ -124,6 +125,22 @@ describe("KForge Workspace engines", () => {
     } finally {
       await fs.rm(workspaceRoot, { recursive: true, force: true });
     }
+  });
+
+  it("restores the latest completed verification evidence and preserves fresher in-memory results", () => {
+    const projectId = "evidence-project";
+    const tasks: KForgeTask[] = [
+      { id: "test-old", projectId, kind: "test", status: "succeeded", progress: 100, logs: [], startedAt: "2026-01-01T00:00:00.000Z", finishedAt: "2026-01-01T00:01:00.000Z", exitCode: 0, output: "old test pass" },
+      { id: "test-new", projectId, kind: "test", status: "failed", progress: 100, logs: [], startedAt: "2026-01-02T00:00:00.000Z", finishedAt: "2026-01-02T00:01:00.000Z", exitCode: 1, error: "new test failure", output: "new test failure" },
+      { id: "typecheck", projectId, kind: "typecheck", status: "succeeded", progress: 100, logs: [], startedAt: "2026-01-03T00:00:00.000Z", finishedAt: "2026-01-03T00:01:00.000Z", exitCode: 0, output: "typecheck pass" },
+      { id: "agent", projectId, kind: "agent", status: "succeeded", progress: 100, logs: [], startedAt: "2026-01-04T00:00:00.000Z", finishedAt: "2026-01-04T00:01:00.000Z", output: "not a command result" },
+    ];
+    const evidence = actionEvidenceFromTasks(tasks, {
+      test: { action: "test", projectId, ok: true, startedAt: "2026-01-05T00:00:00.000Z", completedAt: "2026-01-05T00:01:00.000Z", exitCode: 0, output: "current test pass", message: "Test completed successfully." },
+    });
+    expect(evidence.test).toMatchObject({ ok: true, output: "current test pass" });
+    expect(evidence.typecheck).toMatchObject({ ok: true, output: "typecheck pass" });
+    expect(evidence.build).toBeUndefined();
   });
 
   it("keeps a newly opened project untrusted until explicit local approval", async () => {

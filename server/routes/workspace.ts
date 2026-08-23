@@ -28,7 +28,7 @@ import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snap
 import { buildAgentContext, buildLocalAIPlan, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
-import { appendTaskLog, cancelTask, getTask, initializeTaskStore, listTasks, retryTask, startTask, type TaskKind } from "../services/tasks";
+import { appendTaskLog, cancelTask, getTask, initializeTaskStore, listTasks, retryTask, startTask, type KForgeTask, type TaskKind } from "../services/tasks";
 import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
@@ -92,6 +92,36 @@ async function run(command: string, args: string[], cwd: string, timeout = 15_00
     const details = errorDetails(error);
     return { ok: false, code: details.code, output: `${details.stdout}${details.stderr || details.message}`.trim() };
   }
+}
+
+function commandResultFromTask(task: KForgeTask): CommandResult | undefined {
+  if (!(["typecheck", "test", "build", "runtime"] as const).includes(task.kind as "typecheck" | "test" | "build" | "runtime")) return undefined;
+  if ((task.status !== "succeeded" && task.status !== "failed") || !task.finishedAt) return undefined;
+  const action = task.kind as CommandResult["action"];
+  return {
+    action,
+    projectId: task.projectId,
+    ok: task.status === "succeeded",
+    startedAt: task.startedAt,
+    completedAt: task.finishedAt,
+    exitCode: task.exitCode,
+    output: task.output || "",
+    message: task.error || task.logs.at(-1)?.message || `${action} completed from persisted task evidence.`,
+  };
+}
+
+export function actionEvidenceFromTasks(tasks: KForgeTask[], inMemory: Partial<Record<WorkspaceAction, CommandResult>> = {}): Partial<Record<WorkspaceAction, CommandResult>> {
+  const persisted: Partial<Record<WorkspaceAction, CommandResult>> = {};
+  const newestFirst = [...tasks].sort((left, right) => (right.finishedAt || right.startedAt).localeCompare(left.finishedAt || left.startedAt));
+  for (const task of newestFirst) {
+    const result = commandResultFromTask(task);
+    if (result && !persisted[result.action]) persisted[result.action] = result;
+  }
+  return { ...persisted, ...inMemory };
+}
+
+function actionEvidence(projectId: string): Partial<Record<WorkspaceAction, CommandResult>> {
+  return actionEvidenceFromTasks(listTasks(projectId), latestActions.get(projectId) || {});
 }
 
 async function pathExists(target: string) {
@@ -597,7 +627,7 @@ export async function scanProject(project: ProjectSummary): Promise<ProjectScan>
   const profile = await detectProjectProfile(project);
   const tools = await toolAvailability(project, profile);
   const diagnostics: ScanIssue[] = [];
-  const actionState = latestActions.get(project.id) || {};
+  const actionState = actionEvidence(project.id);
   const typecheckTool = tools.find((tool) => tool.name === "typescript");
   let typecheckStatus: WorkspaceStatus = "unknown";
   if (typecheckTool?.available) {
@@ -845,7 +875,7 @@ async function smartCommitPreview(project: ProjectSummary) {
   const areas = [...new Set(changes.map((entry) => entry.file.split(/[\\/]/)[0] || "root"))];
   const scope = areas.length === 1 ? areas[0].replace(/[^A-Za-z0-9_-]/g, "") || "workspace" : "workspace";
   const title = changes.length ? `chore(${scope}): update ${changes.length} file${changes.length === 1 ? "" : "s"}` : "chore: no working tree changes";
-  const validations = Object.values(latestActions.get(project.id) || {}).filter((entry): entry is CommandResult => Boolean(entry)).map((entry) => ({ action: entry.action, ok: entry.ok, completedAt: entry.completedAt, message: entry.message }));
+  const validations = Object.values(actionEvidence(project.id)).filter((entry): entry is CommandResult => Boolean(entry)).map((entry) => ({ action: entry.action, ok: entry.ok, completedAt: entry.completedAt, message: entry.message }));
   return { title, description: changes.length ? `Evidence-backed proposal generated from the current local Git status. Review the listed files and validation evidence before committing.` : "No local changes were detected; KForge will not propose an empty commit.", changedFiles: changes, diffStat: diffStat.output || "No tracked diff statistics are available.", validations, generatedAt: new Date().toISOString() };
 }
 
