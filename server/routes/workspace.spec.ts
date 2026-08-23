@@ -4,9 +4,9 @@ import path from "path";
 import { createSnapshot, restoreSnapshot } from "../services/snapshots";
 import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
-import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, updateProjectCollection } from "../services/projectCollections";
+import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { actionEvidenceFromTasks, detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject } from "./workspace";
+import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject } from "./workspace";
 import type { KForgeTask } from "../services/tasks";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
@@ -115,13 +115,31 @@ describe("KForge Workspace engines", () => {
     try {
       await fs.mkdir(projectPath);
       await recordProjectOpened(workspaceRoot, projectPath);
-      await updateProjectCollection(workspaceRoot, projectPath, { favorite: true, pinned: true, archived: false });
+      await recordProjectScanned(workspaceRoot, projectPath);
+      await recordProjectTask(workspaceRoot, projectPath);
+      await updateProjectCollection(workspaceRoot, projectPath, { favorite: true, pinned: true, archived: false, tags: ["backend", "Release", "backend", "  local first  "] });
       const restored = await getProjectCollectionEntry(workspaceRoot, projectPath);
       expect(restored.favorite).toBe(true);
       expect(restored.pinned).toBe(true);
       expect(restored.archived).toBe(false);
       expect(restored.lastOpenedAt).toEqual(expect.any(String));
+      expect(restored.lastScannedAt).toEqual(expect.any(String));
+      expect(restored.lastTaskAt).toEqual(expect.any(String));
+      expect(restored.tags).toEqual(["backend", "local first", "Release"]);
       expect(collectionCategories(restored)).toEqual({ recent: true, favorite: true, pinned: true, archive: false });
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores a deleted project path retained in local collections", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-stale-collection-"));
+    const removedProject = path.join(workspaceRoot, "removed-project");
+    try {
+      await fs.mkdir(removedProject);
+      await recordProjectOpened(workspaceRoot, removedProject);
+      await fs.rm(removedProject, { recursive: true, force: true });
+      await expect(candidateProjectPaths(workspaceRoot)).resolves.not.toContain(removedProject);
     } finally {
       await fs.rm(workspaceRoot, { recursive: true, force: true });
     }

@@ -35,7 +35,7 @@ import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } fr
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
 import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../services/securityTools";
 import { getMarketplace, previewMarketplaceInstall } from "../services/marketplace";
-import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, updateProjectCollection } from "../services/projectCollections";
+import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -376,7 +376,7 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
 export async function makeProjectSummary(projectPath: string): Promise<ProjectSummary> {
   const [git, profile, trust] = await Promise.all([
     gitInfo(projectPath),
-    detectProjectProfile({ id: projectId(projectPath), name: path.basename(projectPath), trust: "untrusted", path: projectPath, provider: "Local", branch: "", lastActivity: "", projectType: "", modifiedFiles: 0, untrackedFiles: 0, ahead: 0, behind: 0, healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: "unknown", favorite: false, pinned: false, archived: false, categories: { recent: false, favorite: false, pinned: false, archive: false } }),
+    detectProjectProfile({ id: projectId(projectPath), name: path.basename(projectPath), trust: "untrusted", path: projectPath, provider: "Local", branch: "", lastActivity: "", projectType: "", modifiedFiles: 0, untrackedFiles: 0, ahead: 0, behind: 0, healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: "unknown", tags: [], favorite: false, pinned: false, archived: false, categories: { recent: false, favorite: false, pinned: false, archive: false } }),
     getProjectTrust(getWorkspaceRoot(), projectPath),
   ]);
   const stats = await fs.stat(projectPath);
@@ -388,13 +388,17 @@ export async function makeProjectSummary(projectPath: string): Promise<ProjectSu
     projectType: [...profile.framework, ...profile.languages.filter((language) => !profile.framework.includes(language))].join(" + ") || "Local project",
     modifiedFiles: git.modifiedFiles, untrackedFiles: git.untrackedFiles, ahead: git.ahead, behind: git.behind,
     healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: !git.isGit ? "unknown" : git.behind > 0 ? "warning" : "pass",
-    lastOpenedAt: collection.lastOpenedAt, favorite: collection.favorite, pinned: collection.pinned, archived: collection.archived, categories: collectionCategories(collection),
+    lastOpenedAt: collection.lastOpenedAt, lastScannedAt: collection.lastScannedAt, lastTaskAt: collection.lastTaskAt, tags: collection.tags, favorite: collection.favorite, pinned: collection.pinned, archived: collection.archived, categories: collectionCategories(collection),
   };
 }
 
-async function candidateProjectPaths(root = getWorkspaceRoot()) {
-  const candidates = new Set<string>([...openedPaths]);
-  (await listProjectCollectionEntries(root)).forEach((entry) => candidates.add(entry.path));
+export async function candidateProjectPaths(root = getWorkspaceRoot()) {
+  const candidates = new Set<string>();
+  const knownPaths = [...openedPaths, ...(await listProjectCollectionEntries(root)).map((entry) => entry.path)];
+  for (const candidate of knownPaths) {
+    const stat = await fs.stat(candidate).catch(() => undefined);
+    if (stat?.isDirectory()) candidates.add(candidate);
+  }
   if (await pathExists(path.join(root, "package.json"))) candidates.add(root);
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => [] as Dirent[]);
   for (const entry of entries.filter((item) => item.isDirectory() && !item.name.startsWith(".")).slice(0, 100)) {
@@ -644,8 +648,10 @@ export async function scanProject(project: ProjectSummary): Promise<ProjectScan>
   if (project.modifiedFiles + project.untrackedFiles > 0) diagnostics.push(issue(project.id, "working-tree-changed", "info", "git", "Local changes are present", `${project.modifiedFiles} modified and ${project.untrackedFiles} untracked file(s) are present.`, { source: "Git", fixability: "manual", suggestion: "Review the diff before pulling, pushing, or creating a release." }));
   if (project.behind > 0) diagnostics.push(issue(project.id, "remote-behind", "medium", "git", "Remote updates are available", `The current branch is ${project.behind} commit(s) behind its upstream branch.`, { source: "Git", fixability: "guided", suggestion: "Pull and resolve conflicts before dependent work." }));
   const health = await calculateHealth(project, profile, diagnostics, actionState, typecheckStatus);
+  const scannedAt = new Date().toISOString();
+  await recordProjectScanned(getWorkspaceRoot(), project.path);
   return {
-    projectId: project.id, scannedAt: new Date().toISOString(), profile, health, technology: [...profile.framework, ...profile.languages],
+    projectId: project.id, scannedAt, profile, health, technology: [...profile.framework, ...profile.languages],
     git: { branch: project.branch, remoteUrl: project.remoteUrl, modifiedFiles: project.modifiedFiles, untrackedFiles: project.untrackedFiles, ahead: project.ahead, behind: project.behind },
     issues: diagnostics,
     summaries: { security: statusForIssues(diagnostics, ["security"]), dependencies: statusForIssues(diagnostics, ["dependency"]), tests: actionState.test ? (actionState.test.ok ? "pass" : "fail") : "unknown", build: actionState.build ? (actionState.build.ok ? "pass" : "fail") : "unknown", typecheck: typecheckStatus },
@@ -684,6 +690,7 @@ async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): P
 
 export async function executeProjectAction(project: ProjectSummary, action: WorkspaceAction): Promise<CommandResult> {
   const startedAt = new Date().toISOString();
+  await recordProjectTask(getWorkspaceRoot(), project.path);
   const profile = await detectProjectProfile(project);
   if (action === "scan") {
     const scan = await scanProject(project);
@@ -1371,9 +1378,10 @@ router.post("/projects/:id/collection", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   const allowed = ["favorite", "pinned", "archived"] as const;
-  const patch: Partial<Record<(typeof allowed)[number], boolean>> = {};
+  const patch: { favorite?: boolean; pinned?: boolean; archived?: boolean; tags?: string[] } = {};
   for (const key of allowed) if (typeof req.body?.[key] === "boolean") patch[key] = req.body[key];
-  if (!Object.keys(patch).length) return res.status(400).json({ error: "Provide at least one boolean collection field: favorite, pinned, or archived." });
+  if (Array.isArray(req.body?.tags) && req.body.tags.every((tag: unknown) => typeof tag === "string")) patch.tags = req.body.tags;
+  if (!Object.keys(patch).length) return res.status(400).json({ error: "Provide one or more collection fields: favorite, pinned, archived, or tags." });
   const collection = await updateProjectCollection(getWorkspaceRoot(), project.path, patch);
   return res.json({ project: await makeProjectSummary(project.path), collection });
 });

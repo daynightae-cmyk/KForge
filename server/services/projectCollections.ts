@@ -4,9 +4,19 @@ import path from "path";
 export interface ProjectCollectionEntry {
   path: string;
   lastOpenedAt?: string;
+  lastScannedAt?: string;
+  lastTaskAt?: string;
+  tags: string[];
   favorite: boolean;
   pinned: boolean;
   archived: boolean;
+}
+
+export interface ProjectCollectionPatch {
+  favorite?: boolean;
+  pinned?: boolean;
+  archived?: boolean;
+  tags?: string[];
 }
 
 interface CollectionStore {
@@ -18,6 +28,23 @@ const defaultStore = (): CollectionStore => ({ version: 1, projects: {} });
 
 function normalize(projectPath: string) {
   return path.resolve(projectPath);
+}
+
+function normalizeTags(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const tags = new Map<string, string>();
+  for (const candidate of value) {
+    if (typeof candidate !== "string") continue;
+    const tag = candidate.trim().replace(/\s+/g, " ");
+    if (!tag || tag.length > 48) continue;
+    tags.set(tag.toLocaleLowerCase(), tag);
+    if (tags.size >= 20) break;
+  }
+  return [...tags.values()].sort((left, right) => left.localeCompare(right));
+}
+
+function blankEntry(projectPath: string): ProjectCollectionEntry {
+  return { path: normalize(projectPath), favorite: false, pinned: false, archived: false, tags: [] };
 }
 
 async function readStore(workspaceRoot: string): Promise<CollectionStore> {
@@ -35,6 +62,9 @@ async function readStore(workspaceRoot: string): Promise<CollectionStore> {
       projects[projectPath] = {
         path: projectPath,
         lastOpenedAt: typeof entry.lastOpenedAt === "string" ? entry.lastOpenedAt : undefined,
+        lastScannedAt: typeof entry.lastScannedAt === "string" ? entry.lastScannedAt : undefined,
+        lastTaskAt: typeof entry.lastTaskAt === "string" ? entry.lastTaskAt : undefined,
+        tags: normalizeTags(entry.tags),
         favorite: entry.favorite === true,
         pinned: entry.pinned === true,
         archived: entry.archived === true,
@@ -63,27 +93,45 @@ export async function listProjectCollectionEntries(workspaceRoot: string) {
 export async function getProjectCollectionEntry(workspaceRoot: string, projectPath: string) {
   const normalized = normalize(projectPath);
   const store = await readStore(workspaceRoot);
-  return store.projects[normalized] || { path: normalized, favorite: false, pinned: false, archived: false };
+  return store.projects[normalized] || blankEntry(normalized);
 }
 
 export async function recordProjectOpened(workspaceRoot: string, projectPath: string) {
   const normalized = normalize(projectPath);
   const store = await readStore(workspaceRoot);
-  const current = store.projects[normalized] || { path: normalized, favorite: false, pinned: false, archived: false };
+  const current = store.projects[normalized] || blankEntry(normalized);
   const entry = { ...current, path: normalized, lastOpenedAt: new Date().toISOString() };
   store.projects[normalized] = entry;
   await writeStore(workspaceRoot, store);
   return entry;
 }
 
-export async function updateProjectCollection(workspaceRoot: string, projectPath: string, patch: Partial<Pick<ProjectCollectionEntry, "favorite" | "pinned" | "archived">>) {
+export async function updateProjectCollection(workspaceRoot: string, projectPath: string, patch: ProjectCollectionPatch) {
   const normalized = normalize(projectPath);
   const store = await readStore(workspaceRoot);
-  const current = store.projects[normalized] || { path: normalized, favorite: false, pinned: false, archived: false };
-  const entry = { ...current, ...patch, path: normalized };
+  const current = store.projects[normalized] || blankEntry(normalized);
+  const entry = { ...current, ...patch, tags: patch.tags ? normalizeTags(patch.tags) : current.tags, path: normalized };
   store.projects[normalized] = entry;
   await writeStore(workspaceRoot, store);
   return entry;
+}
+
+async function recordProjectTimestamp(workspaceRoot: string, projectPath: string, key: "lastScannedAt" | "lastTaskAt") {
+  const normalized = normalize(projectPath);
+  const store = await readStore(workspaceRoot);
+  const current = store.projects[normalized] || blankEntry(normalized);
+  const entry = { ...current, path: normalized, [key]: new Date().toISOString() };
+  store.projects[normalized] = entry;
+  await writeStore(workspaceRoot, store);
+  return entry;
+}
+
+export async function recordProjectScanned(workspaceRoot: string, projectPath: string) {
+  return recordProjectTimestamp(workspaceRoot, projectPath, "lastScannedAt");
+}
+
+export async function recordProjectTask(workspaceRoot: string, projectPath: string) {
+  return recordProjectTimestamp(workspaceRoot, projectPath, "lastTaskAt");
 }
 
 export function collectionCategories(entry: ProjectCollectionEntry) {

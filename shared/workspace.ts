@@ -27,6 +27,9 @@ export interface ProjectSummary {
   syncStatus: WorkspaceStatus;
   lastScan?: string;
   lastOpenedAt?: string;
+  lastScannedAt?: string;
+  lastTaskAt?: string;
+  tags: string[];
   favorite: boolean;
   pinned: boolean;
   archived: boolean;
