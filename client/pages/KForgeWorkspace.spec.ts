@@ -107,4 +107,14 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('onNavigate("Preview")');
     expect(source).toContain('/preview`');
   });
+
+  it("renders real GitHub Checks and per-source availability evidence as read-only remote data", () => {
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    expect(source).toContain("Real GitHub Checks");
+    expect(source).toContain("GitHub source availability");
+    expect(source).toContain("checkRuns");
+    expect(source).toContain("combinedStatus");
+    expect(source).toContain("Branches and recent commits");
+    expect(source).toContain("Remote writes remain separate and unavailable");
+  });
 });

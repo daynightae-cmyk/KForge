@@ -6,7 +6,7 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executePreviewFixVerify, executeProjectAction, makeProjectSummary, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
+import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executePreviewFixVerify, executeProjectAction, githubReadState, makeProjectSummary, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
 import { startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import type { KForgeTask } from "../services/tasks";
 
@@ -14,6 +14,15 @@ const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 const fixture = (name: string) => path.join(fixturesRoot, name);
 
 describe("KForge Workspace engines", () => {
+  it("classifies missing GitHub Checks evidence with explicit source states", () => {
+    expect(githubReadState({ ok: true, output: "{}" })).toBe("AVAILABLE");
+    expect(githubReadState({ ok: false, output: "gh: command not recognized" })).toBe("UNAVAILABLE");
+    expect(githubReadState({ ok: false, output: "not logged into github.com; run gh auth login" })).toBe("NOT_CONNECTED");
+    expect(githubReadState({ ok: false, output: "HTTP 403: Resource not accessible by integration" })).toBe("BLOCKED");
+    expect(githubReadState({ ok: false, output: "HTTP 404: No commit found" })).toBe("UNAVAILABLE");
+    expect(githubReadState({ ok: false, output: "temporary upstream failure" })).toBe("UNKNOWN");
+  });
+
   it("detects a React and Vite project with source and script evidence", async () => {
     const project = await makeProjectSummary(fixture("workspace-clean"));
     const scan = await scanProject(project);

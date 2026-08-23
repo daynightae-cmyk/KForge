@@ -1297,6 +1297,23 @@ function githubSlug(remoteUrl?: string) {
   return match ? `${match[1]}/${match[2]}` : undefined;
 }
 
+export type GitHubReadState = "AVAILABLE" | "UNKNOWN" | "NOT_CONNECTED" | "BLOCKED" | "UNAVAILABLE";
+
+export function githubReadState(execution: { ok: boolean; output: string }): GitHubReadState {
+  if (execution.ok) return "AVAILABLE";
+  const output = execution.output.toLowerCase();
+  if (/(not recognized|enoent|executable file not found|could not be found)/.test(output)) return "UNAVAILABLE";
+  if (/(not logged|authenticate|authentication|bad credentials|token.*invalid|gh auth login)/.test(output)) return "NOT_CONNECTED";
+  if (/(403|forbidden|resource not accessible|insufficient|permission)/.test(output)) return "BLOCKED";
+  if (/(404|not found|no commit found)/.test(output)) return "UNAVAILABLE";
+  return "UNKNOWN";
+}
+
+function githubSource(label: string, endpoint: string, execution: CommandExecution) {
+  const state = githubReadState(execution);
+  return { label, endpoint, state, reason: state === "AVAILABLE" ? "Remote GitHub evidence was retrieved by the authenticated read-only adapter." : execution.output || "GitHub returned no diagnostic reason.", fetchedAt: new Date().toISOString() };
+}
+
 router.get("/projects/:id/git", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
@@ -1322,31 +1339,66 @@ router.get("/projects/:id/github", async (req, res) => {
   if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
     const completedAt = new Date().toISOString();
     const error = "GitHub metadata is disabled in Offline Mode. Enable Online Optional after reviewing purpose, data, and destination.";
-    return res.status(428).json({ error, permission: "online-optional", transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: "https://api.github.com", purpose: "Read repository, issue, pull request, workflow, and release metadata.", startedAt, completedAt, result: "BLOCKED", reason: error }) });
+    return res.status(428).json({ error, permission: "online-optional", connection: { state: "BLOCKED", reason: error }, transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: "https://api.github.com", purpose: "Read repository, branch, commit, issue, pull request, action, check-run, commit-status, and release metadata.", startedAt, completedAt, result: "BLOCKED", reason: error }) });
   }
   const slug = githubSlug(project.remoteUrl);
   if (!slug) {
     const completedAt = new Date().toISOString();
     const error = "This project has no GitHub origin remote.";
-    return res.status(422).json({ error, transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: "https://api.github.com", purpose: "Read repository, issue, pull request, workflow, and release metadata.", startedAt, completedAt, result: "BLOCKED", reason: error }) });
+    return res.status(422).json({ error, connection: { state: "UNAVAILABLE", reason: error }, transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: "https://api.github.com", purpose: "Read repository, branch, commit, issue, pull request, action, check-run, commit-status, and release metadata.", startedAt, completedAt, result: "BLOCKED", reason: error }) });
   }
-  const [repository, issues, pullRequests, actions, releases] = await Promise.all([
+  const auth = await run("gh", ["auth", "status", "--hostname", "github.com"], project.path, 10_000);
+  if (!auth.ok) {
+    const completedAt = new Date().toISOString();
+    const state = githubReadState(auth);
+    const reason = auth.output || "GitHub CLI authentication is unavailable.";
+    const unavailable = (label: string) => ({ label, endpoint: null, state, reason, fetchedAt: completedAt });
+    const sources = Object.fromEntries(["repository", "branches", "commits", "pullRequests", "issues", "actions", "checkRuns", "commitStatus", "releases"].map((label) => [label, unavailable(label)]));
+    const transparency = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: `https://api.github.com/repos/${slug}`, purpose: "Read GitHub engineering and Checks evidence.", startedAt, completedAt, result: "BLOCKED", reason });
+    return res.json({ slug, connection: { state, authenticated: false, reason }, sources, checks: { state, commitSha: null, reason, checkRuns: { error: reason }, status: { error: reason } }, transparency });
+  }
+  const localHead = await run("git", ["rev-parse", "HEAD"], project.path, 10_000);
+  const commitRef = localHead.ok && /^[0-9a-f]{40}$/i.test(localHead.output.trim()) ? localHead.output.trim() : project.branch;
+  const endpoints = {
+    repository: `repos/${slug}`,
+    branches: `repos/${slug}/branches?per_page=100`,
+    commits: `repos/${slug}/commits?sha=${encodeURIComponent(project.branch)}&per_page=20`,
+    issues: `repos/${slug}/issues?state=open&per_page=20`,
+    pullRequests: `repos/${slug}/pulls?state=open&per_page=20`,
+    actions: `repos/${slug}/actions/runs?per_page=20`,
+    checkRuns: `repos/${slug}/commits/${commitRef}/check-runs`,
+    commitStatus: `repos/${slug}/commits/${commitRef}/status`,
+    releases: `repos/${slug}/releases?per_page=20`,
+  };
+  const [repository, branches, commits, issues, pullRequests, actions, checkRuns, commitStatus, releases] = await Promise.all([
     run("gh", ["api", `repos/${slug}`], project.path, 20_000),
+    run("gh", ["api", endpoints.branches], project.path, 20_000),
+    run("gh", ["api", endpoints.commits], project.path, 20_000),
     run("gh", ["api", `repos/${slug}/issues?state=open&per_page=20`], project.path, 20_000),
     run("gh", ["api", `repos/${slug}/pulls?state=open&per_page=20`], project.path, 20_000),
-    run("gh", ["api", `repos/${slug}/actions/runs?per_page=10`], project.path, 20_000),
-    run("gh", ["api", `repos/${slug}/releases?per_page=10`], project.path, 20_000),
+    run("gh", ["api", endpoints.actions], project.path, 20_000),
+    run("gh", ["api", endpoints.checkRuns, "-H", "Accept: application/vnd.github+json"], project.path, 20_000),
+    run("gh", ["api", endpoints.commitStatus, "-H", "Accept: application/vnd.github+json"], project.path, 20_000),
+    run("gh", ["api", endpoints.releases], project.path, 20_000),
   ]);
   const parse = (execution: CommandExecution) => { try { return execution.ok ? JSON.parse(execution.output) : { error: execution.output }; } catch { return { error: execution.output || "GitHub returned invalid JSON." }; } };
   const completedAt = new Date().toISOString();
   const ok = repository.ok;
   const error = ok ? undefined : repository.output || "GitHub repository metadata request failed.";
+  const sources = {
+    repository: githubSource("Repository", endpoints.repository, repository), branches: githubSource("Branches", endpoints.branches, branches), commits: githubSource("Commits", endpoints.commits, commits),
+    issues: githubSource("Issues", endpoints.issues, issues), pullRequests: githubSource("Pull requests", endpoints.pullRequests, pullRequests), actions: githubSource("Actions", endpoints.actions, actions),
+    checkRuns: githubSource("Check runs", endpoints.checkRuns, checkRuns), commitStatus: githubSource("Commit status", endpoints.commitStatus, commitStatus), releases: githubSource("Releases", endpoints.releases, releases),
+  };
+  const checkStates = [sources.checkRuns.state, sources.commitStatus.state];
+  const checksState: GitHubReadState = checkStates.every((state) => state === "AVAILABLE") ? "AVAILABLE" : checkStates.includes("BLOCKED") ? "BLOCKED" : checkStates.includes("NOT_CONNECTED") ? "NOT_CONNECTED" : checkStates.includes("UNAVAILABLE") ? "UNAVAILABLE" : "UNKNOWN";
+  const checksReason = checksState === "AVAILABLE" ? "Real check-runs and combined commit status were retrieved for the selected local HEAD." : [sources.checkRuns.reason, sources.commitStatus.reason].filter(Boolean).join(" ");
   await Promise.all([
     recordRemoteContact(getWorkspaceRoot(), "github", { attemptedAt: completedAt, succeeded: ok, destination: `https://api.github.com/repos/${slug}`, error }),
-    recordRemoteContact(getWorkspaceRoot(), "remote-ci", { attemptedAt: completedAt, succeeded: actions.ok, destination: `https://api.github.com/repos/${slug}/actions/runs`, error: actions.ok ? null : actions.output }),
+    recordRemoteContact(getWorkspaceRoot(), "remote-ci", { attemptedAt: completedAt, succeeded: actions.ok && checkRuns.ok && commitStatus.ok, destination: `https://api.github.com/repos/${slug}/actions/runs`, error: actions.ok && checkRuns.ok && commitStatus.ok ? null : checksReason || actions.output }),
   ]);
-  const transparency = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: `https://api.github.com/repos/${slug}`, purpose: "Read repository, issue, pull request, workflow, and release metadata.", startedAt, completedAt, result: ok ? "SUCCEEDED" : "FAILED", reason: error });
-  return res.status(ok ? 200 : 502).json({ slug, repository: parse(repository), issues: parse(issues), pullRequests: parse(pullRequests), actions: parse(actions), releases: parse(releases), transparency, ...(error ? { error } : {}) });
+  const transparency = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: `https://api.github.com/repos/${slug}`, purpose: "Read repository, branch, commit, issue, pull request, action, check-run, commit-status, and release metadata.", startedAt, completedAt, result: ok ? "SUCCEEDED" : "FAILED", reason: error });
+  return res.json({ slug, connection: { state: ok ? "AVAILABLE" : githubReadState(repository), authenticated: true, reason: error || "GitHub CLI authentication and repository read access are available." }, repository: parse(repository), branches: parse(branches), commits: parse(commits), issues: parse(issues), pullRequests: parse(pullRequests), actions: parse(actions), checks: { state: checksState, commitSha: commitRef, reason: checksReason, checkRuns: parse(checkRuns), status: parse(commitStatus) }, releases: parse(releases), sources, transparency, ...(error ? { error } : {}) });
 });
 
 async function environmentExamplePreview(project: ProjectSummary, problem: ScanIssue) {
