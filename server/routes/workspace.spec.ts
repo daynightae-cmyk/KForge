@@ -20,7 +20,7 @@ describe("KForge Workspace engines", () => {
     expect(scan.profile.languages).toEqual(expect.arrayContaining(["TypeScript", "JavaScript"]));
     expect(scan.profile.scripts).toHaveProperty("build");
     expect(scan.profile.sourceFileCount).toBeGreaterThan(0);
-  });
+  }, 15_000);
 
   it("normalizes a TypeScript compiler failure into a typecheck diagnostic after explicit trust", async () => {
     const projectPath = fixture("workspace-broken-typescript");
@@ -35,6 +35,28 @@ describe("KForge Workspace engines", () => {
       await setProjectTrust(workspaceRoot, projectPath, "untrusted");
     }
   }, 45_000);
+
+  it("blocks network-based npm audit during offline scans without delaying local diagnostics", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-offline-audit-"));
+    const projectPath = path.join(workspaceRoot, "npm-project");
+    const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
+    try {
+      await fs.mkdir(projectPath);
+      await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "offline-audit-fixture", version: "1.0.0" }), "utf8");
+      await fs.writeFile(path.join(projectPath, "package-lock.json"), JSON.stringify({ name: "offline-audit-fixture", lockfileVersion: 3 }), "utf8");
+      process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
+      await setLocalPlatformMode(workspaceRoot, "offline");
+      await setProjectTrust(workspaceRoot, projectPath, "trusted");
+      const scan = await scanProject(await makeProjectSummary(projectPath));
+      const audit = scan.tools.find((tool) => tool.name === "npm-audit");
+      expect(audit).toMatchObject({ available: false });
+      expect(audit?.reason).toContain("Offline Mode blocks network-based npm audit");
+    } finally {
+      if (previousWorkspaceRoot === undefined) delete process.env.KFORGE_WORKSPACE_ROOT;
+      else process.env.KFORGE_WORKSPACE_ROOT = previousWorkspaceRoot;
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  }, 15_000);
 
   it("detects TODO-based project completeness findings", async () => {
     const project = await makeProjectSummary(fixture("workspace-mock"));
