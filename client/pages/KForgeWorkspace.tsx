@@ -62,9 +62,20 @@ const NAVIGATION = [
 type Status = WorkspaceStatus;
 type SortKey = "name" | "projectType" | "branch" | "lastActivity" | "sync";
 
+interface MissionEvidenceItem {
+  id: string;
+  stepId: string;
+  kind: string;
+  recordedAt: string;
+  summary: string;
+}
+
 interface MissionStepItem {
   id: string;
+  missionId?: string;
+  index?: number;
   name: string;
+  kind?: string;
   tool: string;
   status: "queued" | "running" | "waiting-confirmation" | "succeeded" | "failed" | "blocked" | "skipped";
   dependencies: string[];
@@ -73,19 +84,29 @@ interface MissionStepItem {
   logs: string[];
   output?: string;
   error?: string;
+  evidence?: MissionEvidenceItem[];
+  requiresConfirmation?: boolean;
+  attempts?: number;
   retryCount: number;
 }
 
 interface MissionItem {
   id: string;
+  projectId?: string;
+  type?: string;
   name: string;
-  state: "queued" | "running" | "succeeded" | "failed" | "blocked" | "interrupted";
+  goal?: string;
+  state: "queued" | "planning" | "running" | "waiting-confirmation" | "verifying" | "succeeded" | "failed" | "blocked" | "recovering" | "cancelled" | "interrupted";
+  status?: string;
+  progress?: number;
   currentStepId?: string;
   steps: MissionStepItem[];
+  evidence?: MissionEvidenceItem[];
   changedFiles: string[];
   snapshotId?: string;
   warnings: string[];
-  recovery: { resume: boolean; rollback: boolean; inspect: boolean; detail: string };
+  recovery: { resume: boolean; rollback: boolean; inspect: boolean; detail: string; recoveryRequired?: boolean };
+  finalResult?: { summary: string; state: string; recordedAt: string };
 }
 
 interface TaskItem {
@@ -685,7 +706,7 @@ function AgentMissionCenter({ project }: { project: ProjectSummary }) {
   return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Bot size={17} /><h3>KForge Engineer missions</h3></div><button onClick={() => void refreshRegistry()}>Refresh tools</button></div><p className="kf-capability-copy">Read · Plan · Patch · Verify. The agent only invokes registered typed tools; commits, pushes, deployment, force push, and secret exposure remain permission-gated or blocked.</p><div className="kf-inline-controls"><select value={mission} onChange={(event) => setMission(event.target.value)}><option value="audit">Audit project</option><option value="fix-critical">Fix critical issue</option><option value="improve-security">Improve security</option><option value="improve-tests">Improve tests</option><option value="refactor">Prepare refactor plan</option><option value="prepare-release">Prepare production release</option><option value="prepare-github">Prepare GitHub</option><option value="documentation">Audit documentation</option><option value="performance">Inspect performance strategy</option></select><button className="kf-button kf-button--primary" onClick={() => void start()}>Start mission</button></div><p className="kf-capability-copy">{status}</p>{registry && <><div className="kf-provider-grid">{(registry.tools || []).map((tool) => { const status = tool.status || "ERROR"; return <article className="kf-provider-card" key={tool.name}><div><strong>{tool.name}</strong><span>{status}</span></div><p>{tool.description}</p><small>Permission: {tool.permission}</small><small>Requires confirmation: {tool.requiresConfirmation ? "Yes" : "No"}</small>{tool.unavailableReason && <small>Unavailable reason: {tool.unavailableReason}</small>}{tool.runtimeError && <small>Runtime error: {tool.runtimeError}</small>}</article>; })}</div><article className="kf-command-evidence"><strong>Agent permissions</strong><pre>{JSON.stringify(registry.permissions, null, 2)}</pre></article></>}</section>;
 }
 
-function MissionProgress({ mission }: { mission: MissionItem }) { return <article className="kf-command-evidence"><strong>{mission.name} mission · {mission.state}</strong><small>{mission.currentStepId ? `Current step: ${mission.currentStepId}` : "No active step"} · changed files: {mission.changedFiles.length}</small><div className="kf-task-list">{mission.steps.map((step) => <details className="kf-task" key={step.id}><summary><span><strong>{step.status === "succeeded" ? "✓" : step.status === "running" ? "▶" : step.status === "failed" ? "!" : step.status === "blocked" ? "■" : step.status === "skipped" ? "–" : "○"} {step.name} · {step.status}</strong><small>{step.tool} · retry {step.retryCount}{step.dependencies.length ? ` · after ${step.dependencies.join(", ")}` : ""}</small></span><ChevronRight size={15} /></summary><pre>{JSON.stringify({ startedAt: step.startedAt, finishedAt: step.finishedAt, logs: step.logs, output: step.output, error: step.error }, null, 2)}</pre></details>)}</div>{mission.warnings.length > 0 && <pre>{mission.warnings.join("\n")}</pre>}<small>Recovery: {mission.recovery.detail}</small></article>; }
+function MissionProgress({ mission }: { mission: MissionItem }) { return <article className="kf-command-evidence"><strong>{mission.name} mission · {mission.state}</strong><small>{mission.type || "agent"} strategy · progress: {mission.progress ?? 0}% · {mission.currentStepId ? `Current step: ${mission.currentStepId}` : "No active step"} · changed files: {mission.changedFiles.length} · evidence: {mission.evidence?.length || 0}</small><p>{mission.goal || "No mission goal was recorded."}</p><div className="kf-task-list">{mission.steps.map((step) => <details className="kf-task" key={step.id}><summary><span><strong>{step.status === "succeeded" ? "✓" : step.status === "running" ? "▶" : step.status === "failed" ? "!" : step.status === "blocked" ? "■" : step.status === "skipped" ? "–" : "○"} {step.name} · {step.status}</strong><small>{step.kind || step.tool} · tool {step.tool} · attempts {step.attempts ?? step.retryCount}{step.requiresConfirmation ? " · confirmation required" : ""}{step.dependencies.length ? ` · after ${step.dependencies.join(", ")}` : ""}</small></span><ChevronRight size={15} /></summary><pre>{JSON.stringify({ startedAt: step.startedAt, finishedAt: step.finishedAt, logs: step.logs, output: step.output, error: step.error, evidence: step.evidence }, null, 2)}</pre></details>)}</div>{mission.warnings.length > 0 && <pre>{mission.warnings.join("\n")}</pre>}<small>Recovery: {mission.recovery.detail}</small></article>; }
 
 function TaskCenterPanel({ tasks, onTaskControl }: { tasks: TaskItem[]; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) { return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>Task Center v2</h3></div><span>{tasks.length} selected-project task(s)</span></div>{tasks.length ? <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span><strong>{task.action} · {task.state}</strong><small>{task.message} · {task.progress}%{task.finishedAt ? ` · ${Math.max(0, Math.round((new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime()) / 1000))}s` : ""}</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for process output…"}</pre>{task.mission && <MissionProgress mission={task.mission} />}{task.state === "queued" && <button onClick={() => onTaskControl(task, "cancel")}>Cancel queued task</button>}{["success", "error", "cancelled", "blocked"].includes(task.state) && <button onClick={() => onTaskControl(task, "retry")}>Retry task</button>}</details>)}</div> : <p className="kf-capability-copy">Agent and project tasks appear here after they start. Logs and output come from the actual local process.</p>}</section>; }
 

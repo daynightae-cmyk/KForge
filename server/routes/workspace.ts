@@ -28,7 +28,9 @@ import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snap
 import { buildAgentContext, buildLocalAIPlan, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
-import { appendTaskLog, attachMission, cancelTask, completeMission, getTask, initializeTaskStore, listTasks, retryTask, startTask, updateMissionStep, type KForgeMission, type KForgeTask, type TaskKind } from "../services/tasks";
+import { appendTaskLog, attachMission, cancelTask, completeMission, getTask, initializeTaskStore, listTasks, retryTask, startTask, updateMissionStep, type KForgeMission, type KForgeTask, type TaskKind, type MissionType } from "../services/tasks";
+import { createMissionFromStrategy, supportedMissionTypes } from "../services/missionStrategies";
+import { executeMissionDag, type MissionStepExecution } from "../services/missionOrchestrator";
 import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
@@ -1113,21 +1115,6 @@ router.post("/projects/:id/snapshots/:snapshotId/restore", async (req, res) => {
 
 const agentPermissions = { readFiles: "allow", editFiles: "allow", runTests: "allow", runBuild: "allow", installPackage: "ask", deleteFile: "ask", gitCommit: "ask", gitPush: "ask", deploy: "ask", forcePush: "block", exposeSecret: "block" } as const;
 
-function createMissionGraph(mission: string, id: string): KForgeMission {
-  const sequences: Record<string, Array<[string, string, string]>> = {
-    audit: [["scan", "Scan project", "scan"], ["graph", "Build dependency graph", "graph"], ["sonar", "Run KForge Sonar", "sonar"], ["health", "Calculate project health", "health"]],
-    "fix-critical": [["scan", "Scan project", "scan"], ["plan", "Identify safe repair", "plan"], ["snapshot", "Create snapshot", "snapshot"], ["patch", "Apply verified patch", "patch"], ["typecheck", "Verify typecheck", "typecheck"], ["test", "Verify tests", "test"], ["build", "Verify build", "build"], ["runtime", "Verify runtime", "runtime"]],
-    "improve-security": [["scan", "Scan security evidence", "scan"], ["sonar", "Run KForge Sonar", "sonar"], ["dependency-audit", "Audit dependencies", "dependency_audit"], ["plan", "Identify safe repair", "plan"]],
-    "improve-tests": [["scan", "Discover tests", "scan"], ["typecheck", "Run typecheck", "typecheck"], ["test", "Run tests", "test"], ["analysis", "Analyze test evidence", "analysis"]],
-    refactor: [["scan", "Scan project", "scan"], ["graph", "Analyze impact", "graph"], ["architecture", "Inspect architecture", "architecture"], ["plan", "Create preview-only refactor plan", "plan"]],
-    "prepare-release": [["scan", "Scan project", "scan"], ["typecheck", "Run typecheck", "typecheck"], ["test", "Run tests", "test"], ["build", "Run production build", "build"], ["runtime", "Run runtime verification", "runtime"], ["release", "Evaluate release evidence", "release"]],
-    "prepare-github": [["scan", "Scan project", "scan"], ["git", "Inspect Git diff and branch", "git_status"], ["checks", "Inspect verification evidence", "health"], ["preview", "Create commit preview", "git_diff"]],
-    documentation: [["scan", "Scan project", "scan"], ["documentation", "Audit documentation claims", "documentation_audit"]],
-    performance: [["scan", "Scan project size", "scan"], ["profile", "Inspect performance strategy", "performance_profile"]],
-  };
-  const sequence = sequences[mission] || sequences.audit;
-  return { id, name: mission, state: "queued", steps: sequence.map(([stepId, name, tool], index) => ({ id: stepId, name, tool, status: "queued", dependencies: index ? [sequence[index - 1][0]] : [], logs: [], retryCount: 0 })), changedFiles: [], warnings: [], recovery: { resume: false, rollback: false, inspect: true, detail: "Persisted mission steps can be inspected after restart. Destructive work is never replayed automatically." } };
-}
 
 function projectToolHandlers(project: ProjectSummary): ProjectToolHandlers {
   const action = (kind: WorkspaceAction) => async () => executeProjectAction(project, kind);
@@ -1151,6 +1138,52 @@ function projectToolHandlers(project: ProjectSummary): ProjectToolHandlers {
     graph: async () => buildProjectGraph(project.path),
     dependencyAudit: async () => { const scan = await scanProject(project); return scan.issues.filter((entry) => entry.category === "dependency"); },
   };
+}
+
+interface MissionExecutionContext { scan?: ProjectScan; graph?: Awaited<ReturnType<typeof buildProjectGraph>>; patch?: Awaited<ReturnType<typeof generateVerifiedPatch>>; snapshotId?: string; documentation?: Awaited<ReturnType<typeof auditDocumentation>>; }
+
+async function executeMissionStrategyStep(project: ProjectSummary, mission: MissionType, step: { id: string; tool: string; name: string }, context: MissionExecutionContext): Promise<MissionStepExecution> {
+  const ensureScan = async () => context.scan ||= await scanProject(project);
+  const command = async (action: WorkspaceAction) => { const result = await executeProjectAction(project, action); return { ok: result.ok, output: result, message: result.ok ? `${action} completed with local evidence.` : `${action} failed; evidence was recorded.` }; };
+  switch (step.tool) {
+    case "scan": { const scan = await ensureScan(); return { ok: true, output: { scannedAt: scan.scannedAt, issues: scan.issues.length, profile: scan.profile }, message: "Project scan completed." }; }
+    case "graph": { const graph = context.graph ||= await buildProjectGraph(project.path); return { ok: true, output: graph.summary, message: "Dependency graph completed." }; }
+    case "sonar": { const result = await executeAgentTool(project.path, projectToolHandlers(project), "sonar"); return { ok: result.ok, output: result.output, message: result.ok ? "KForge Sonar evidence completed." : result.message }; }
+    case "health": { const scan = await ensureScan(); return { ok: true, output: scan.health, message: "Project health evidence recorded." }; }
+    case "dependency_audit": { const result = await executeAgentTool(project.path, projectToolHandlers(project), "dependency_audit"); return { ok: result.ok, output: result.output, message: result.ok ? "Dependency audit completed." : result.message }; }
+    case "documentation_audit": { const scan = await ensureScan(); const documentation = context.documentation ||= await auditDocumentation(project.path, scan.profile); return { ok: true, output: documentation, message: "Documentation evidence completed." }; }
+    case "git_status": { const git = await gitCenter(project); return { ok: true, output: git, message: "Local Git evidence completed." }; }
+    case "git_diff": { const git = await gitCenter(project); return { ok: true, output: git.diffStat, message: "Local Git diff evidence completed." }; }
+    case "typecheck": return command("typecheck");
+    case "test": return command("test");
+    case "build": return command("build");
+    case "secret_detection": { const scan = await ensureScan(); return { ok: true, output: scan.issues.filter((issue) => issue.category === "security"), message: "Secret-detection evidence recorded from KForge Sonar." }; }
+    case "security_tools": return { ok: true, output: await detectSecurityTools(project.path, project.trust === "trusted"), message: "Local security-tool availability recorded; unavailable tools are not treated as pass." };
+    case "permission_review": return { ok: true, output: agentPermissions, message: "Agent permission policy recorded." };
+    case "test_framework": { const scan = await ensureScan(); return { ok: true, output: { packageManager: scan.profile.packageManager, testScript: scan.profile.scripts.test }, message: "Test framework evidence recorded." }; }
+    case "test_inventory": { const scan = await ensureScan(); return { ok: true, output: { sourceFiles: scan.profile.sourceFileCount, testScript: scan.profile.scripts.test }, message: "Test inventory evidence recorded." }; }
+    case "test_analysis": { const scan = await ensureScan(); return { ok: true, output: scan.issues.filter((issue) => issue.category === "test"), message: "Weak-area evidence recorded; no coverage improvement was inferred." }; }
+    case "impact_analysis": { const graph = context.graph ||= await buildProjectGraph(project.path); return { ok: true, output: graph.summary, message: "Impact evidence recorded from the project graph." }; }
+    case "architecture": { const scan = await ensureScan(); return { ok: true, output: scan.profile, message: "Architecture evidence recorded from local profile and scan." }; }
+    case "candidate_files": { const scan = await ensureScan(); const bounded = await buildAgentContext(project, scan); return { ok: true, output: { files: bounded.files.map((file) => file.path) }, message: "Bounded candidate-file context recorded." }; }
+    case "plan": { const scan = await ensureScan(); const contextForPlan = await buildAgentContext(project, scan); return { ok: true, output: buildRulePlan(contextForPlan), message: "Deterministic evidence-based plan recorded; no local AI claim was made." }; }
+    case "patch_eligibility": { const scan = await ensureScan(); const target = mission === "improve-security" ? scan.issues.find((issue) => issue.category === "security" && ["critical", "high"].includes(issue.severity)) : scan.issues.find((issue) => ["critical", "high"].includes(issue.severity)); context.patch = target ? await generateVerifiedPatch(project, target) : undefined; return context.patch && context.patch.risk === "safe" ? { ok: true, output: { issue: target, patch: context.patch }, message: "A safe patch rule is eligible for explicit preview and confirmation." } : { ok: false, blocked: true, output: { issue: target }, message: "BLOCKED_MANUAL_REVIEW: no verified safe patch is available." }; }
+    case "snapshot": { if (!context.patch) return { ok: false, blocked: true, message: "Snapshot is blocked because no verified patch is eligible." }; const snapshot = await createSnapshot(project.path, [context.patch.file], `Before V3 mission ${mission}: ${context.patch.id}`); context.snapshotId = snapshot.id; return { ok: true, output: snapshot, snapshotId: snapshot.id, message: "Snapshot created before any write-capable step." }; }
+    case "patch_preview": return context.patch ? { ok: true, output: context.patch, message: "Safe patch preview recorded; no file was changed." } : { ok: false, blocked: true, message: "Patch preview is blocked because no safe patch is available." };
+    case "cache_status": return { ok: true, output: projectCacheStatus(project.path), message: "Local cache status recorded." };
+    case "memory_status": { const scan = await ensureScan(); return { ok: true, output: scan.profile.performance, message: "Detected performance budget recorded; no synthetic memory benchmark was reported." }; }
+    case "summary": return { ok: true, output: { mission, step: step.id }, message: "Mission summary step completed from recorded evidence." };
+    case "commit_preview": return { ok: true, output: { notice: "Preview only. KForge did not create a commit." }, message: "Commit preview recorded without a Git mutation." };
+    case "test_evidence": return { ok: true, output: listTasks(project.id).filter((task) => task.kind === "test").slice(0, 5), message: "Persisted test evidence inspected." };
+    case "build_evidence": return { ok: true, output: listTasks(project.id).filter((task) => task.kind === "build").slice(0, 5), message: "Persisted build evidence inspected." };
+    case "release_evidence": { const scan = await ensureScan(); return { ok: true, output: scan.health.release, message: "Release evidence inspected." }; }
+    case "github_checks": return { ok: true, output: { state: "LOCAL_ONLY", detail: "No remote GitHub mutation or fabricated remote-check result was attempted." }, message: "GitHub preview retained local-only evidence." };
+    case "github_preview": return { ok: true, output: { state: "PREVIEW_ONLY", detail: "No pull request or release was created." }, message: "GitHub preview completed without remote mutation." };
+    case "version": { const scan = await ensureScan(); return { ok: true, output: { packageManager: scan.profile.packageManager }, message: "Local version metadata evidence recorded." }; }
+    case "artifacts": return { ok: true, output: { state: "NOT_CREATED", detail: "No release artifact is created by preparation missions." }, message: "Artifact preview recorded without creating output." };
+    case "release_gate": { const scan = await ensureScan(); return { ok: scan.health.release.state === "READY", output: scan.health.release, message: scan.health.release.state === "READY" ? "Release gate is ready from current evidence." : "Release gate is not ready from current evidence." }; }
+    default: return { ok: false, blocked: true, message: `No verified executor is registered for strategy tool '${step.tool}'.` };
+  }
 }
 
 router.get("/projects/:id/agent/tools", async (req, res) => {
@@ -1237,7 +1270,7 @@ router.post("/projects/:id/agent/runs", async (req, res) => {
         return { ok: true, message: "Agent run completed with a verified safe patch.", output: JSON.stringify({ goal, context, plan, records, patch, quality, snapshot, applied, verification, rolledBack: false }, null, 2) };
       } catch (error: unknown) {
         await restoreSnapshot(project.path, snapshot.id).catch(() => undefined);
-        return { ok: false, message: "Agent patch failed; snapshot restored.", output: error instanceof Error ? error.message : "Unknown patch error." };
+        return { ok: false, message: "Agent patch failed; snapshot restored.", output: error instanceof Error ? (error as Error).message : "Unknown patch error." };
       }
     }
     const commitSummary = wantsCommitSummary ? {
@@ -1298,12 +1331,14 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
   const mission = typeof req.body?.mission === "string" ? req.body.mission : "audit";
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Agent mission"));
-  const supportedMissions = ["audit", "fix-critical", "improve-security", "improve-tests", "refactor", "prepare-release", "prepare-github", "documentation", "performance"] as const;
-  if (!supportedMissions.includes(mission as typeof supportedMissions[number])) return res.status(400).json({ error: `Unsupported mission. Choose one of: ${supportedMissions.join(", ")}.` });
+  if (!supportedMissionTypes.includes(mission as MissionType)) return res.status(400).json({ error: `Unsupported mission. Choose one of: ${supportedMissionTypes.join(", ")}.` });
   let taskId = "";
   const task = startTask(project.id, "agent", async () => {
     const log = (message: string, progress: number) => appendTaskLog(taskId, message, progress);
     const step = (id: string, status: "queued" | "running" | "waiting-confirmation" | "succeeded" | "failed" | "blocked" | "skipped", output?: unknown, error?: string) => updateMissionStep(taskId, id, { status, logs: [`${status}: ${error || (output === undefined ? "" : "evidence recorded")}`], output: output === undefined ? undefined : JSON.stringify(output, null, 2).slice(0, 12_000), error });
+    const executionContext: MissionExecutionContext = {};
+    const orchestrated = await executeMissionDag(taskId, (missionStep) => executeMissionStrategyStep(project, mission as MissionType, missionStep, executionContext));
+    return { ok: orchestrated.ok, blocked: orchestrated.state === "blocked", message: `Mission ${mission} ${orchestrated.state} with ${orchestrated.completed.length} completed, ${orchestrated.failed.length} failed, and ${orchestrated.blocked.length} blocked step(s).`, output: JSON.stringify({ mission: getTask(taskId)?.mission, execution: orchestrated }, null, 2) };
     step("scan", "running");
     log("Reading project profile and Git state.", 12);
     const scan = await scanProject(project);
@@ -1394,11 +1429,11 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
       return { ok: true, message: "Safe critical-issue repair completed and verified.", output: JSON.stringify({ mission, target, patch, snapshot, verification, rolledBack: false }, null, 2) };
     } catch (error: unknown) {
       await restoreSnapshot(project.path, snapshot.id).catch(() => undefined);
-      return { ok: false, message: "Mission patch failed; snapshot restored.", output: error instanceof Error ? error.message : "Unknown patch error." };
+      return { ok: false, message: "Mission patch failed; snapshot restored.", output: error instanceof Error ? (error as Error).message : "Unknown patch error." };
     }
   });
   taskId = task.id;
-  attachMission(taskId, createMissionGraph(mission, taskId));
+  attachMission(taskId, createMissionFromStrategy(project.id, taskId, mission as MissionType));
   return res.status(202).json({ task: getTask(taskId) || task, mission, permissions: agentPermissions });
 });
 

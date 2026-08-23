@@ -39,13 +39,20 @@ describe("KForge mission graph execution", () => {
     const task = startTask("mission-test", "agent", async () => ({ ok: false, output: "failure", message: "Scan failed." }));
     attachMission(task.id, {
       id: task.id,
+      projectId: "mission-test",
+      type: "audit",
       name: "audit",
+      goal: "Test mission.",
       state: "queued",
+      status: "queued",
+      createdAt: new Date().toISOString(),
+      progress: 0,
       steps: [
-        { id: "scan", name: "Scan", tool: "scan", status: "running", dependencies: [], logs: [], retryCount: 0 },
-        { id: "graph", name: "Graph", tool: "graph", status: "queued", dependencies: ["scan"], logs: [], retryCount: 0 },
-        { id: "health", name: "Health", tool: "health", status: "queued", dependencies: ["graph"], logs: [], retryCount: 0 },
+        { id: "scan", missionId: task.id, index: 0, name: "Scan", kind: "scan", tool: "scan", status: "running", dependencies: [], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
+        { id: "graph", missionId: task.id, index: 1, name: "Graph", kind: "graph", tool: "graph", status: "queued", dependencies: ["scan"], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
+        { id: "health", missionId: task.id, index: 2, name: "Health", kind: "health", tool: "health", status: "queued", dependencies: ["graph"], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
       ],
+      evidence: [],
       changedFiles: [],
       warnings: [],
       recovery: { resume: false, rollback: false, inspect: true, detail: "Test mission." },

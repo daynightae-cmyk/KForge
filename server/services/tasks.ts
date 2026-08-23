@@ -5,11 +5,24 @@ import path from "path";
 export type TaskKind = "scan" | "audit" | "test" | "build" | "typecheck" | "runtime" | "git" | "github" | "clone" | "agent" | "snapshot";
 export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked" | "retrying";
 export type MissionStepStatus = "queued" | "running" | "waiting-confirmation" | "succeeded" | "failed" | "blocked" | "skipped";
-export type MissionState = "queued" | "running" | "succeeded" | "failed" | "blocked" | "interrupted";
+export type MissionType = "audit" | "fix-critical" | "improve-security" | "improve-tests" | "refactor" | "prepare-release" | "prepare-github" | "documentation" | "performance";
+export type MissionState = "queued" | "planning" | "running" | "waiting-confirmation" | "verifying" | "succeeded" | "failed" | "blocked" | "recovering" | "cancelled" | "interrupted";
+
+export interface MissionEvidence {
+  id: string;
+  stepId: string;
+  kind: string;
+  recordedAt: string;
+  summary: string;
+  data?: unknown;
+}
 
 export interface MissionStep {
   id: string;
+  missionId: string;
+  index: number;
   name: string;
+  kind: string;
   tool: string;
   status: MissionStepStatus;
   dependencies: string[];
@@ -18,19 +31,33 @@ export interface MissionStep {
   logs: string[];
   output?: string;
   error?: string;
+  evidence: MissionEvidence[];
+  requiresConfirmation: boolean;
+  attempts: number;
   retryCount: number;
 }
 
 export interface KForgeMission {
   id: string;
+  projectId: string;
+  type: MissionType;
   name: string;
+  goal: string;
   state: MissionState;
+  status: MissionState;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
   currentStepId?: string;
+  currentStep?: string;
+  progress: number;
   steps: MissionStep[];
+  evidence: MissionEvidence[];
   changedFiles: string[];
   snapshotId?: string;
   warnings: string[];
-  recovery: { resume: boolean; rollback: boolean; inspect: boolean; detail: string };
+  recovery: { resume: boolean; rollback: boolean; inspect: boolean; detail: string; recoveryRequired?: boolean };
+  finalResult?: { summary: string; state: MissionState; recordedAt: string };
 }
 
 export interface KForgeTask {
@@ -123,26 +150,44 @@ export function getTask(taskId: string) {
   return tasks.get(taskId);
 }
 
+function terminalStepStatus(status: MissionStepStatus) {
+  return ["succeeded", "failed", "blocked", "skipped"].includes(status);
+}
+
+function refreshMission(task: KForgeTask, mission: KForgeMission) {
+  const total = mission.steps.length;
+  const completed = mission.steps.filter((step) => terminalStepStatus(step.status)).length;
+  mission.progress = total ? Math.round((completed / total) * 100) : 0;
+  task.progress = mission.progress;
+  mission.status = mission.state;
+  mission.currentStep = mission.currentStepId;
+  if (!mission.startedAt && mission.steps.some((step) => step.status !== "queued")) mission.startedAt = new Date().toISOString();
+}
+
 export function attachMission(taskId: string, mission: KForgeMission) {
   const task = tasks.get(taskId);
   if (!task) return undefined;
+  refreshMission(task, mission);
   task.mission = mission;
   queuePersist();
   return task;
 }
 
-export function updateMissionStep(taskId: string, stepId: string, patch: Partial<Omit<MissionStep, "id" | "dependencies">>) {
+export function updateMissionStep(taskId: string, stepId: string, patch: Partial<Omit<MissionStep, "id" | "missionId" | "index" | "dependencies">>) {
   const task = tasks.get(taskId);
   const mission = task?.mission;
   const step = mission?.steps.find((entry) => entry.id === stepId);
   if (!task || !mission || !step) return undefined;
   const now = new Date().toISOString();
   Object.assign(step, patch);
-  if (patch.status === "running" && !step.startedAt) step.startedAt = now;
-  if (["succeeded", "failed", "blocked", "skipped"].includes(patch.status || "")) step.finishedAt = now;
+  if (patch.status === "running") { if (!step.startedAt) step.startedAt = now; step.attempts += 1; }
+  if (terminalStepStatus(patch.status || step.status)) step.finishedAt = now;
   if (patch.logs?.length) step.logs = step.logs.slice(-100);
+  const evidence = patch.evidence || (patch.output === undefined ? [] : [{ id: `${step.id}:${Date.now()}`, stepId: step.id, kind: step.kind, recordedAt: now, summary: `${step.name} recorded output.`, data: patch.output }]);
+  if (evidence.length) { step.evidence = [...step.evidence, ...evidence].slice(-50); mission.evidence = [...mission.evidence, ...evidence].slice(-250); }
   mission.currentStepId = ["running", "waiting-confirmation"].includes(step.status) ? step.id : mission.currentStepId === step.id ? undefined : mission.currentStepId;
-  mission.state = step.status === "failed" ? "failed" : step.status === "blocked" ? "blocked" : mission.state === "queued" ? "running" : mission.state;
+  mission.state = step.status === "waiting-confirmation" ? "waiting-confirmation" : step.status === "failed" ? "failed" : step.status === "blocked" ? "blocked" : mission.state === "queued" || mission.state === "planning" ? "running" : mission.state;
+  refreshMission(task, mission);
   append(task, `Mission step ${step.name}: ${step.status}.`);
   queuePersist();
   return task;
@@ -152,8 +197,13 @@ export function completeMission(taskId: string, state: Extract<MissionState, "su
   const task = tasks.get(taskId);
   if (!task?.mission) return undefined;
   task.mission.state = state;
+  task.mission.status = state;
   task.mission.currentStepId = undefined;
+  task.mission.currentStep = undefined;
+  task.mission.finishedAt = new Date().toISOString();
+  task.mission.finalResult = { summary: warning || `Mission ${state}.`, state, recordedAt: task.mission.finishedAt };
   if (warning) task.mission.warnings.push(warning);
+  refreshMission(task, task.mission);
   queuePersist();
   return task;
 }
