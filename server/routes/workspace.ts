@@ -1274,14 +1274,46 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
   const mission = typeof req.body?.mission === "string" ? req.body.mission : "audit";
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Agent mission"));
-  if (!["audit", "fix-critical", "prepare-release"].includes(mission)) return res.status(400).json({ error: "Unsupported mission. Choose audit, fix-critical, or prepare-release." });
+  const supportedMissions = ["audit", "fix-critical", "improve-security", "improve-tests", "refactor", "prepare-release", "prepare-github", "documentation", "performance"] as const;
+  if (!supportedMissions.includes(mission as typeof supportedMissions[number])) return res.status(400).json({ error: `Unsupported mission. Choose one of: ${supportedMissions.join(", ")}.` });
   let taskId = "";
   const task = startTask(project.id, "agent", async () => {
     const log = (message: string, progress: number) => appendTaskLog(taskId, message, progress);
     log("Reading project profile and Git state.", 12);
     const scan = await scanProject(project);
     log(`Scan found ${scan.issues.length} issue(s).`, 30);
-    if (mission === "audit") return { ok: true, message: "Audit mission completed.", output: JSON.stringify({ mission, scan }, null, 2) };
+    const plan = {
+      missionId: taskId,
+      mission,
+      state: "running",
+      tasks: [{ id: "scan", state: "completed", dependencies: [] as string[] }],
+      changedFiles: [] as string[],
+      snapshot: undefined as string | undefined,
+      recovery: { retry: "Explicit retry only; KForge never replays a mission automatically after interruption.", inspect: `Use task ${taskId} to inspect persisted logs and output.` },
+    };
+    if (mission === "audit") return { ok: true, message: "Audit mission completed.", output: JSON.stringify({ ...plan, state: "succeeded", result: { scan } }, null, 2) };
+    if (mission === "documentation") {
+      log("Auditing documentation claims against detected project scripts and files.", 55);
+      const documentation = await auditDocumentation(project.path, scan.profile);
+      return { ok: true, message: "Documentation mission completed with evidence-backed findings.", output: JSON.stringify({ ...plan, state: "succeeded", tasks: [...plan.tasks, { id: "documentation-audit", state: "completed", dependencies: ["scan"] }], result: { documentation } }, null, 2) };
+    }
+    if (mission === "improve-tests") {
+      const verification: CommandResult[] = [];
+      if (scan.profile.scripts.typecheck) { log("Running typecheck evidence.", 52); verification.push(await executeProjectAction(project, "typecheck")); }
+      if (scan.profile.scripts.test) { log("Running test evidence.", 75); verification.push(await executeProjectAction(project, "test")); }
+      const ok = verification.length > 0 && verification.every((entry) => entry.ok);
+      return { ok, message: ok ? "Test improvement mission completed with current verification evidence." : "Test improvement mission found failed or unavailable verification; no change was marked fixed.", output: JSON.stringify({ ...plan, state: ok ? "succeeded" : "failed", tasks: [...plan.tasks, { id: "verification", state: ok ? "completed" : "failed", dependencies: ["scan"] }], result: { verification, scan } }, null, 2) };
+    }
+    if (mission === "documentation" || mission === "improve-tests") throw new Error("Mission branch should have returned.");
+    if (mission === "refactor") {
+      const context = await buildAgentContext(project, scan);
+      return { ok: true, message: "Refactor mission produced a read-only, evidence-backed plan; no source was changed without an explicit safe patch.", output: JSON.stringify({ ...plan, state: "succeeded", tasks: [...plan.tasks, { id: "refactor-plan", state: "completed", dependencies: ["scan"] }], result: { context, recommendation: "Review the plan, preview a verified patch, snapshot, and then apply only after the required trust and confirmation gates." } }, null, 2) };
+    }
+    if (mission === "performance") return { ok: true, message: "Performance mission completed with the detected local strategy; no estimated benchmark was reported.", output: JSON.stringify({ ...plan, state: "succeeded", tasks: [...plan.tasks, { id: "performance-profile", state: "completed", dependencies: ["scan"] }], result: { performance: scan.profile.performance, sourceFiles: scan.profile.sourceFileCount, totalFiles: scan.profile.totalFileCount } }, null, 2) };
+    if (mission === "prepare-github") {
+      const git = await gitCenter(project);
+      return { ok: true, message: "GitHub preparation mission completed with local Git evidence only; no remote mutation was attempted.", output: JSON.stringify({ ...plan, state: "succeeded", tasks: [...plan.tasks, { id: "git-inspection", state: "completed", dependencies: ["scan"] }], result: { git } }, null, 2) };
+    }
     if (mission === "prepare-release") {
       const profile = scan.profile;
       const verification: CommandResult[] = [];
@@ -1303,8 +1335,10 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
       }
       return { ok: true, message: "Release preparation completed through all detected verification steps.", output: JSON.stringify({ mission, verification, blocked: [], scan }, null, 2) };
     }
-    const target = scan.issues.find((entry) => entry.severity === "critical" || entry.severity === "high");
-    if (!target) return { ok: true, message: "No critical or high issue is available for deterministic safe repair.", output: JSON.stringify({ mission, scan }, null, 2) };
+    const target = mission === "improve-security"
+      ? scan.issues.find((entry) => entry.category === "security" && (entry.severity === "critical" || entry.severity === "high"))
+      : scan.issues.find((entry) => entry.severity === "critical" || entry.severity === "high");
+    if (!target) return { ok: true, message: mission === "improve-security" ? "No critical or high security issue is available for deterministic safe repair." : "No critical or high issue is available for deterministic safe repair.", output: JSON.stringify({ ...plan, state: "succeeded", result: { scan } }, null, 2) };
     log(`Generating verified patch for ${target.title}.`, 48);
     const patch = await generateVerifiedPatch(project, target);
     if (!patch || patch.risk !== "safe") return { ok: false, message: "No safe deterministic patch is available for the highest-priority issue.", output: JSON.stringify({ mission, target, patch }, null, 2) };
