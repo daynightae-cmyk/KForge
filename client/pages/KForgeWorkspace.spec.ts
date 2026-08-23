@@ -44,6 +44,19 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('SOURCE_CODE');
   });
 
+  it("renders the complete Marketplace taxonomy, evidence details, and permission review", () => {
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    expect(source).toContain('Marketplace product taxonomy');
+    expect(source).toContain('Integrity / checksum');
+    expect(source).toContain('Release History');
+    expect(source).toContain('Review all capability classes before installation or enablement.');
+    expect(source).toContain('NOT_AVAILABLE · no feature metadata was supplied.');
+    expect(source).toContain('Agent → Marketplace project evidence');
+    expect(source).toContain('Complete Lifecycle');
+    expect(source).toContain('Project-Aware Agent Flow');
+    expect(source).toContain('/projects/${project.id}/marketplace');
+  });
+
   it("renders Projects and non-Workspace capabilities as mutually exclusive surfaces", () => {
     const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
     expect(source).toContain('activeNav === "Workspace" && <><section className="kf-workspace-panel"');

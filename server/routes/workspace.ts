@@ -42,7 +42,7 @@ import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
 import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../services/securityTools";
-import { getMarketplace, listMarketplaceRegistryAdapters, previewMarketplaceInstall } from "../services/marketplace";
+import { getMarketplace, getProjectMarketplace, listMarketplaceRegistryAdapters, previewMarketplaceInstall } from "../services/marketplace";
 import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
@@ -1012,6 +1012,17 @@ router.get("/marketplace", async (_req, res) => {
   const marketplace = await getMarketplace(workspaceRoot, await isOptionalOnlineFeatureEnabled(workspaceRoot));
   const completedAt = new Date().toISOString();
   return res.json({ ...marketplace, transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["NONE"], provider: "KForge Marketplace adapters", destination: workspaceRoot, purpose: "Read local registry, installed-model, and configured-adapter evidence without refreshing a remote catalog.", startedAt, completedAt, result: "SUCCEEDED" }) });
+});
+
+router.get("/projects/:id/marketplace", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const workspaceRoot = getWorkspaceRoot();
+  const startedAt = new Date().toISOString();
+  const profile = await detectProjectProfile(project);
+  const marketplace = await getProjectMarketplace(workspaceRoot, await isOptionalOnlineFeatureEnabled(workspaceRoot), project, profile);
+  const completedAt = new Date().toISOString();
+  return res.json({ ...marketplace, transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], provider: "KForge Agent capability analysis and Marketplace adapters", destination: project.path, purpose: "Match normalized Marketplace items to detected project framework, language, and command evidence without contacting a remote registry.", startedAt, completedAt, result: "SUCCEEDED" }) });
 });
 
 router.get("/marketplace/items/:id/install-preview", async (req, res) => {
