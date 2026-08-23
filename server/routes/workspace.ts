@@ -1542,7 +1542,12 @@ router.get("/search", async (req, res) => {
       const exact = title.toLowerCase() === query ? 100 : title.toLowerCase().startsWith(query) ? 80 : haystack.includes(query) ? 50 : 0;
       if (exact) results.push({ kind, title, detail, projectId: project.id, score: exact });
     };
-    add("project", project.name, project.projectType);
+    add("project", project.name, `${project.projectType} · ${project.tags.length ? `labels: ${project.tags.join(", ")}` : "no labels"} · ${project.favorite ? "favorite" : ""} ${project.pinned ? "pinned" : ""} ${project.archived ? "archived" : ""}`);
+    project.tags.forEach((tag) => add("project-label", tag, project.name));
+    add("git", `${project.branch} · ${project.name}`, `${project.remoteUrl || "local repository"} · ${project.ahead} ahead · ${project.behind} behind · ${project.modifiedFiles + project.untrackedFiles} local change(s)`);
+    if (project.remoteUrl) add("github", project.name, project.remoteUrl);
+    if (await pathExists(path.join(project.path, "README.md"))) add("documentation", "README.md", project.name);
+    add("release", `${project.name} release status`, `${project.testStatus} tests · ${project.buildStatus} build · ${project.securityStatus} security`);
     const profile = await detectProjectProfile(project);
     profile.dependencies.forEach((entry) => add("dependency", entry.name, `${entry.version} · ${project.name}`));
     profile.framework.forEach((entry) => add("technology", entry, project.name));
