@@ -3,6 +3,7 @@ import path from "path";
 import { redactProjectText } from "./redaction";
 
 export type AgentToolPermission = "read-only" | "safe" | "safe-write" | "dangerous" | "blocked";
+export type AgentToolStatus = "AVAILABLE" | "AVAILABLE_WITH_CONFIRMATION" | "UNAVAILABLE" | "BLOCKED" | "ERROR";
 export type AgentToolName = "list_files" | "read_file" | "search_files" | "find_symbol" | "inspect_file" | "typecheck" | "lint" | "test" | "build" | "format" | "start" | "stop" | "health" | "logs" | "git_status" | "git_diff" | "git_branch" | "git_commit" | "scan" | "sonar" | "graph" | "dependency_audit";
 
 export interface AgentToolDefinition {
@@ -11,6 +12,8 @@ export interface AgentToolDefinition {
   description: string;
   requiresConfirmation?: boolean;
   unavailableReason?: string;
+  status?: AgentToolStatus;
+  runtimeError?: string;
 }
 
 export interface AgentToolResult {
@@ -101,7 +104,17 @@ async function textFile(root: string, relative: string, limit = 24_000) {
 
 function definition(name: AgentToolName) { return definitions.find((entry) => entry.name === name) as AgentToolDefinition; }
 
-export function listAgentTools() { return definitions; }
+export function resolveAgentToolStatus(tool: Pick<AgentToolDefinition, "permission" | "requiresConfirmation" | "unavailableReason" | "runtimeError">): AgentToolStatus {
+  if (tool.runtimeError) return "ERROR";
+  if (tool.permission === "blocked") return "BLOCKED";
+  if (tool.unavailableReason) return "UNAVAILABLE";
+  if (tool.permission === "dangerous" || tool.permission === "safe-write" || tool.requiresConfirmation) return "AVAILABLE_WITH_CONFIRMATION";
+  return "AVAILABLE";
+}
+
+export function listAgentTools() {
+  return definitions.map((tool) => ({ ...tool, status: resolveAgentToolStatus(tool) }));
+}
 
 export function isAgentToolName(value: unknown): value is AgentToolName {
   return typeof value === "string" && definitions.some((entry) => entry.name === value);

@@ -4,6 +4,34 @@ import path from "path";
 
 export type TaskKind = "scan" | "audit" | "test" | "build" | "typecheck" | "runtime" | "git" | "github" | "clone" | "agent" | "snapshot";
 export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked" | "retrying";
+export type MissionStepStatus = "queued" | "running" | "waiting-confirmation" | "succeeded" | "failed" | "blocked" | "skipped";
+export type MissionState = "queued" | "running" | "succeeded" | "failed" | "blocked" | "interrupted";
+
+export interface MissionStep {
+  id: string;
+  name: string;
+  tool: string;
+  status: MissionStepStatus;
+  dependencies: string[];
+  startedAt?: string;
+  finishedAt?: string;
+  logs: string[];
+  output?: string;
+  error?: string;
+  retryCount: number;
+}
+
+export interface KForgeMission {
+  id: string;
+  name: string;
+  state: MissionState;
+  currentStepId?: string;
+  steps: MissionStep[];
+  changedFiles: string[];
+  snapshotId?: string;
+  warnings: string[];
+  recovery: { resume: boolean; rollback: boolean; inspect: boolean; detail: string };
+}
 
 export interface KForgeTask {
   id: string;
@@ -22,6 +50,7 @@ export interface KForgeTask {
   retryOf?: string;
   interrupted?: boolean;
   recovery?: { strategy: "replay-action" | "inspect-only"; action?: string; detail: string };
+  mission?: KForgeMission;
 }
 
 export interface TaskExecutionResult {
@@ -67,6 +96,12 @@ export async function initializeTaskStore(workspaceRoot: string) {
       task.error = task.recovery?.strategy === "replay-action"
         ? "Interrupted by a previous KForge session. Inspect the task evidence, then replay this explicit project action only after retry and current trust checks."
         : "Interrupted by a previous KForge session. Inspect the task evidence and related snapshots before creating a new mission or rollback action.";
+      if (task.mission) {
+        task.mission.state = "interrupted";
+        const current = task.mission.steps.find((step) => step.status === "running" || step.status === "waiting-confirmation");
+        if (current) { current.status = "blocked"; current.finishedAt = task.finishedAt; current.error = "Interrupted by a previous KForge session. Inspect, resume safely, or roll back explicitly."; current.logs.push(current.error); }
+        task.mission.recovery = { resume: false, rollback: Boolean(task.mission.snapshotId), inspect: true, detail: "The prior session interrupted this mission. Inspect persisted steps and logs before creating a new execution." };
+      }
       append(task, task.error, "stderr");
       interrupted += 1;
     }
@@ -86,6 +121,41 @@ export function listTasks(projectId?: string) {
 
 export function getTask(taskId: string) {
   return tasks.get(taskId);
+}
+
+export function attachMission(taskId: string, mission: KForgeMission) {
+  const task = tasks.get(taskId);
+  if (!task) return undefined;
+  task.mission = mission;
+  queuePersist();
+  return task;
+}
+
+export function updateMissionStep(taskId: string, stepId: string, patch: Partial<Omit<MissionStep, "id" | "dependencies">>) {
+  const task = tasks.get(taskId);
+  const mission = task?.mission;
+  const step = mission?.steps.find((entry) => entry.id === stepId);
+  if (!task || !mission || !step) return undefined;
+  const now = new Date().toISOString();
+  Object.assign(step, patch);
+  if (patch.status === "running" && !step.startedAt) step.startedAt = now;
+  if (["succeeded", "failed", "blocked", "skipped"].includes(patch.status || "")) step.finishedAt = now;
+  if (patch.logs?.length) step.logs = step.logs.slice(-100);
+  mission.currentStepId = ["running", "waiting-confirmation"].includes(step.status) ? step.id : mission.currentStepId === step.id ? undefined : mission.currentStepId;
+  mission.state = step.status === "failed" ? "failed" : step.status === "blocked" ? "blocked" : mission.state === "queued" ? "running" : mission.state;
+  append(task, `Mission step ${step.name}: ${step.status}.`);
+  queuePersist();
+  return task;
+}
+
+export function completeMission(taskId: string, state: Extract<MissionState, "succeeded" | "failed" | "blocked">, warning?: string) {
+  const task = tasks.get(taskId);
+  if (!task?.mission) return undefined;
+  task.mission.state = state;
+  task.mission.currentStepId = undefined;
+  if (warning) task.mission.warnings.push(warning);
+  queuePersist();
+  return task;
 }
 
 export function appendTaskLog(taskId: string, message: string, progress?: number) {
@@ -116,6 +186,13 @@ export function startTask(projectId: string, kind: TaskKind, executor: () => Pro
       task.error = result.ok ? undefined : result.message;
       task.output = result.output;
       task.artifacts = result.artifacts;
+      if (task.mission) {
+        task.mission.state = result.ok ? "succeeded" : result.blocked ? "blocked" : "failed";
+        task.mission.currentStepId = undefined;
+        for (const step of task.mission.steps) {
+          if (step.status === "queued") { step.status = result.ok ? "skipped" : "blocked"; step.finishedAt = new Date().toISOString(); step.logs.push(result.ok ? "Skipped because the mission completed before this dependent step was reached." : "Blocked because an earlier mission step failed."); }
+        }
+      }
       append(task, result.message, result.ok ? "system" : "stderr");
       if (result.output) append(task, result.output.slice(-12_000), "stdout");
       task.finishedAt = new Date().toISOString();
@@ -124,6 +201,15 @@ export function startTask(projectId: string, kind: TaskKind, executor: () => Pro
       task.progress = 100;
       task.status = "failed";
       task.error = error instanceof Error ? error.message : "Task failed.";
+      if (task.mission) {
+        task.mission.state = "failed";
+        const current = task.mission.steps.find((step) => step.id === task.mission?.currentStepId || step.status === "running");
+        if (current) { current.status = "failed"; current.error = task.error; current.finishedAt = new Date().toISOString(); current.logs.push(task.error); }
+        task.mission.currentStepId = undefined;
+        for (const step of task.mission.steps) {
+          if (step.status === "queued") { step.status = "blocked"; step.finishedAt = new Date().toISOString(); step.logs.push("Blocked because an earlier mission step failed."); }
+        }
+      }
       append(task, task.error, "stderr");
       task.finishedAt = new Date().toISOString();
       task.durationMs = new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime();

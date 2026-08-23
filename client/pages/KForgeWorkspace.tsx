@@ -62,6 +62,32 @@ const NAVIGATION = [
 type Status = WorkspaceStatus;
 type SortKey = "name" | "projectType" | "branch" | "lastActivity" | "sync";
 
+interface MissionStepItem {
+  id: string;
+  name: string;
+  tool: string;
+  status: "queued" | "running" | "waiting-confirmation" | "succeeded" | "failed" | "blocked" | "skipped";
+  dependencies: string[];
+  startedAt?: string;
+  finishedAt?: string;
+  logs: string[];
+  output?: string;
+  error?: string;
+  retryCount: number;
+}
+
+interface MissionItem {
+  id: string;
+  name: string;
+  state: "queued" | "running" | "succeeded" | "failed" | "blocked" | "interrupted";
+  currentStepId?: string;
+  steps: MissionStepItem[];
+  changedFiles: string[];
+  snapshotId?: string;
+  warnings: string[];
+  recovery: { resume: boolean; rollback: boolean; inspect: boolean; detail: string };
+}
+
 interface TaskItem {
   id: string;
   projectId: string;
@@ -73,6 +99,7 @@ interface TaskItem {
   startedAt: string;
   finishedAt?: string;
   retryOf?: string;
+  mission?: MissionItem;
 }
 
 interface ServerTask {
@@ -89,6 +116,7 @@ interface ServerTask {
   durationMs?: number;
   artifacts?: string[];
   retryOf?: string;
+  mission?: MissionItem;
 }
 
 function taskFromServer(task: ServerTask): TaskItem | null {
@@ -105,6 +133,7 @@ function taskFromServer(task: ServerTask): TaskItem | null {
     startedAt: task.startedAt,
     finishedAt: task.finishedAt,
     retryOf: task.retryOf,
+    mission: task.mission,
   };
 }
 
@@ -648,14 +677,16 @@ function AICenter({ view, onlineOptional }: { view: "providers" | "models"; onli
 function AgentMissionCenter({ project }: { project: ProjectSummary }) {
   const [mission, setMission] = useState("audit");
   const [status, setStatus] = useState("Choose a mission. KForge records task logs, applies only verified safe patches, and restores snapshots on failed verification.");
-  const [registry, setRegistry] = useState<{ tools?: Array<{ name: string; description: string; permission: string; requiresConfirmation?: boolean; unavailableReason?: string }>; permissions?: Record<string, string> } | null>(null);
+  const [registry, setRegistry] = useState<{ tools?: Array<{ name: string; description: string; permission: string; status?: "AVAILABLE" | "AVAILABLE_WITH_CONFIRMATION" | "UNAVAILABLE" | "BLOCKED" | "ERROR"; requiresConfirmation?: boolean; unavailableReason?: string; runtimeError?: string }>; permissions?: Record<string, string> } | null>(null);
   const refreshRegistry = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/agent/tools`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Agent tool registry is unavailable."); setRegistry(payload); } catch (cause: unknown) { setStatus(cause instanceof Error ? cause.message : "Agent tool registry failed."); } };
   useEffect(() => { void refreshRegistry(); }, [project.id]);
   const start = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/agent/missions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mission }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Mission could not start."); setStatus(`Mission task ${payload.task.id} started. Open Tasks to follow its event log.`); } catch (cause: unknown) { setStatus(cause instanceof Error ? cause.message : "Mission start failed."); } };
-  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Bot size={17} /><h3>KForge Engineer missions</h3></div><button onClick={() => void refreshRegistry()}>Refresh tools</button></div><p className="kf-capability-copy">Read · Plan · Patch · Verify. The agent only invokes registered typed tools; commits, pushes, deployment, force push, and secret exposure remain permission-gated or blocked.</p><div className="kf-inline-controls"><select value={mission} onChange={(event) => setMission(event.target.value)}><option value="audit">Audit project</option><option value="fix-critical">Fix critical issue</option><option value="improve-security">Improve security</option><option value="improve-tests">Improve tests</option><option value="refactor">Prepare refactor plan</option><option value="prepare-release">Prepare production release</option><option value="prepare-github">Prepare GitHub</option><option value="documentation">Audit documentation</option><option value="performance">Inspect performance strategy</option></select><button className="kf-button kf-button--primary" onClick={() => void start()}>Start mission</button></div><p className="kf-capability-copy">{status}</p>{registry && <><div className="kf-provider-grid">{(registry.tools || []).map((tool) => { const available = tool.permission !== "blocked" && !tool.unavailableReason; return <article className="kf-provider-card" key={tool.name}><div><strong>{tool.name}</strong><span>{tool.permission}</span></div><p>{available ? "Available" : "Unavailable"}</p><small>{tool.unavailableReason || tool.description}</small></article>; })}</div><article className="kf-command-evidence"><strong>Agent permissions</strong><pre>{JSON.stringify(registry.permissions, null, 2)}</pre></article></>}</section>;
+  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Bot size={17} /><h3>KForge Engineer missions</h3></div><button onClick={() => void refreshRegistry()}>Refresh tools</button></div><p className="kf-capability-copy">Read · Plan · Patch · Verify. The agent only invokes registered typed tools; commits, pushes, deployment, force push, and secret exposure remain permission-gated or blocked.</p><div className="kf-inline-controls"><select value={mission} onChange={(event) => setMission(event.target.value)}><option value="audit">Audit project</option><option value="fix-critical">Fix critical issue</option><option value="improve-security">Improve security</option><option value="improve-tests">Improve tests</option><option value="refactor">Prepare refactor plan</option><option value="prepare-release">Prepare production release</option><option value="prepare-github">Prepare GitHub</option><option value="documentation">Audit documentation</option><option value="performance">Inspect performance strategy</option></select><button className="kf-button kf-button--primary" onClick={() => void start()}>Start mission</button></div><p className="kf-capability-copy">{status}</p>{registry && <><div className="kf-provider-grid">{(registry.tools || []).map((tool) => { const status = tool.status || "ERROR"; return <article className="kf-provider-card" key={tool.name}><div><strong>{tool.name}</strong><span>{status}</span></div><p>{tool.description}</p><small>Permission: {tool.permission}</small><small>Requires confirmation: {tool.requiresConfirmation ? "Yes" : "No"}</small>{tool.unavailableReason && <small>Unavailable reason: {tool.unavailableReason}</small>}{tool.runtimeError && <small>Runtime error: {tool.runtimeError}</small>}</article>; })}</div><article className="kf-command-evidence"><strong>Agent permissions</strong><pre>{JSON.stringify(registry.permissions, null, 2)}</pre></article></>}</section>;
 }
 
-function TaskCenterPanel({ tasks, onTaskControl }: { tasks: TaskItem[]; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) { return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>Task Center v2</h3></div><span>{tasks.length} selected-project task(s)</span></div>{tasks.length ? <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span><strong>{task.action} · {task.state}</strong><small>{task.message} · {task.progress}%{task.finishedAt ? ` · ${Math.max(0, Math.round((new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime()) / 1000))}s` : ""}</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for process output…"}</pre>{task.state === "queued" && <button onClick={() => onTaskControl(task, "cancel")}>Cancel queued task</button>}{["success", "error", "cancelled", "blocked"].includes(task.state) && <button onClick={() => onTaskControl(task, "retry")}>Retry task</button>}</details>)}</div> : <p className="kf-capability-copy">Agent and project tasks appear here after they start. Logs and output come from the actual local process.</p>}</section>; }
+function MissionProgress({ mission }: { mission: MissionItem }) { return <article className="kf-command-evidence"><strong>{mission.name} mission · {mission.state}</strong><small>{mission.currentStepId ? `Current step: ${mission.currentStepId}` : "No active step"} · changed files: {mission.changedFiles.length}</small><div className="kf-task-list">{mission.steps.map((step) => <details className="kf-task" key={step.id}><summary><span><strong>{step.status === "succeeded" ? "✓" : step.status === "running" ? "▶" : step.status === "failed" ? "!" : step.status === "blocked" ? "■" : step.status === "skipped" ? "–" : "○"} {step.name} · {step.status}</strong><small>{step.tool} · retry {step.retryCount}{step.dependencies.length ? ` · after ${step.dependencies.join(", ")}` : ""}</small></span><ChevronRight size={15} /></summary><pre>{JSON.stringify({ startedAt: step.startedAt, finishedAt: step.finishedAt, logs: step.logs, output: step.output, error: step.error }, null, 2)}</pre></details>)}</div>{mission.warnings.length > 0 && <pre>{mission.warnings.join("\n")}</pre>}<small>Recovery: {mission.recovery.detail}</small></article>; }
+
+function TaskCenterPanel({ tasks, onTaskControl }: { tasks: TaskItem[]; onTaskControl: (task: TaskItem, control: "cancel" | "retry") => void }) { return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>Task Center v2</h3></div><span>{tasks.length} selected-project task(s)</span></div>{tasks.length ? <div className="kf-task-list">{tasks.map((task) => <details key={task.id} className={`kf-task kf-task--${task.state}`}><summary><span><strong>{task.action} · {task.state}</strong><small>{task.message} · {task.progress}%{task.finishedAt ? ` · ${Math.max(0, Math.round((new Date(task.finishedAt).getTime() - new Date(task.startedAt).getTime()) / 1000))}s` : ""}</small></span><ChevronRight size={15} /></summary><pre>{task.output || "Waiting for process output…"}</pre>{task.mission && <MissionProgress mission={task.mission} />}{task.state === "queued" && <button onClick={() => onTaskControl(task, "cancel")}>Cancel queued task</button>}{["success", "error", "cancelled", "blocked"].includes(task.state) && <button onClick={() => onTaskControl(task, "retry")}>Retry task</button>}</details>)}</div> : <p className="kf-capability-copy">Agent and project tasks appear here after they start. Logs and output come from the actual local process.</p>}</section>; }
 
 function DocumentationPanel({ project }: { project: ProjectSummary }) {
   const [audit, setAudit] = useState<{ findings: Array<{ id: string; sourceDocument: string; claim: string; evidence: string; actualState: string; severity: string; suggestedFix: string }> } | null>(null);
@@ -805,9 +836,22 @@ function ProblemsCenter({ projectId, issues, scannedAt }: { projectId: string; i
   return <><div className="kf-card-heading"><div><ShieldAlert size={17} /><h3>Problems center</h3></div><span>{scannedAt ? `Scan ${formatDate(scannedAt)}` : "Run scan to load"}</span></div>{!scannedAt ? <div className="kf-card-empty"><p>No normalized diagnostics are loaded for this project.</p></div> : <><div className="kf-problem-filters"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search diagnostics" aria-label="Search problems" /><select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="all">All severity</option>{["critical", "high", "medium", "low", "info"].map((value) => <option key={value}>{value}</option>)}</select><select value={source} onChange={(event) => setSource(event.target.value)}><option value="all">All sources</option>{sources.map((value) => <option key={value}>{value}</option>)}</select><select value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select></div><div className="kf-issues">{filtered.length ? <>{filtered.map((entry) => <details key={entry.id} className="kf-issue"><summary><span className={`kf-severity kf-severity--${entry.severity}`}>{entry.severity}</span><span><strong>{entry.title}</strong><small>{entry.source} · {entry.file || entry.category}</small></span><ChevronRight size={15} /></summary><div><p>{entry.description}</p><p className="kf-suggestion"><Wrench size={14} />{entry.fixability === "automatic" ? "Automatic patch may be available after review." : entry.suggestion || "Manual review is required."}</p>{entry.id.endsWith(":missing-env-example") && <button className="kf-solution-button" onClick={() => void applyEnvironmentTemplate(entry)}>Preview + Apply safe template</button>}</div></details>)}{solutionStatus && <p className="kf-solution-status">{solutionStatus}</p>}</> : <div className="kf-card-empty"><p>No problems match the selected filters.</p></div>}</div></>}</>;
 }
 
+function PlanOutput({ value }: { value: unknown }) {
+  if (typeof value === "string") return <article className="kf-command-evidence"><strong>Plan</strong><pre>{value}</pre></article>;
+  if (value === null || value === undefined) return <p className="kf-capability-copy">No plan content was returned.</p>;
+  if (Array.isArray(value)) return <article className="kf-command-evidence"><strong>Plan steps</strong><pre>{JSON.stringify(value, null, 2)}</pre></article>;
+  if (typeof value !== "object") return <article className="kf-command-evidence"><strong>Plan</strong><pre>{String(value)}</pre></article>;
+  const record = value as Record<string, unknown>;
+  const summary = typeof record.summary === "string" ? record.summary : typeof record.goal === "string" ? record.goal : typeof record.mission === "string" ? record.mission : "Evidence-backed plan";
+  const steps = Array.isArray(record.steps) ? record.steps : Array.isArray(record.tasks) ? record.tasks : [];
+  const risks = Array.isArray(record.risks) ? record.risks : Array.isArray(record.warnings) ? record.warnings : [];
+  const verification = Array.isArray(record.verification) ? record.verification : record.verification ? [record.verification] : [];
+  return <article className="kf-command-evidence"><strong>Plan summary</strong><p>{summary}</p>{steps.length > 0 && <><strong>Steps</strong><pre>{JSON.stringify(steps, null, 2)}</pre></>}{risks.length > 0 && <><strong>Risks</strong><pre>{JSON.stringify(risks, null, 2)}</pre></>}{verification.length > 0 && <><strong>Verification</strong><pre>{JSON.stringify(verification, null, 2)}</pre></>}{steps.length === 0 && risks.length === 0 && verification.length === 0 && <pre>{JSON.stringify(record, null, 2)}</pre>}</article>;
+}
+
 function AgentPanel({ projectId }: { projectId: string }) {
   const [mission, setMission] = useState("Review diagnostics and produce a safe implementation plan.");
-  const [result, setResult] = useState("");
+  const [result, setResult] = useState<unknown>(null);
   const [status, setStatus] = useState("KForge Engineer reads project context and uses a local model only when one is available.");
   const [working, setWorking] = useState(false);
   const plan = async () => {
@@ -816,14 +860,14 @@ function AgentPanel({ projectId }: { projectId: string }) {
       const response = await fetch(`/api/workspace/projects/${projectId}/agent/plan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mission }) });
       const payload = await response.json() as { plan?: unknown; error?: string; mode?: "local-ai" | "rules"; provider?: string | { provider?: string; reason?: string } };
       const providerReason = typeof payload.provider === "object" && payload.provider ? payload.provider.reason : undefined;
-      if (!response.ok) { setResult(""); setStatus(payload.error || providerReason || "Local AI is unavailable."); return; }
-      setResult(typeof payload.plan === "string" ? payload.plan : JSON.stringify(payload.plan, null, 2));
+      if (!response.ok) { setResult(null); setStatus(payload.error || providerReason || "Local AI is unavailable."); return; }
+      setResult(payload.plan ?? null);
       const providerName = typeof payload.provider === "string" ? payload.provider : payload.provider?.provider;
       setStatus(payload.mode === "local-ai" ? `Plan generated by local ${providerName || "AI"}.` : "Evidence-based deterministic plan generated from the current scan.");
     } catch (cause: unknown) { setStatus(cause instanceof Error ? cause.message : "Local AI request failed."); }
     finally { setWorking(false); }
   };
-  return <><div className="kf-card-heading"><div><Bot size={17} /><h3>KForge Engineer</h3></div><span>Read + plan</span></div><div className="kf-agent-panel"><textarea value={mission} onChange={(event) => setMission(event.target.value)} aria-label="KForge Engineer mission" /><button className="kf-button kf-button--ghost" onClick={() => void plan()} disabled={working}>{working ? "Planning…" : "Generate plan"}</button><p>{status}</p>{result && <pre>{result}</pre>}</div></>;
+  return <><div className="kf-card-heading"><div><Bot size={17} /><h3>KForge Engineer</h3></div><span>Read + plan</span></div><div className="kf-agent-panel"><textarea value={mission} onChange={(event) => setMission(event.target.value)} aria-label="KForge Engineer mission" /><button className="kf-button kf-button--ghost" onClick={() => void plan()} disabled={working}>{working ? "Planning…" : "Generate plan"}</button><p>{status}</p>{result !== null && <PlanOutput value={result} />}</div></>;
 }
 
 function Metric({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone: "good" | "warning" | "bad" | "neutral" }) { return <div className={`kf-metric kf-metric--${tone}`}><span>{icon}</span><small>{label}</small><strong>{value}</strong></div>; }

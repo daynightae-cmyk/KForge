@@ -28,7 +28,7 @@ import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snap
 import { buildAgentContext, buildLocalAIPlan, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
-import { appendTaskLog, cancelTask, getTask, initializeTaskStore, listTasks, retryTask, startTask, type KForgeTask, type TaskKind } from "../services/tasks";
+import { appendTaskLog, attachMission, cancelTask, completeMission, getTask, initializeTaskStore, listTasks, retryTask, startTask, updateMissionStep, type KForgeMission, type KForgeTask, type TaskKind } from "../services/tasks";
 import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
@@ -1113,6 +1113,22 @@ router.post("/projects/:id/snapshots/:snapshotId/restore", async (req, res) => {
 
 const agentPermissions = { readFiles: "allow", editFiles: "allow", runTests: "allow", runBuild: "allow", installPackage: "ask", deleteFile: "ask", gitCommit: "ask", gitPush: "ask", deploy: "ask", forcePush: "block", exposeSecret: "block" } as const;
 
+function createMissionGraph(mission: string, id: string): KForgeMission {
+  const sequences: Record<string, Array<[string, string, string]>> = {
+    audit: [["scan", "Scan project", "scan"], ["graph", "Build dependency graph", "graph"], ["sonar", "Run KForge Sonar", "sonar"], ["health", "Calculate project health", "health"]],
+    "fix-critical": [["scan", "Scan project", "scan"], ["plan", "Identify safe repair", "plan"], ["snapshot", "Create snapshot", "snapshot"], ["patch", "Apply verified patch", "patch"], ["typecheck", "Verify typecheck", "typecheck"], ["test", "Verify tests", "test"], ["build", "Verify build", "build"], ["runtime", "Verify runtime", "runtime"]],
+    "improve-security": [["scan", "Scan security evidence", "scan"], ["sonar", "Run KForge Sonar", "sonar"], ["dependency-audit", "Audit dependencies", "dependency_audit"], ["plan", "Identify safe repair", "plan"]],
+    "improve-tests": [["scan", "Discover tests", "scan"], ["typecheck", "Run typecheck", "typecheck"], ["test", "Run tests", "test"], ["analysis", "Analyze test evidence", "analysis"]],
+    refactor: [["scan", "Scan project", "scan"], ["graph", "Analyze impact", "graph"], ["architecture", "Inspect architecture", "architecture"], ["plan", "Create preview-only refactor plan", "plan"]],
+    "prepare-release": [["scan", "Scan project", "scan"], ["typecheck", "Run typecheck", "typecheck"], ["test", "Run tests", "test"], ["build", "Run production build", "build"], ["runtime", "Run runtime verification", "runtime"], ["release", "Evaluate release evidence", "release"]],
+    "prepare-github": [["scan", "Scan project", "scan"], ["git", "Inspect Git diff and branch", "git_status"], ["checks", "Inspect verification evidence", "health"], ["preview", "Create commit preview", "git_diff"]],
+    documentation: [["scan", "Scan project", "scan"], ["documentation", "Audit documentation claims", "documentation_audit"]],
+    performance: [["scan", "Scan project size", "scan"], ["profile", "Inspect performance strategy", "performance_profile"]],
+  };
+  const sequence = sequences[mission] || sequences.audit;
+  return { id, name: mission, state: "queued", steps: sequence.map(([stepId, name, tool], index) => ({ id: stepId, name, tool, status: "queued", dependencies: index ? [sequence[index - 1][0]] : [], logs: [], retryCount: 0 })), changedFiles: [], warnings: [], recovery: { resume: false, rollback: false, inspect: true, detail: "Persisted mission steps can be inspected after restart. Destructive work is never replayed automatically." } };
+}
+
 function projectToolHandlers(project: ProjectSummary): ProjectToolHandlers {
   const action = (kind: WorkspaceAction) => async () => executeProjectAction(project, kind);
   return {
@@ -1287,8 +1303,11 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
   let taskId = "";
   const task = startTask(project.id, "agent", async () => {
     const log = (message: string, progress: number) => appendTaskLog(taskId, message, progress);
+    const step = (id: string, status: "queued" | "running" | "waiting-confirmation" | "succeeded" | "failed" | "blocked" | "skipped", output?: unknown, error?: string) => updateMissionStep(taskId, id, { status, logs: [`${status}: ${error || (output === undefined ? "" : "evidence recorded")}`], output: output === undefined ? undefined : JSON.stringify(output, null, 2).slice(0, 12_000), error });
+    step("scan", "running");
     log("Reading project profile and Git state.", 12);
     const scan = await scanProject(project);
+    step("scan", "succeeded", { issueCount: scan.issues.length, scannedAt: scan.scannedAt });
     log(`Scan found ${scan.issues.length} issue(s).`, 30);
     const plan = {
       missionId: taskId,
@@ -1299,7 +1318,19 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
       snapshot: undefined as string | undefined,
       recovery: { retry: "Explicit retry only; KForge never replays a mission automatically after interruption.", inspect: `Use task ${taskId} to inspect persisted logs and output.` },
     };
-    if (mission === "audit") return { ok: true, message: "Audit mission completed.", output: JSON.stringify({ ...plan, state: "succeeded", result: { scan } }, null, 2) };
+    if (mission === "audit") {
+      step("graph", "running");
+      const graph = await buildProjectGraph(project.path);
+      step("graph", "succeeded", graph.summary);
+      step("sonar", "running");
+      const sonar = await executeAgentTool(project.path, projectToolHandlers(project), "sonar");
+      step("sonar", sonar.ok ? "succeeded" : "failed", sonar.output, sonar.ok ? undefined : sonar.message);
+      if (!sonar.ok) return { ok: false, message: "Audit mission stopped because KForge Sonar evidence failed.", output: JSON.stringify({ ...plan, state: "failed", result: { scan, graph, sonar } }, null, 2) };
+      step("health", "running");
+      step("health", "succeeded", scan.health);
+      completeMission(taskId, "succeeded");
+      return { ok: true, message: "Audit mission completed with scan, graph, Sonar, and health evidence.", output: JSON.stringify({ ...plan, state: "succeeded", result: { scan, graph, sonar, health: scan.health } }, null, 2) };
+    }
     if (mission === "documentation") {
       log("Auditing documentation claims against detected project scripts and files.", 55);
       const documentation = await auditDocumentation(project.path, scan.profile);
@@ -1367,7 +1398,8 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
     }
   });
   taskId = task.id;
-  return res.status(202).json({ task, mission, permissions: agentPermissions });
+  attachMission(taskId, createMissionGraph(mission, taskId));
+  return res.status(202).json({ task: getTask(taskId) || task, mission, permissions: agentPermissions });
 });
 
 router.post("/projects/:id/agent/plan", async (req, res) => {
