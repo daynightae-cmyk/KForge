@@ -1097,7 +1097,8 @@ router.post("/projects/:id/release-gate", async (req, res) => {
   const warnings = scan.issues.filter((entry) => entry.severity === "medium" || entry.severity === "low");
   const missingChecks = ["typecheck", "test", "build", "runtime"].filter((action) => !verification.some((entry) => entry.action === action));
   const readiness = blockers.length || failedVerification.length ? "BLOCKED" : warnings.length || missingChecks.length ? "READY WITH WARNINGS" : "READY";
-  return res.status(readiness === "BLOCKED" ? 422 : 200).json({ readiness, checks: verification.map((entry) => ({ action: entry.action, ok: entry.ok, message: entry.message })), missingChecks, security: scan.issues.filter((entry) => entry.category === "security"), dependencies: scan.issues.filter((entry) => entry.category === "dependency"), completeness: scan.issues.filter((entry) => entry.category === "completeness" || entry.category === "mock"), blockers, warnings, scan });
+  const preview = getPreviewStatus(project.id);
+  return res.status(readiness === "BLOCKED" ? 422 : 200).json({ readiness, checks: verification.map((entry) => ({ action: entry.action, ok: entry.ok, message: entry.message })), missingChecks, preview: { state: preview.state, url: preview.url, health: preview.health, checkedAt: preview.checkedAt }, security: scan.issues.filter((entry) => entry.category === "security"), dependencies: scan.issues.filter((entry) => entry.category === "dependency"), completeness: scan.issues.filter((entry) => entry.category === "completeness" || entry.category === "mock"), blockers, warnings, scan });
 });
 
 router.get("/projects/:id/release/preparation", async (req, res) => {
