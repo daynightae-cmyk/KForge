@@ -1137,6 +1137,8 @@ router.post("/projects/:id/snapshots", async (req, res) => {
   const files = Array.isArray(req.body?.files) ? req.body.files.filter((file: unknown): file is string => typeof file === "string") : [];
   const reason = typeof req.body?.reason === "string" ? req.body.reason : "KForge manual snapshot";
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Snapshot creation"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Snapshot creation requires explicit confirmation.", permission: "ask" });
   try {
     const snapshot = await createSnapshot(project.path, files, reason);
     addActivity(project.id, { kind: "system", title: "Snapshot created", detail: `${snapshot.files.length} file(s) captured before modification.` });
@@ -1149,6 +1151,8 @@ router.post("/projects/:id/snapshots", async (req, res) => {
 router.post("/projects/:id/snapshots/:snapshotId/restore", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Snapshot restore"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Snapshot restore requires explicit confirmation.", snapshotId: req.params.snapshotId });
   try {
     const snapshot = await restoreSnapshot(project.path, req.params.snapshotId);
     addActivity(project.id, { kind: "system", title: "Snapshot restored", detail: `${snapshot.files.length} file(s) restored.` });
@@ -1192,6 +1196,11 @@ async function executeMissionStrategyStep(project: ProjectSummary, mission: Miss
   const command = async (action: WorkspaceAction) => { const result = await executeProjectAction(project, action); return { ok: result.ok, output: result, message: result.ok ? `${action} completed with local evidence.` : `${action} failed; evidence was recorded.` }; };
   switch (step.tool) {
     case "scan": { const scan = await ensureScan(); return { ok: true, output: { scannedAt: scan.scannedAt, issues: scan.issues.length, profile: scan.profile }, message: "Project scan completed." }; }
+    case "prioritize_findings": { const scan = await ensureScan(); const findings = scan.issues.filter((issue) => ["critical", "high"].includes(issue.severity)); return { ok: true, output: { count: findings.length, findings }, message: `${findings.length} critical or high finding(s) prioritized from current scan evidence.` }; }
+    case "build_context": { const scan = await ensureScan(); const bounded = await buildAgentContext(project, scan); return { ok: true, output: { files: bounded.files.map((file) => file.path), totalCharacters: bounded.totalCharacters }, message: "Bounded local context recorded without claiming an AI analysis." }; }
+    case "analyze": { const scan = await ensureScan(); const finding = scan.issues.find((issue) => ["critical", "high"].includes(issue.severity)); return { ok: true, output: finding || { state: "NO_CRITICAL_OR_HIGH_FINDING" }, message: finding ? "Target finding analysis recorded from current scan evidence." : "No critical or high finding exists to analyze." }; }
+    case "discovery_timing": { const started = performance.now(); const files = await findFiles(project.path, () => true, 5_000); const durationMs = Number((performance.now() - started).toFixed(2)); return { ok: true, output: { filesDiscovered: files.length, durationMs, limit: 5_000 }, message: `Local file discovery measured in ${durationMs}ms.` }; }
+    case "search_timing": { const started = performance.now(); const candidates = await findFiles(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()), 5_000); const matches: string[] = []; for (const relative of candidates) { if (await fileContains(path.join(project.path, relative), /TODO|FIXME/i)) matches.push(relative); } const durationMs = Number((performance.now() - started).toFixed(2)); return { ok: true, output: { filesSearched: candidates.length, todoOrFixmeMatches: matches.length, durationMs, limit: 5_000 }, message: `Local source search measured in ${durationMs}ms.` }; }
     case "graph": { const graph = context.graph ||= await buildProjectGraph(project.path); return { ok: true, output: graph.summary, message: "Dependency graph completed." }; }
     case "sonar": { const result = await executeAgentTool(project.path, projectToolHandlers(project), "sonar"); return { ok: result.ok, output: result.output, message: result.ok ? "KForge Sonar evidence completed." : result.message }; }
     case "health": { const scan = await ensureScan(); return { ok: true, output: scan.health, message: "Project health evidence recorded." }; }
@@ -1202,6 +1211,7 @@ async function executeMissionStrategyStep(project: ProjectSummary, mission: Miss
     case "typecheck": return command("typecheck");
     case "test": return command("test");
     case "build": return command("build");
+    case "runtime": return command("runtime");
     case "secret_detection": { const scan = await ensureScan(); return { ok: true, output: scan.issues.filter((issue) => issue.category === "security"), message: "Secret-detection evidence recorded from KForge Sonar." }; }
     case "security_tools": return { ok: true, output: await detectSecurityTools(project.path, project.trust === "trusted"), message: "Local security-tool availability recorded; unavailable tools are not treated as pass." };
     case "permission_review": return { ok: true, output: agentPermissions, message: "Agent permission policy recorded." };
@@ -1215,6 +1225,14 @@ async function executeMissionStrategyStep(project: ProjectSummary, mission: Miss
     case "patch_eligibility": { const scan = await ensureScan(); const target = mission === "improve-security" ? scan.issues.find((issue) => issue.category === "security" && ["critical", "high"].includes(issue.severity)) : scan.issues.find((issue) => ["critical", "high"].includes(issue.severity)); context.patch = target ? await generateVerifiedPatch(project, target) : undefined; return context.patch && context.patch.risk === "safe" ? { ok: true, output: { issue: target, patch: context.patch }, message: "A safe patch rule is eligible for explicit preview and confirmation." } : { ok: false, blocked: true, output: { issue: target }, message: "BLOCKED_MANUAL_REVIEW: no verified safe patch is available." }; }
     case "snapshot": { if (!context.patch) return { ok: false, blocked: true, message: "Snapshot is blocked because no verified patch is eligible." }; const snapshot = await createSnapshot(project.path, [context.patch.file], `Before V3 mission ${mission}: ${context.patch.id}`); context.snapshotId = snapshot.id; return { ok: true, output: snapshot, snapshotId: snapshot.id, message: "Snapshot created before any write-capable step." }; }
     case "patch_preview": return context.patch ? { ok: true, output: context.patch, message: "Safe patch preview recorded; no file was changed." } : { ok: false, blocked: true, message: "Patch preview is blocked because no safe patch is available." };
+    case "confirmation": return { ok: false, blocked: true, output: { required: true, snapshotId: context.snapshotId }, message: "CONFIRMATION_REQUIRED: no write is executed until an explicit approved continuation is implemented and invoked." };
+    case "patch_apply": {
+      if (!context.patch || !context.snapshotId) return { ok: false, blocked: true, message: "Patch apply is blocked because a verified patch and snapshot are both required." };
+      const quality = await evaluatePatchQuality(project.path, context.patch);
+      if (!quality.ok || context.patch.risk !== "safe") return { ok: false, blocked: true, output: quality, message: "Patch Quality Gate blocked the write; no file was changed." };
+      const applied = await validateAndApplyPatch(project.path, context.patch);
+      return { ok: true, output: { applied, snapshotId: context.snapshotId }, changedFiles: [context.patch.file], snapshotId: context.snapshotId, message: "Verified patch applied only after snapshot and Quality Gate validation." };
+    }
     case "cache_status": return { ok: true, output: projectCacheStatus(project.path), message: "Local cache status recorded." };
     case "memory_status": { const scan = await ensureScan(); return { ok: true, output: scan.profile.performance, message: "Detected performance budget recorded; no synthetic memory benchmark was reported." }; }
     case "summary": return { ok: true, output: { mission, step: step.id }, message: "Mission summary step completed from recorded evidence." };

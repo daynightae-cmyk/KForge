@@ -34,6 +34,30 @@ describe("KForge Mission Orchestrator V3", () => {
     expect(stored?.progress).toBe(100);
   });
 
+  it("resumes queued read-only work after an interrupted predecessor state", async () => {
+    const task = persistentTask();
+    const resumed = mission(task.id, [step(task.id, "scan", 0), step(task.id, "graph", 1, ["scan"]), step(task.id, "summary", 2, ["graph"])]);
+    resumed.state = "recovering";
+    resumed.status = "recovering";
+    resumed.steps[0].status = "succeeded";
+    resumed.steps[0].attempts = 1;
+    resumed.steps[0].evidence.push({ id: "scan:1", stepId: "scan", kind: "discovery", recordedAt: new Date().toISOString(), summary: "Persisted scan evidence." });
+    attachMission(task.id, resumed);
+
+    const executed: string[] = [];
+    const result = await executeMissionDag(task.id, async (current) => {
+      executed.push(current.id);
+      return { ok: true, output: { id: current.id }, message: `${current.id} resumed successfully.` };
+    });
+    const stored = getTask(task.id)?.mission;
+    expect(result.state).toBe("succeeded");
+    expect(executed).toEqual(["graph", "summary"]);
+    expect(stored?.steps.find((entry) => entry.id === "scan")?.evidence[0]?.summary).toBe("Persisted scan evidence.");
+    expect(stored?.steps.find((entry) => entry.id === "graph")?.status).toBe("succeeded");
+    expect(stored?.steps.find((entry) => entry.id === "summary")?.status).toBe("succeeded");
+    expect(stored?.progress).toBe(100);
+  });
+
   it("stops at a confirmation-required step without executing a write-capable operation", async () => {
     const task = persistentTask();
     attachMission(task.id, mission(task.id, [step(task.id, "scan", 0), step(task.id, "apply", 1, ["scan"], true)]));
