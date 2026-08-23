@@ -125,6 +125,9 @@ export interface HealthMetric {
   evidence: string[];
   findings: string[];
   lastScan: string;
+  evidenceSource: string;
+  evidenceAgeMs: number;
+  freshness: "current-scan" | "live-task" | "persisted-task" | "unknown";
 }
 
 export type ReleaseDecisionState = "READY" | "READY WITH WARNINGS" | "BLOCKED";
@@ -185,6 +188,7 @@ export interface CommandResult {
   exitCode?: number;
   output: string;
   message: string;
+  evidenceSource?: "live" | "persisted";
 }
 
 export type LocalCapabilityState = "ready" | "available" | "limited" | "unavailable";

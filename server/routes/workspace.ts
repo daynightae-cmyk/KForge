@@ -107,6 +107,7 @@ function commandResultFromTask(task: KForgeTask): CommandResult | undefined {
     exitCode: task.exitCode,
     output: task.output || "",
     message: task.error || task.logs.at(-1)?.message || `${action} completed from persisted task evidence.`,
+    evidenceSource: "persisted",
   };
 }
 
@@ -583,8 +584,15 @@ function statusForIssues(issues: ScanIssue[], categories: DiagnosticCategory[]) 
   return "pass" as const;
 }
 
-function metric(key: HealthMetric["key"], label: string, weight: number, status: WorkspaceStatus, score: number | null, evidence: string[], findings: string[]): HealthMetric {
-  return { key, label, status, score, weight, evidence, findings, lastScan: new Date().toISOString() };
+function metric(key: HealthMetric["key"], label: string, weight: number, status: WorkspaceStatus, score: number | null, evidence: string[], findings: string[], details: Partial<Pick<HealthMetric, "lastScan" | "evidenceSource" | "evidenceAgeMs" | "freshness">> = {}): HealthMetric {
+  const lastScan = details.lastScan || new Date().toISOString();
+  return { key, label, status, score, weight, evidence, findings, lastScan, evidenceSource: details.evidenceSource || "KForge current scan", evidenceAgeMs: details.evidenceAgeMs ?? Math.max(0, Date.now() - new Date(lastScan).getTime()), freshness: details.freshness || "current-scan" };
+}
+
+function taskEvidenceDetails(result: CommandResult | undefined): Partial<Pick<HealthMetric, "lastScan" | "evidenceSource" | "evidenceAgeMs" | "freshness">> {
+  if (!result) return { evidenceSource: "No KForge task evidence", evidenceAgeMs: 0, freshness: "unknown" };
+  const persisted = result.evidenceSource === "persisted";
+  return { lastScan: result.completedAt, evidenceSource: persisted ? "KForge persisted task evidence" : "KForge live task evidence", evidenceAgeMs: Math.max(0, Date.now() - new Date(result.completedAt).getTime()), freshness: persisted ? "persisted-task" : "live-task" };
 }
 
 async function calculateHealth(project: ProjectSummary, profile: ProjectProfile, diagnostics: ScanIssue[], actionState: Partial<Record<WorkspaceAction, CommandResult>>, typecheckStatus: WorkspaceStatus): Promise<ProjectHealth> {
@@ -601,9 +609,9 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
     metric("codeQuality", "Code quality", 12, statusFromScore(typecheckStatus === "unknown" ? null : Math.max(0, 100 - deduction(typecheck))), typecheckStatus === "unknown" ? null : Math.max(0, 100 - deduction(typecheck)), [typecheckStatus === "unknown" ? "No TypeScript check was detected." : "TypeScript compiler result was collected."], typecheck.map((entry) => entry.title)),
     metric("security", "Security", 14, statusFromScore(Math.max(0, 100 - deduction(security))), Math.max(0, 100 - deduction(security)), ["Tracked secret-file check and available package security scan."], security.map((entry) => entry.title)),
     metric("dependencies", "Dependencies", 10, statusFromScore(Math.max(0, 100 - deduction(dependencies))), Math.max(0, 100 - deduction(dependencies)), [`${profile.dependencies.length} declared dependencies detected.`], dependencies.map((entry) => entry.title)),
-    metric("tests", "Tests", 12, actionState.test ? (actionState.test.ok ? "pass" : "fail") : "unknown", checks(actionState.test), [actionState.test ? actionState.test.message : "Tests have not been run by KForge in this server session."], actionState.test?.ok ? [] : actionState.test ? [actionState.test.message] : []),
-    metric("build", "Build", 12, actionState.build ? (actionState.build.ok ? "pass" : "fail") : "unknown", checks(actionState.build), [actionState.build ? actionState.build.message : "Build has not been run by KForge in this server session."], actionState.build?.ok ? [] : actionState.build ? [actionState.build.message] : []),
-    metric("runtime", "Runtime", 10, actionState.runtime ? (actionState.runtime.ok ? "pass" : "fail") : "unknown", checks(actionState.runtime), [actionState.runtime ? actionState.runtime.message : "Runtime has not been verified by KForge in this server session."], actionState.runtime?.ok ? [] : actionState.runtime ? [actionState.runtime.message] : []),
+    metric("tests", "Tests", 12, actionState.test ? (actionState.test.ok ? "pass" : "fail") : "unknown", checks(actionState.test), [actionState.test ? actionState.test.message : "Tests have not been run by KForge."], actionState.test?.ok ? [] : actionState.test ? [actionState.test.message] : [], taskEvidenceDetails(actionState.test)),
+    metric("build", "Build", 12, actionState.build ? (actionState.build.ok ? "pass" : "fail") : "unknown", checks(actionState.build), [actionState.build ? actionState.build.message : "Build has not been run by KForge."], actionState.build?.ok ? [] : actionState.build ? [actionState.build.message] : [], taskEvidenceDetails(actionState.build)),
+    metric("runtime", "Runtime", 10, actionState.runtime ? (actionState.runtime.ok ? "pass" : "fail") : "unknown", checks(actionState.runtime), [actionState.runtime ? actionState.runtime.message : "Runtime has not been verified by KForge."], actionState.runtime?.ok ? [] : actionState.runtime ? [actionState.runtime.message] : [], taskEvidenceDetails(actionState.runtime)),
     metric("git", "Git", 8, statusFromScore(gitScore), gitScore, [`Branch ${project.branch}; ${project.modifiedFiles} modified, ${project.untrackedFiles} untracked, ${project.behind} behind.`], project.behind ? ["Remote commits are available."] : []),
     metric("documentation", "Documentation", 6, statusFromScore((awaitableScore(profile.totalFileCount > 0 && profile.sourceFileCount > 0, 100))), awaitableScore(profile.totalFileCount > 0 && profile.sourceFileCount > 0, 100), [await pathExists(path.join(project.path, "README.md")) ? "README.md detected." : "README.md not detected."], diagnostics.filter((entry) => entry.id.includes("missing-readme")).map((entry) => entry.title)),
     metric("architecture", "Architecture", 8, statusFromScore(profile.sourceRoots.length ? 90 : profile.sourceFileCount ? 65 : 0), profile.sourceRoots.length ? 90 : profile.sourceFileCount ? 65 : 0, [profile.sourceRoots.length ? `Source roots: ${profile.sourceRoots.join(", ")}.` : "No conventional source root detected."], []),
