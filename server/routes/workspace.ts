@@ -23,7 +23,7 @@ import type {
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
 import { detectLocalAIProvider, requestLocalPlan } from "../services/localAI";
-import { deleteOllamaModel, generateWithLocalAI, getModelCenter, getOllamaRuntimeStatus, installOllamaModel, listAIProviders, setActiveModel, testAIConnection, type AIProviderId } from "../services/aiCenter";
+import { checkForModelUpdates, deleteOllamaModel, generateWithLocalAI, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, listAIProviders, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
 import { buildAgentContext, buildLocalAIPlan, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
@@ -770,6 +770,31 @@ router.get("/ai/models", async (_req, res) => {
 
 router.get("/ai/ollama/status", async (_req, res) => {
   res.json(await getOllamaRuntimeStatus());
+});
+
+router.get("/ai/models/:model/update", async (req, res) => {
+  try { return res.json(await checkForModelUpdates(getWorkspaceRoot(), req.params.model)); }
+  catch (error: unknown) { return res.status(400).json({ error: error instanceof Error ? error.message : "Model update check failed." }); }
+});
+
+router.get("/ai/models/:model/changelog", async (req, res) => {
+  try { return res.json(await getModelChangelog(getWorkspaceRoot(), req.params.model)); }
+  catch (error: unknown) { return res.status(400).json({ error: error instanceof Error ? error.message : "Model changelog lookup failed." }); }
+});
+
+router.get("/ai/models/:model/compatibility", async (req, res) => {
+  try { return res.json(await getModelCompatibility(getWorkspaceRoot(), req.params.model)); }
+  catch (error: unknown) { return res.status(400).json({ error: error instanceof Error ? error.message : "Model compatibility check failed." }); }
+});
+
+router.post("/ai/models/:model/update/install", async (req, res) => {
+  try { return res.status(409).json(await installModelUpdate(getWorkspaceRoot(), req.params.model)); }
+  catch (error: unknown) { return res.status(400).json({ error: error instanceof Error ? error.message : "Model update install preparation failed." }); }
+});
+
+router.post("/ai/models/:model/update/verify", async (req, res) => {
+  try { return res.json(await verifyModelUpdate(getWorkspaceRoot(), req.params.model)); }
+  catch (error: unknown) { return res.status(400).json({ error: error instanceof Error ? error.message : "Model update verification failed." }); }
 });
 
 router.post("/ai/models/active", async (req, res) => {

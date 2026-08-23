@@ -307,3 +307,86 @@ export async function generateWithLocalAI(workspaceRoot: string, system: string,
   if (!content) throw new Error(`${provider.name} returned no content.`);
   return { provider, model: selected.model, content };
 }
+
+
+export type ModelUpdateEngineState = "REMOTE_REGISTRY_NOT_CONFIGURED" | "INSTALLED_VERSION_VERIFIED" | "MODEL_NOT_INSTALLED";
+
+export interface ModelUpdateEngineResult {
+  provider: "ollama";
+  model: string;
+  state: ModelUpdateEngineState;
+  checkedAt: string;
+  source: { kind: "local-runtime" | "remote-registry"; configured: boolean; label: string; url?: string };
+  currentVersion?: string;
+  latestKnownVersion: "UNKNOWN";
+  changelog: "REMOTE_REGISTRY_NOT_CONFIGURED";
+  detail: string;
+}
+
+function validOllamaModelName(model: string) {
+  return /^[A-Za-z0-9._:-]+$/.test(model);
+}
+
+function knownCatalogModel(model: string) {
+  return catalog.find((entry) => entry.id === model || entry.pullName === model);
+}
+
+function modelVersion(model: string) {
+  return model.includes(":") ? model.slice(model.indexOf(":") + 1) : "UNSPECIFIED";
+}
+
+async function installedOllamaModel(model: string) {
+  const runtime = await getOllamaRuntimeStatus();
+  return { runtime, model: runtime.models.find((entry) => entry.id === model) };
+}
+
+export async function getModelVersion(model: string) {
+  if (!validOllamaModelName(model)) throw new Error("The requested Ollama model name is invalid.");
+  const { runtime, model: installed } = await installedOllamaModel(model);
+  const catalogModel = knownCatalogModel(model);
+  if (installed) return { provider: "ollama" as const, model, state: "INSTALLED_VERSION_VERIFIED" as const, currentVersion: modelVersion(installed.id), source: "local-runtime", verifiedAt: new Date().toISOString() };
+  return { provider: "ollama" as const, model, state: "MODEL_NOT_INSTALLED" as const, currentVersion: catalogModel ? modelVersion(catalogModel.pullName) : "UNKNOWN", source: runtime.installed ? "local-runtime" : "local-catalog", verifiedAt: new Date().toISOString() };
+}
+
+export async function checkForModelUpdates(workspaceRoot: string, model: string): Promise<ModelUpdateEngineResult> {
+  void workspaceRoot;
+  const version = await getModelVersion(model);
+  return {
+    provider: "ollama",
+    model,
+    state: version.state === "INSTALLED_VERSION_VERIFIED" ? "REMOTE_REGISTRY_NOT_CONFIGURED" : "MODEL_NOT_INSTALLED",
+    checkedAt: new Date().toISOString(),
+    source: { kind: "remote-registry", configured: false, label: "Ollama remote registry adapter", url: "https://ollama.com/library" },
+    currentVersion: version.currentVersion,
+    latestKnownVersion: "UNKNOWN",
+    changelog: "REMOTE_REGISTRY_NOT_CONFIGURED",
+    detail: version.state === "INSTALLED_VERSION_VERIFIED"
+      ? "The installed local version was verified, but no remote registry adapter is configured. KForge cannot truthfully report whether an update exists."
+      : "The requested model is not installed locally. No remote registry adapter is configured, so KForge cannot report a latest version or update availability.",
+  };
+}
+
+export async function getModelChangelog(workspaceRoot: string, model: string) {
+  const update = await checkForModelUpdates(workspaceRoot, model);
+  return { ...update, entries: [] as Array<{ version: string; publishedAt?: string; summary: string }> };
+}
+
+export async function getModelCompatibility(workspaceRoot: string, model: string) {
+  void workspaceRoot;
+  if (!validOllamaModelName(model)) throw new Error("The requested Ollama model name is invalid.");
+  const catalogModel = knownCatalogModel(model);
+  if (!catalogModel) return { provider: "ollama" as const, model, state: "DATA_UNAVAILABLE" as const, detail: "No local catalog metadata exists for this model, so compatibility cannot be calculated." };
+  const hardware = await getHardwareInfo();
+  return { provider: "ollama" as const, model, state: "AVAILABLE" as const, hardwareCollectedAt: hardware.collectedAt, ...classifyModel(catalogModel, hardware) };
+}
+
+export async function installModelUpdate(workspaceRoot: string, model: string) {
+  const update = await checkForModelUpdates(workspaceRoot, model);
+  return { ...update, allowed: false, action: "BLOCKED", reason: "REMOTE REGISTRY NOT CONFIGURED. KForge will not download or replace a local model without a configured registry adapter and explicit user confirmation." };
+}
+
+export async function verifyModelUpdate(workspaceRoot: string, model: string) {
+  const version = await getModelVersion(model);
+  const update = await checkForModelUpdates(workspaceRoot, model);
+  return { ...update, verification: version.state === "INSTALLED_VERSION_VERIFIED" ? "LOCAL_VERSION_VERIFIED" : "MODEL_NOT_INSTALLED", verifiedAt: version.verifiedAt };
+}
