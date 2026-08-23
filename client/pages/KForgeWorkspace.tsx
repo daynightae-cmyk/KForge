@@ -59,6 +59,25 @@ const NAVIGATION = [
   { group: "System", items: [["Settings", Settings2], ["Trust", ShieldAlert], ["Permissions", ShieldAlert], ["Storage", Box], ["Offline / Online", Network], ["System diagnostics", Activity]] },
 ] as const;
 
+const NAV_SERVICE_INFO: Record<string, { description: string; capability: string }> = {
+  "Project health": { description: "Evidence age, source, and release-impacting local health metrics.", capability: "Evidence freshness" },
+  "Agents": { description: "Persistent strategy missions with explicit trust, tool, and confirmation boundaries.", capability: "Mission orchestration" },
+  "Tasks": { description: "Persisted task logs, evidence, recovery, and safe controls.", capability: "Task evidence" },
+  "Marketplace": { description: "Local runtime metadata and configured provider adapters only; no invented registry data.", capability: "Registry inspection" },
+  "Project graph": { description: "Local source imports and dependencies derived from the selected project.", capability: "Dependency graph" },
+  "KForge Sonar": { description: "Local scanner evidence and installed-tool availability, including explicit unavailable states.", capability: "Quality analysis" },
+  "Release Gate": { description: "Runs selected local verification and reports actual blockers, warnings, and Preview evidence.", capability: "Release evidence" },
+  "Preview": { description: "Starts a detected local project command only after trust, then reports HTTP health and process logs.", capability: "Trusted local runtime" },
+  "GitHub": { description: "Shows configured GitHub metadata only when optional online access is enabled.", capability: "Optional remote metadata" },
+  "Models": { description: "Reports local model runtime state and configured source metadata without claiming remote availability.", capability: "Local model state" },
+};
+
+function navHoverInfo(label: string, group: string) {
+  return NAV_SERVICE_INFO[label] || { description: `${label} is a ${group.toLowerCase()} surface. Its view loads current local or configured-service evidence when opened.`, capability: `${group} capability` };
+}
+
+function navCardId(label: string) { return `nav-card-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`; }
+
 type Status = WorkspaceStatus;
 type SortKey = "name" | "projectType" | "branch" | "lastActivity" | "sync";
 
@@ -448,7 +467,7 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
           {NAVIGATION.map((section) => (
             <section key={section.group}>
               <p className="kf-nav-label">{section.group}</p>
-              {section.items.map(([label, Icon]) => <button key={label} className={`kf-nav-item ${activeNav === label ? "is-active" : ""}`} onClick={() => setActiveNav(label)}><Icon size={16} /><span>{label}</span></button>)}
+              {section.items.map(([label, Icon]) => { const info = navHoverInfo(label, section.group); const cardId = navCardId(label); return <button key={label} aria-label={label} aria-describedby={cardId} className={`kf-nav-item ${activeNav === label ? "is-active" : ""}`} onClick={() => setActiveNav(label)}><Icon size={16} /><span>{label}</span><span id={cardId} role="tooltip" className="kf-nav-hover-card"><strong>{label}</strong><small>{info.description}</small><em>Capability: {info.capability}</em><em>Privacy: {localPlatform?.mode === "online-optional" ? "Local-first · optional online" : "Local-first · offline core"}</em><em>State: {activeNav === label ? "Open" : "Open to load current evidence"}</em></span></button>; })}
             </section>
           ))}
         </nav>
