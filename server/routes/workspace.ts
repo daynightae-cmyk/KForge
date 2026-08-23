@@ -448,11 +448,11 @@ function issue(projectId: string, seed: string, severity: DiagnosticSeverity, ca
   };
 }
 
-async function toolAvailability(project: ProjectSummary, profile: ProjectProfile): Promise<ToolAvailability[]> {
+async function toolAvailability(project: ProjectSummary, profile: ProjectProfile, onlineOptional: boolean): Promise<ToolAvailability[]> {
   const trusted = project.trust === "trusted";
   const typescriptAvailable = trusted && (Boolean(profile.scripts.typecheck) || (await pathExists(path.join(project.path, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc"))));
   const eslintAvailable = trusted && (Boolean(profile.scripts.lint) || (await pathExists(path.join(project.path, "node_modules", ".bin", process.platform === "win32" ? "eslint.cmd" : "eslint"))));
-  const auditAvailable = trusted && profile.packageManager === "npm" && await pathExists(path.join(project.path, "package-lock.json"));
+  const auditAvailable = trusted && onlineOptional && profile.packageManager === "npm" && await pathExists(path.join(project.path, "package-lock.json"));
   const security = await detectSecurityTools(project.path, trusted);
   const external = (name: "gitleaks" | "semgrep" | "sonar") => {
     const tool = security.find((entry) => entry.id === name)!;
@@ -462,7 +462,7 @@ async function toolAvailability(project: ProjectSummary, profile: ProjectProfile
   return [
     { name: "typescript", available: typescriptAvailable, reason: typescriptAvailable ? undefined : trusted ? "No TypeScript compiler or typecheck script detected." : blocked },
     { name: "eslint", available: eslintAvailable, reason: eslintAvailable ? undefined : trusted ? "No ESLint command or lint script detected." : blocked },
-    { name: "npm-audit", available: auditAvailable, reason: auditAvailable ? undefined : trusted ? "npm audit requires a package-lock.json file." : blocked },
+    { name: "npm-audit", available: auditAvailable, reason: auditAvailable ? undefined : !trusted ? blocked : !onlineOptional ? "Offline Mode blocks network-based npm audit; enable Online Optional and run an explicit audit to request registry data." : "npm audit requires a package-lock.json file." },
     external("gitleaks"), external("semgrep"), external("sonar"),
   ];
 }
@@ -475,8 +475,8 @@ function parseTypecheckDiagnostics(projectId: string, output: string) {
   });
 }
 
-async function npmAuditIssues(project: ProjectSummary, profile: ProjectProfile) {
-  if (profile.packageManager !== "npm" || !(await pathExists(path.join(project.path, "package-lock.json")))) return [] as ScanIssue[];
+async function npmAuditIssues(project: ProjectSummary, profile: ProjectProfile, onlineOptional: boolean) {
+  if (!onlineOptional || profile.packageManager !== "npm" || !(await pathExists(path.join(project.path, "package-lock.json")))) return [] as ScanIssue[];
   const audit = await run("npm", ["audit", "--json", "--omit=dev", "--package-lock-only"], project.path, 60_000);
   let parsed: JsonRecord | null = null;
   try { const value: unknown = JSON.parse(audit.output); parsed = typeof value === "object" && value !== null ? value as JsonRecord : null; } catch { return [] as ScanIssue[]; }
@@ -645,7 +645,8 @@ function awaitableScore(condition: boolean, score: number) {
 
 export async function scanProject(project: ProjectSummary): Promise<ProjectScan> {
   const profile = await detectProjectProfile(project);
-  const tools = await toolAvailability(project, profile);
+  const onlineOptional = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+  const tools = await toolAvailability(project, profile, onlineOptional);
   const diagnostics: ScanIssue[] = [];
   const actionState = actionEvidence(project.id);
   const typecheckTool = tools.find((tool) => tool.name === "typescript");
@@ -658,7 +659,7 @@ export async function scanProject(project: ProjectSummary): Promise<ProjectScan>
     if (!execution.ok && !diagnostics.length) diagnostics.push(issue(project.id, "typecheck-command", "high", "typecheck", "Typecheck command failed", execution.output || "The TypeScript command exited with a non-zero status.", { source: "TypeScript", fixability: "guided", suggestion: "Inspect the TypeScript output and correct the project types before continuing." }));
   }
   const safeReadOnly = project.trust !== "trusted";
-  const [sensitiveFiles, secretLiterals, dependencyIssues, completeness, advancedCompletion, eslintFindings, externalFindings] = await Promise.all([trackedSensitiveFiles(project), secretLiteralIssues(project), safeReadOnly ? Promise.resolve([] as ScanIssue[]) : npmAuditIssues(project, profile), completenessIssues(project, profile), advancedCompletionIssues(project), safeReadOnly ? Promise.resolve([] as ScanIssue[]) : lintIssues(project, profile, tools), externalScannerIssues(project, tools)]);
+  const [sensitiveFiles, secretLiterals, dependencyIssues, completeness, advancedCompletion, eslintFindings, externalFindings] = await Promise.all([trackedSensitiveFiles(project), secretLiteralIssues(project), safeReadOnly || !onlineOptional ? Promise.resolve([] as ScanIssue[]) : npmAuditIssues(project, profile, onlineOptional), completenessIssues(project, profile), advancedCompletionIssues(project), safeReadOnly ? Promise.resolve([] as ScanIssue[]) : lintIssues(project, profile, tools), externalScannerIssues(project, tools)]);
   sensitiveFiles.forEach((file) => diagnostics.push(issue(project.id, `tracked-sensitive-${file}`, "high", "security", "Potentially sensitive file is tracked by Git", `${file} is version-controlled and requires review.`, { file, source: "Git", rule: "git/tracked-sensitive-file", fixability: "guided", risk: "approval", suggestion: "Move secrets to an ignored local file and rotate any exposed credentials." })));
   diagnostics.push(...secretLiterals, ...dependencyIssues, ...completeness, ...advancedCompletion, ...eslintFindings, ...externalFindings);
   if (project.modifiedFiles + project.untrackedFiles > 0) diagnostics.push(issue(project.id, "working-tree-changed", "info", "git", "Local changes are present", `${project.modifiedFiles} modified and ${project.untrackedFiles} untracked file(s) are present.`, { source: "Git", fixability: "manual", suggestion: "Review the diff before pulling, pushing, or creating a release." }));
