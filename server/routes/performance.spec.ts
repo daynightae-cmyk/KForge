@@ -3,7 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { performance } from "perf_hooks";
 import { buildProjectGraph } from "../services/projectGraph";
-import { clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
+import { clearProjectCache, persistBenchmarkEvidence, projectCacheStatus } from "../services/projectPerformance";
 import { makeProjectSummary, scanProject } from "./workspace";
 
 const measurements: Record<string, number> = {};
@@ -70,7 +70,10 @@ describe("KForge large-project benchmark", () => {
       expect(cachedGraph.generatedAt).toBe(graph.generatedAt);
       expect(projectCacheStatus(root).some((entry) => entry.key === "graph")).toBe(true);
       expect(scan.profile.performance.scale).toBe("large");
-      console.log(`KFORGE_BENCHMARK ${JSON.stringify(measurements)}`);
+      const evidence = await persistBenchmarkEvidence(root, { id: "large-project-5000", createdAt: new Date().toISOString(), fixture: { files: count, packages: 5, sourceFiles: profile.sourceFileCount }, measurements });
+      const persisted = JSON.parse(await fs.readFile(evidence.path, "utf8"));
+      expect(persisted).toMatchObject({ id: "large-project-5000", fixture: { files: count, packages: 5, sourceFiles: profile.sourceFileCount }, measurements });
+      console.log(`KFORGE_BENCHMARK ${JSON.stringify({ ...measurements, evidencePath: evidence.path })}`);
     } finally {
       clearProjectCache(root);
       await fs.rm(root, { recursive: true, force: true });

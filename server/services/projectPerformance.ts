@@ -1,4 +1,23 @@
+import { promises as fs } from "fs";
+import path from "path";
 import type { ProjectPerformanceStrategy } from "../../shared/workspace";
+
+export interface BenchmarkEvidence {
+  id: string;
+  createdAt: string;
+  fixture: { files: number; packages: number; sourceFiles: number };
+  measurements: Record<string, number>;
+}
+
+export async function persistBenchmarkEvidence(workspaceRoot: string, evidence: BenchmarkEvidence) {
+  const directory = path.join(workspaceRoot, ".kforge", "benchmarks");
+  const target = path.join(directory, `${evidence.id}.json`);
+  const temporary = `${target}.tmp`;
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(temporary, JSON.stringify(evidence, null, 2), "utf8");
+  await fs.rename(temporary, target);
+  return { path: target, evidence };
+}
 
 export function chooseProjectPerformance(totalFiles: number, projectSizeBytes: number): ProjectPerformanceStrategy {
   const megabytes = projectSizeBytes / (1024 * 1024);
