@@ -72,7 +72,7 @@ const NAV_SERVICE_INFO: Record<string, { description: string; capability: string
   "Models": { description: "Reports local model runtime state and configured source metadata without claiming remote availability.", capability: "Local model state" },
 };
 
-function navHoverInfo(label: string, group: string) {
+export function navHoverInfo(label: string, group: string) {
   return NAV_SERVICE_INFO[label] || { description: `${label} is a ${group.toLowerCase()} surface. Its view loads current local or configured-service evidence when opened.`, capability: `${group} capability` };
 }
 
