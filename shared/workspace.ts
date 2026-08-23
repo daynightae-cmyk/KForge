@@ -210,6 +210,42 @@ export interface LocalPlatformStatus {
   optionalOnlineFeatures: Array<{ id: "clone" | "git-sync" | "model-download" | "cloud-ai"; label: string; enabled: boolean; detail: string }>;
 }
 
+export const KFORGE_STARTUP_CAPABILITIES = [
+  "Workspace",
+  "Recent projects",
+  "Favorites",
+  "Pinned",
+  "Project health",
+  "Agents",
+  "Discover",
+  "Preview",
+] as const;
+
+export type KForgeStartupCapability = (typeof KFORGE_STARTUP_CAPABILITIES)[number];
+
+export interface KForgePlatformSettings {
+  version: 1;
+  general: {
+    startupCapability: KForgeStartupCapability;
+  };
+  appearance: {
+    density: "compact" | "comfortable";
+    reducedMotion: boolean;
+  };
+  preview: {
+    autoHealthCheck: boolean;
+    healthIntervalMs: 3_000 | 5_000 | 10_000 | 30_000;
+  };
+  privacy: {
+    secretRedaction: true;
+    remoteContextPolicy: "blocked" | "ask";
+  };
+  git: {
+    confirmRemoteWrites: true;
+  };
+  updatedAt: string;
+}
+
 export interface WorkspaceResponse {
   root: string;
   projects: ProjectSummary[];

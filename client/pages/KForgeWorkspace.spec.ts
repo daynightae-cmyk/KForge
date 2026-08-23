@@ -27,7 +27,10 @@ describe("KForge Workspace capability coverage", () => {
   });
 
   it("routes every Online destination into one dedicated Online Hub renderer", () => {
-    expect(ONLINE_NAVIGATION_LABELS.length).toBeGreaterThanOrEqual(10);
+    expect(ONLINE_NAVIGATION_LABELS).toEqual([
+      "Discover", "Marketplace", "Extensions", "Model Hub", "Agent Marketplace", "Tool Marketplace", "Integrations",
+      "Providers", "Installed", "Updates", "Security Center", "Remote Sources", "Downloads", "Activity",
+    ]);
     ONLINE_NAVIGATION_LABELS.forEach((label) => expect(CAPABILITY_RENDERER_IDS[label]).toBe("OnlineHubPanel"));
   });
 
@@ -36,5 +39,23 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('activeNav === "Workspace" && <><section className="kf-workspace-panel"');
     expect(source).toContain('activeNav !== "Workspace" && <section className={`kf-active-surface');
     expect(source).not.toContain('activeProject && activeNav !== "Workspace" && <CapabilitySurface');
+  });
+
+  it("keeps legacy demo and mock editor surfaces outside the production router", () => {
+    const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+    const server = readFileSync(new URL("../../server/index.ts", import.meta.url), "utf8");
+    expect(app).not.toContain('path="/editor"');
+    expect(app).not.toContain("KnouxVideoEditor");
+    expect(server).not.toContain('/api/demo');
+    expect(server).not.toContain('/api/ai-models');
+  });
+
+  it("connects Settings and Preview V2 to persisted platform behavior", () => {
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    expect(CAPABILITY_RENDERER_IDS.Settings).toBe("SettingsCenter");
+    expect(source).toContain('<SettingsCenter settings={settings}');
+    expect(source).toContain('KNOuX Forge Preview Engine');
+    expect(source).toContain('Automatic health checks');
+    expect(source).toContain('Browser console capture: NOT AVAILABLE');
   });
 });

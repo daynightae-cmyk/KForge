@@ -7,7 +7,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import KForgeWorkspace from "./pages/KForgeWorkspace";
 import KnouxForgeInstallation from "./pages/KnouxForgeInstallation";
-import KnouxVideoEditor from "./pages/KnouxVideoEditor";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,7 +20,6 @@ const App = () => (
         <Routes>
           <Route path="/" element={<KnouxForgeInstallation />} />
           <Route path="/workspace" element={<KForgeWorkspace />} />
-          <Route path="/editor" element={<KnouxVideoEditor />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
