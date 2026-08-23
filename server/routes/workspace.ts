@@ -13,6 +13,9 @@ import type {
   ProjectHealth,
   ProjectHealthEvidenceSource,
   ProjectHealthEvidenceSourceKind,
+  ReleaseGateResult,
+  ReleaseGateSourceKind,
+  ReleaseGateSourceVerdict,
   ProjectProfile,
   ProjectScan,
   ProjectSummary,
@@ -719,6 +722,31 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
   return { score: totalWeight ? Math.round(measured.reduce((total, entry) => total + (entry.score || 0) * entry.weight, 0) / totalWeight) : null, evidenceCoverage: Math.round((measured.length / metrics.length) * 100), metrics, sources, release, calculatedAt };
 }
 
+export function releaseGateSourceVerdicts(scan: ProjectScan): { readiness: ReleaseGateResult["readiness"]; verdicts: ReleaseGateResult["verdicts"] } {
+  const kinds: ReleaseGateSourceKind[] = ["LOCAL", "GITHUB", "CI", "PREVIEW"];
+  const verdicts = Object.fromEntries(kinds.map((kind) => {
+    const source = scan.health.sources[kind];
+    const verdict: ReleaseGateSourceVerdict = {
+      kind,
+      state: source.state,
+      source: source.source,
+      timestamp: source.timestamp,
+      freshness: source.freshness,
+      evidence: [...source.evidence],
+      blocker: source.blocker,
+      reason: source.error || source.blocker,
+    };
+    return [kind, verdict];
+  })) as ReleaseGateResult["verdicts"];
+  const states = Object.values(verdicts).map((entry) => entry.state);
+  const readiness: ReleaseGateResult["readiness"] = verdicts.LOCAL.state === "BLOCKED" || verdicts.LOCAL.state === "ERROR"
+    ? "BLOCKED"
+    : states.every((state) => state === "READY")
+      ? "READY"
+      : "READY WITH WARNINGS";
+  return { readiness, verdicts };
+}
+
 function awaitableScore(condition: boolean, score: number) {
   return condition ? score : 40;
 }
@@ -1194,10 +1222,22 @@ router.post("/projects/:id/release-gate", async (req, res) => {
   const failedVerification = verification.filter((entry) => !entry.ok);
   const blockers = scan.issues.filter((entry) => (entry.severity === "critical" || entry.severity === "high") && entry.status !== "ignored");
   const warnings = scan.issues.filter((entry) => entry.severity === "medium" || entry.severity === "low");
-  const missingChecks = ["typecheck", "test", "build", "runtime"].filter((action) => !verification.some((entry) => entry.action === action));
-  const readiness = blockers.length || failedVerification.length ? "BLOCKED" : warnings.length || missingChecks.length ? "READY WITH WARNINGS" : "READY";
-  const preview = getPreviewStatus(project.id);
-  return res.status(readiness === "BLOCKED" ? 422 : 200).json({ readiness, checks: verification.map((entry) => ({ action: entry.action, ok: entry.ok, message: entry.message })), missingChecks, preview: { state: preview.state, url: preview.url, health: preview.health, checkedAt: preview.checkedAt }, security: scan.issues.filter((entry) => entry.category === "security"), dependencies: scan.issues.filter((entry) => entry.category === "dependency"), completeness: scan.issues.filter((entry) => entry.category === "completeness" || entry.category === "mock"), blockers, warnings, scan });
+  const missingChecks = (["typecheck", "test", "build", "runtime"] as WorkspaceAction[]).filter((action) => !verification.some((entry) => entry.action === action));
+  const separated = releaseGateSourceVerdicts(scan);
+  const readiness: ReleaseGateResult["readiness"] = blockers.length || failedVerification.length ? "BLOCKED" : separated.readiness;
+  const result: ReleaseGateResult = {
+    readiness,
+    verdicts: separated.verdicts,
+    checks: verification.map((entry) => ({ action: entry.action, ok: entry.ok, message: entry.message })),
+    missingChecks,
+    security: scan.issues.filter((entry) => entry.category === "security"),
+    dependencies: scan.issues.filter((entry) => entry.category === "dependency"),
+    completeness: scan.issues.filter((entry) => entry.category === "completeness" || entry.category === "mock"),
+    blockers,
+    warnings,
+    scan,
+  };
+  return res.status(readiness === "BLOCKED" ? 422 : 200).json(result);
 });
 
 router.get("/projects/:id/release/preparation", async (req, res) => {

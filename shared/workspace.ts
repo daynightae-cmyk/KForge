@@ -164,6 +164,32 @@ export interface ProjectHealthEvidenceSource {
   blocker?: string;
 }
 
+export type ReleaseGateSourceKind = "LOCAL" | "GITHUB" | "CI" | "PREVIEW";
+
+export interface ReleaseGateSourceVerdict {
+  kind: ReleaseGateSourceKind;
+  state: ProjectHealthEvidenceState;
+  source: string;
+  timestamp: string | null;
+  freshness: ProjectHealthEvidenceSource["freshness"];
+  evidence: string[];
+  blocker?: string;
+  reason?: string;
+}
+
+export interface ReleaseGateResult {
+  readiness: ReleaseDecisionState;
+  verdicts: Record<ReleaseGateSourceKind, ReleaseGateSourceVerdict>;
+  checks: Array<{ action: WorkspaceAction; ok: boolean; message: string }>;
+  missingChecks: WorkspaceAction[];
+  security: ScanIssue[];
+  dependencies: ScanIssue[];
+  completeness: ScanIssue[];
+  blockers: ScanIssue[];
+  warnings: ScanIssue[];
+  scan: ProjectScan;
+}
+
 export interface ToolAvailability {
   name: "typescript" | "eslint" | "npm-audit" | "gitleaks" | "semgrep" | "sonar";
   available: boolean;

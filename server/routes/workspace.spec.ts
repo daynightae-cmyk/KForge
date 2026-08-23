@@ -6,7 +6,7 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, projectHealthEvidenceSources, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
+import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
 import type { KForgeTask } from "../services/tasks";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
@@ -182,6 +182,16 @@ describe("KForge Workspace engines", () => {
     } finally {
       await fs.rm(workspaceRoot, { recursive: true, force: true });
     }
+  });
+
+  it("keeps Release Gate source verdicts independent and never hides absent CI evidence", async () => {
+    const project = await makeProjectSummary(fixture("workspace-clean"));
+    const scan = await scanProject(project);
+    const release = releaseGateSourceVerdicts(scan);
+    expect(Object.keys(release.verdicts)).toEqual(["LOCAL", "GITHUB", "CI", "PREVIEW"]);
+    expect(release.verdicts.CI).toMatchObject({ kind: "CI", state: "NOT_CONFIGURED", source: expect.any(String), freshness: expect.any(String), evidence: expect.any(Array) });
+    expect(release.verdicts.LOCAL.timestamp).toEqual(expect.any(String));
+    expect(release.readiness).toBe("READY WITH WARNINGS");
   });
 
   it("restores the latest completed verification evidence and preserves fresher in-memory results", () => {
