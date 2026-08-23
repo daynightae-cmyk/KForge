@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CAPABILITY_RENDERER_IDS, missingCapabilityRenderers, navHoverInfo, ONLINE_NAVIGATION_LABELS, visibleNavigationLabels } from "./KForgeWorkspace";
+import { CAPABILITY_RENDERER_IDS, missingCapabilityRenderers, navHoverInfo, ONLINE_NAVIGATION_LABELS, PREVIEW_CONTEXT_NAVIGATION_LABELS, visibleNavigationLabels } from "./KForgeWorkspace";
 
 describe("KForge Workspace capability coverage", () => {
   it("assigns every visible sidebar item to an explicit capability renderer", () => {
@@ -93,5 +93,18 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('/preview/fix-verify');
     expect(source).toContain('Preview → Fix → Verify');
     expect(source).toContain('Local · GitHub · CI · Preview');
+  });
+
+  it("references the single Preview session from every requested engineering context", () => {
+    expect(PREVIEW_CONTEXT_NAVIGATION_LABELS).toEqual([
+      "Project health", "Agents", "Tasks", "KForge Sonar", "Problems", "Solutions", "Project graph", "Architecture",
+      "Tests", "Build", "Runtime", "Git", "GitHub", "Pull requests", "Issues", "Actions", "Releases", "Marketplace", "Models",
+    ]);
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    expect(source).toContain('source="Project"');
+    expect(source).toContain("Current Preview context");
+    expect(source).toContain("same project Preview session and evidence");
+    expect(source).toContain('onNavigate("Preview")');
+    expect(source).toContain('/preview`');
   });
 });

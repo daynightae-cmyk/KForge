@@ -578,7 +578,7 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
             )}
             <div className="kf-group-header kf-group-header--collapsed"><button onClick={() => setOpenGroups((state) => ({ ...state, others: !state.others }))}>{openGroups.others ? <ChevronDown size={16} /> : <ChevronRight size={16} />}<span>Connected & recent</span><small>{projects.filter((project) => project.provider === "GitHub").length}</small></button><span>{openGroups.others ? "GitHub-connected repositories appear in the local projects list." : ""}</span></div>
           </section>
-          {activeProject && <ProjectInspectorV2 project={activeProject} scan={activeScan} results={actionResults[activeProject.id]} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} />}</>}
+          {activeProject && <><ProjectInspectorV2 project={activeProject} scan={activeScan} results={actionResults[activeProject.id]} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} /><PreviewContextCard project={activeProject} source="Project" onNavigate={() => setActiveNav("Preview")} /></>}</>}
 
           {activeProject && activeNav !== "Workspace" && <section className={`kf-active-surface ${isOnlineNavigation(activeNav) ? "kf-active-surface--online" : ""}`} aria-label={`${activeTitle} capability`}><CapabilitySurface activeNav={activeNav} project={activeProject} projects={projects} scan={activeScan} tasks={activeTaskList} results={actionResults[activeProject.id]} platform={localPlatform} settings={settings} onSettingsChange={setSettings} onPlatformModeChange={(mode) => void setPlatformMode(mode)} onOpenProject={() => setModal("open")} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} onTrust={() => void approveProjectTrust(activeProject)} onNavigate={(label) => setActiveNav(label)} /></section>}
           {!activeProject && activeNav !== "Workspace" && <WorkspaceEmpty onOpen={() => setModal("open")} />}
@@ -629,6 +629,9 @@ export const CAPABILITY_RENDERER_IDS: Record<string, string> = {
 export const visibleNavigationLabels = (): string[] => NAVIGATION.flatMap((section) => section.items.map((item) => item[0] as string));
 export const missingCapabilityRenderers = () => visibleNavigationLabels().filter((label) => !CAPABILITY_RENDERER_IDS[label]);
 
+export const PREVIEW_CONTEXT_NAVIGATION_LABELS = ["Project health", "Agents", "Tasks", "KForge Sonar", "Problems", "Solutions", "Project graph", "Architecture", "Tests", "Build", "Runtime", "Git", "GitHub", "Pull requests", "Issues", "Actions", "Releases", "Marketplace", "Models"] as const;
+const previewContextNavigation = new Set<string>(PREVIEW_CONTEXT_NAVIGATION_LABELS);
+
 function UnavailableCapabilityPanel({ label }: { label: string }) { return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Activity size={17} /><h3>{label}</h3></div><span>Unavailable</span></div><p className="kf-capability-copy">UNAVAILABLE: this internal navigation state has no registered capability renderer. It is not a production sidebar destination.</p></section>; }
 
 function CapabilitySurface({ activeNav, project, projects, scan, tasks, results, platform, settings, onSettingsChange, onPlatformModeChange, onOpenProject, onRun, onTaskControl, onTrust, onNavigate }: { activeNav: string; project: ProjectSummary; projects: ProjectSummary[]; scan?: ProjectScan; tasks: TaskItem[]; results?: Partial<Record<WorkspaceAction, CommandResult>>; platform?: LocalPlatformStatus; settings: KForgePlatformSettings | null; onSettingsChange: (settings: KForgePlatformSettings) => void; onPlatformModeChange: (mode: LocalPlatformStatus["mode"]) => void; onOpenProject: () => void; onRun: (action: WorkspaceAction) => void; onTaskControl: (task: TaskItem, control: "cancel" | "retry" | "resume" | "rollback") => void; onTrust: () => void; onNavigate: (label: string) => void }) {
@@ -643,7 +646,8 @@ function CapabilitySurface({ activeNav, project, projects, scan, tasks, results,
     "Git": <GitCenterPanel project={project} />, "Branches": <GitCenterPanel project={project} />, "Commits": <GitCenterPanel project={project} />, "GitHub": <GitHubCenterPanel project={project} view="GitHub" onlineOptional={platform?.mode === "online-optional"} />, "Pull requests": <GitHubCenterPanel project={project} view="Pull requests" onlineOptional={platform?.mode === "online-optional"} />, "Issues": <GitHubCenterPanel project={project} view="Issues" onlineOptional={platform?.mode === "online-optional"} />, "Actions": <GitHubCenterPanel project={project} view="Actions" onlineOptional={platform?.mode === "online-optional"} />, "Releases": <GitHubCenterPanel project={project} view="Releases" onlineOptional={platform?.mode === "online-optional"} />,
     "Settings": <SettingsCenter settings={settings} platform={platform} onSettingsChange={onSettingsChange} onModeChange={onPlatformModeChange} />, "Trust": <TrustPanel project={project} onTrust={onTrust} />, "Permissions": <PermissionsPanel project={project} />, "Storage": <StoragePanel project={project} />, "Offline / Online": <LocalPlatformPanel platform={platform} onModeChange={onPlatformModeChange} />, "System diagnostics": <SystemDiagnosticsPanel platform={platform} />,
   };
-  return renderers[activeNav] || <UnavailableCapabilityPanel label={activeNav} />;
+  const surface = renderers[activeNav] || <UnavailableCapabilityPanel label={activeNav} />;
+  return <>{surface}{previewContextNavigation.has(activeNav) && <PreviewContextCard project={project} source={activeNav} onNavigate={() => onNavigate("Preview")} />}</>;
 }
 
 function ProjectHealthPanel({ project }: { project: ProjectSummary }) {
@@ -726,6 +730,28 @@ interface PreviewViewState {
   telemetry: { console: string; network: string; browserConsoleCaptured: false };
   logs: string[];
   error?: string;
+}
+
+function PreviewContextCard({ project, source, onNavigate }: { project: ProjectSummary; source: string; onNavigate: () => void }) {
+  const [preview, setPreview] = useState<PreviewViewState | null>(null);
+  const [message, setMessage] = useState("Loading shared Preview evidence…");
+  const refresh = async () => {
+    try {
+      const response = await fetch(`/api/workspace/projects/${project.id}/preview`);
+      const payload = await response.json() as { preview?: PreviewViewState; error?: string };
+      if (!response.ok || !payload.preview) throw new Error(payload.error || "Preview evidence is unavailable.");
+      setPreview(payload.preview);
+      setMessage("");
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Preview evidence is unavailable."); }
+  };
+  useEffect(() => { void refresh(); }, [project.id, source]);
+  return <section className="kf-capability-panel" aria-label={`Preview context for ${source}`}>
+    <div className="kf-card-heading"><div><Play size={17} /><h3>Current Preview context</h3></div><span>{source}</span></div>
+    <p className="kf-capability-copy">This surface references the same project Preview session and evidence. Starting, stopping, repairing, and verifying remain owned by the single Preview engine.</p>
+    {message && <StatusMessage>{message}</StatusMessage>}
+    {preview && <div className="kf-hardware-grid"><span><strong>State</strong>{preview.state}</span><span><strong>Health</strong>{preview.health?.ok ? `HTTP ${preview.health.status || "OK"}` : preview.health?.detail || "Not checked"}</span><span><strong>Session</strong>{preview.sessionId || "NOT_STARTED"}</span><span><strong>Checked</strong>{preview.checkedAt ? formatDate(preview.checkedAt) : "UNAVAILABLE"}</span></div>}
+    <div className="kf-inline-controls"><button className="kf-button kf-button--primary" onClick={onNavigate}>Open shared Preview</button><button onClick={() => void refresh()}>Refresh Preview evidence</button></div>
+  </section>;
 }
 
 function PreviewPanel({ project, settings }: { project: ProjectSummary; settings?: KForgePlatformSettings["preview"] }) {
