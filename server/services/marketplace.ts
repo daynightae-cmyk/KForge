@@ -139,7 +139,7 @@ export async function getMarketplace(workspaceRoot: string, onlineOptional: bool
   }));
   const recommendations: MarketplaceItem[] = modelCenter.recommendations.map((model) => ({
     id: `ollama:${model.id}`, category: "models", name: model.label,
-    description: `Official Ollama-library recommendation for local ${/coder/i.test(model.id) ? "coding" : "AI"} workflows. Compatibility is calculated from detected hardware.`, source: "KForge local model catalog (official links)", sourceUrl: model.sourceUrl,
+    description: `Official Ollama-library recommendation for local ${/coder/i.test(model.id) ? "coding" : "AI"} workflows. Compatibility is calculated from detected hardware.`, source: "KForge bundled compatibility profile (official links)", sourceUrl: model.sourceUrl,
     version: model.pullName.includes(":") ? model.pullName.split(":").slice(1).join(":") : undefined, license: model.license,
     capabilities: /coder/i.test(model.id) ? ["coding", "chat", "generate"] : ["chat", "generate"], requirements: [`Estimated download: ${Math.round(model.estimatedDownloadBytes / 1_000_000_000)} GB`, `Estimated RAM: ${Math.round(model.estimatedRamBytes / 1_000_000_000)} GB`], compatibility: model.reason, permissions: modelPermissions(), trust: "PARTIALLY_TRUSTED",
     installed: installedIds.has(model.id), enabled: modelCenter.active?.provider === "ollama" && modelCenter.active.model === model.id, local: true,
