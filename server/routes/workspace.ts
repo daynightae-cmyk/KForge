@@ -591,10 +591,14 @@ function metric(key: HealthMetric["key"], label: string, weight: number, status:
   return { key, label, status, score, weight, evidence, findings, lastScan, evidenceSource: details.evidenceSource || "KForge current scan", evidenceAgeMs: details.evidenceAgeMs ?? Math.max(0, Date.now() - new Date(lastScan).getTime()), freshness: details.freshness || "current-scan" };
 }
 
-function taskEvidenceDetails(result: CommandResult | undefined): Partial<Pick<HealthMetric, "lastScan" | "evidenceSource" | "evidenceAgeMs" | "freshness">> {
+export const STALE_TASK_EVIDENCE_MS = 24 * 60 * 60 * 1_000;
+
+export function taskEvidenceDetails(result: CommandResult | undefined): Partial<Pick<HealthMetric, "lastScan" | "evidenceSource" | "evidenceAgeMs" | "freshness">> {
   if (!result) return { evidenceSource: "No KForge task evidence", evidenceAgeMs: 0, freshness: "unknown" };
   const persisted = result.evidenceSource === "persisted";
-  return { lastScan: result.completedAt, evidenceSource: persisted ? "KForge persisted task evidence" : "KForge live task evidence", evidenceAgeMs: Math.max(0, Date.now() - new Date(result.completedAt).getTime()), freshness: persisted ? "persisted-task" : "live-task" };
+  const evidenceAgeMs = Math.max(0, Date.now() - new Date(result.completedAt).getTime());
+  const stale = persisted && evidenceAgeMs > STALE_TASK_EVIDENCE_MS;
+  return { lastScan: result.completedAt, evidenceSource: stale ? "KForge persisted task evidence (stale)" : persisted ? "KForge persisted task evidence" : "KForge live task evidence", evidenceAgeMs, freshness: stale ? "stale-task" : persisted ? "persisted-task" : "live-task" };
 }
 
 async function calculateHealth(project: ProjectSummary, profile: ProjectProfile, diagnostics: ScanIssue[], actionState: Partial<Record<WorkspaceAction, CommandResult>>, typecheckStatus: WorkspaceStatus): Promise<ProjectHealth> {
@@ -626,8 +630,9 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
   const warningIssues = diagnostics.filter((entry) => entry.severity === "medium" || entry.severity === "low");
   const failedMetrics = metrics.filter((entry) => entry.status === "fail");
   const unknownVerification = metrics.filter((entry) => ["tests", "build", "runtime"].includes(entry.key) && entry.status === "unknown");
+  const staleVerification = metrics.filter((entry) => ["tests", "build", "runtime"].includes(entry.key) && entry.freshness === "stale-task");
   const blockers = [...blockingIssues.map(toDecisionEntry), ...failedMetrics.map((entry) => ({ title: `${entry.label} failed`, source: "KForge health" }))];
-  const warnings = [...warningIssues.map(toDecisionEntry), ...unknownVerification.map((entry) => ({ title: `${entry.label} has not been verified`, source: "KForge health" }))];
+  const warnings = [...warningIssues.map(toDecisionEntry), ...unknownVerification.map((entry) => ({ title: `${entry.label} has not been verified`, source: "KForge health" })), ...staleVerification.map((entry) => ({ title: `${entry.label} evidence is stale`, source: "KForge health" }))];
   const releaseState: ProjectHealth["release"]["state"] = blockers.length ? "BLOCKED" : warnings.length ? "READY WITH WARNINGS" : "READY";
   const release = { state: releaseState, blockers, warnings, evidence: metrics.flatMap((entry) => entry.evidence) };
   return { score: totalWeight ? Math.round(measured.reduce((total, entry) => total + (entry.score || 0) * entry.weight, 0) / totalWeight) : null, evidenceCoverage: Math.round((measured.length / metrics.length) * 100), metrics, release, calculatedAt: new Date().toISOString() };

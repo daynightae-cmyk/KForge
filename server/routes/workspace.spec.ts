@@ -6,7 +6,7 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject } from "./workspace";
+import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
 import type { KForgeTask } from "../services/tasks";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
@@ -159,6 +159,14 @@ describe("KForge Workspace engines", () => {
     expect(evidence.test).toMatchObject({ ok: true, output: "current test pass" });
     expect(evidence.typecheck).toMatchObject({ ok: true, output: "typecheck pass" });
     expect(evidence.build).toBeUndefined();
+  });
+
+  it("marks persisted command evidence as stale after the explicit freshness window", () => {
+    const completedAt = new Date(Date.now() - STALE_TASK_EVIDENCE_MS - 1_000).toISOString();
+    const details = taskEvidenceDetails({ action: "test", projectId: "freshness-project", ok: true, startedAt: completedAt, completedAt, output: "pass", message: "persisted pass", evidenceSource: "persisted" });
+    expect(details.freshness).toBe("stale-task");
+    expect(details.evidenceSource).toContain("stale");
+    expect(details.evidenceAgeMs).toBeGreaterThan(STALE_TASK_EVIDENCE_MS);
   });
 
   it("keeps a newly opened project untrusted until explicit local approval", async () => {

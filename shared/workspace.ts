@@ -127,7 +127,7 @@ export interface HealthMetric {
   lastScan: string;
   evidenceSource: string;
   evidenceAgeMs: number;
-  freshness: "current-scan" | "live-task" | "persisted-task" | "unknown";
+  freshness: "current-scan" | "live-task" | "persisted-task" | "stale-task" | "unknown";
 }
 
 export type ReleaseDecisionState = "READY" | "READY WITH WARNINGS" | "BLOCKED";
