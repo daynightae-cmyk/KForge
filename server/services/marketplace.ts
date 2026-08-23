@@ -41,6 +41,30 @@ export interface MarketplaceProviderStatus {
   state: MarketplaceSourceState;
   detail: string;
   lastChecked: string;
+  adapterKind?: "local" | "remote";
+  configured?: boolean;
+  capabilities?: string[];
+}
+
+export interface MarketplaceRegistryAdapter {
+  id: string;
+  label: string;
+  kind: "local" | "remote";
+  sourceUrl?: string;
+  configured: boolean;
+  state: MarketplaceSourceState;
+  capabilities: Array<"catalog" | "version" | "changelog" | "install" | "extension-metadata">;
+  detail: string;
+  lastChecked: string;
+}
+
+export function listMarketplaceRegistryAdapters(onlineOptional: boolean): MarketplaceRegistryAdapter[] {
+  const lastChecked = new Date().toISOString();
+  return [
+    { id: "local-registry", label: "Local KForge Registry", kind: "local", configured: true, state: "AVAILABLE", capabilities: ["catalog", "extension-metadata"], detail: "Reads locally registered extensions and installed runtime metadata only.", lastChecked },
+    { id: "ollama-official", label: "Ollama official library", kind: "remote", sourceUrl: "https://ollama.com/library", configured: false, state: onlineOptional ? "DATA_UNAVAILABLE" : "OFFLINE", capabilities: ["catalog", "version", "changelog", "install"], detail: onlineOptional ? "An official source link is known, but no remote catalog adapter is configured. KForge will not claim live versions, changelogs, or downloads." : "Remote marketplace data is disabled in Offline Mode.", lastChecked },
+    { id: "extension-registries", label: "Extension registries", kind: "remote", configured: false, state: onlineOptional ? "DATA_UNAVAILABLE" : "OFFLINE", capabilities: ["catalog", "extension-metadata", "install"], detail: onlineOptional ? "No official extension registry adapter is configured. KForge shows no fabricated plugin, price, rating, or download data." : "Offline Mode blocks external extension registries.", lastChecked },
+  ];
 }
 
 interface LocalRegistryFile { items?: MarketplaceItem[]; }
@@ -122,14 +146,11 @@ export async function getMarketplace(workspaceRoot: string, onlineOptional: bool
     installAction: onlineOptional && model.compatible ? "INSTALL_REQUIRES_CONFIRMATION" : "NOT_AVAILABLE", dataState: "AVAILABLE",
   }));
   const known = new Set(installed.map((item) => item.id));
-  const providers: MarketplaceProviderStatus[] = [
-    { id: "local-registry", label: "Local KForge Registry", state: "AVAILABLE", detail: "Reads locally registered extensions and installed runtime metadata only.", lastChecked: new Date().toISOString() },
-    { id: "ollama-official", label: "Ollama official library", sourceUrl: "https://ollama.com/library", state: onlineOptional ? "DATA_UNAVAILABLE" : "OFFLINE", detail: onlineOptional ? "KForge has official source links but no configured official remote catalog adapter; it will not claim live versions or downloads." : "Remote marketplace data is disabled in Offline Mode.", lastChecked: new Date().toISOString() },
-    { id: "extension-registries", label: "Extension registries", state: "DATA_UNAVAILABLE", detail: "No official extension registry has been configured. KForge shows no fabricated plugin, price, rating, or download data.", lastChecked: new Date().toISOString() },
-  ];
+  const adapters = listMarketplaceRegistryAdapters(onlineOptional);
+  const providers: MarketplaceProviderStatus[] = adapters.map((adapter) => ({ id: adapter.id, label: adapter.label, sourceUrl: adapter.sourceUrl, state: adapter.state, detail: adapter.detail, lastChecked: adapter.lastChecked, adapterKind: adapter.kind, configured: adapter.configured, capabilities: adapter.capabilities }));
   const localExtensions = localEngineItems();
   const knownItems = new Set([...installed, ...localExtensions].map((item) => item.id));
-  return { providers, items: [...installed, ...localExtensions, ...recommendations.filter((item) => !knownItems.has(item.id)), ...registered] };
+  return { adapters, providers, items: [...installed, ...localExtensions, ...recommendations.filter((item) => !knownItems.has(item.id)), ...registered] };
 }
 
 export async function previewMarketplaceInstall(workspaceRoot: string, onlineOptional: boolean, itemId: string) {
