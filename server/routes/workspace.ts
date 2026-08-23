@@ -37,6 +37,7 @@ import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } fr
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
 import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../services/securityTools";
 import { getMarketplace, previewMarketplaceInstall } from "../services/marketplace";
+import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, stopPreview } from "../services/previewRuntime";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 
 const execFileAsync = promisify(execFile);
@@ -1770,6 +1771,50 @@ router.post("/projects/:id/actions", async (req, res) => {
     return res.status(result.ok ? 200 : 422).json(result);
   } catch (error: unknown) {
     return res.status(500).json({ error: error instanceof Error ? error.message : "KForge could not complete the action." });
+  }
+});
+
+router.get("/projects/:id/preview", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  return res.json({ projectId: project.id, trust: project.trust, preview: getPreviewStatus(project.id) });
+});
+
+router.post("/projects/:id/preview/start", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Preview start"));
+  const profile = await detectProjectProfile(project);
+  try {
+    const preview = await startPreview(project.id, project.path, profile);
+    return res.status(preview.state === "unavailable" ? 422 : 202).json({ projectId: project.id, preview });
+  } catch (error: unknown) {
+    return res.status(500).json({ error: error instanceof Error ? error.message : "Preview could not start." });
+  }
+});
+
+router.post("/projects/:id/preview/health", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  return res.json({ projectId: project.id, preview: await checkPreviewHealth(project.id) });
+});
+
+router.post("/projects/:id/preview/stop", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Preview stop"));
+  return res.json({ projectId: project.id, preview: stopPreview(project.id) });
+});
+
+router.post("/projects/:id/preview/restart", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Preview restart"));
+  const profile = await detectProjectProfile(project);
+  try {
+    return res.status(202).json({ projectId: project.id, preview: await restartPreview(project.id, project.path, profile) });
+  } catch (error: unknown) {
+    return res.status(500).json({ error: error instanceof Error ? error.message : "Preview could not restart." });
   }
 });
 

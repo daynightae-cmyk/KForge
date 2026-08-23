@@ -724,3 +724,17 @@
 .kf-command-evidence { display: grid; gap: 7px; margin-top: 14px; padding: 13px; overflow: hidden; border: 1px solid var(--kf-border); border-radius: 9px; background: #fbfcfe; }
 .kf-command-evidence > strong { color: #252b37; font-size: 12px; }.kf-command-evidence > small { color: var(--kf-muted); font-size: 11px; }.kf-command-evidence pre { max-height: 260px; margin: 0; padding: 10px; overflow: auto; border-radius: 7px; background: #171b26; color: #dfe7f8; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
 .kf-capability-panel .kf-inline-controls input { min-width: 220px; height: 34px; padding: 0 10px; border: 1px solid var(--kf-border-strong); border-radius: 7px; outline: none; color: var(--kf-text); font: inherit; }.kf-capability-panel .kf-inline-controls input:focus { border-color: var(--kf-primary); box-shadow: 0 0 0 3px rgba(40,100,232,.12); }
+
+.kf-preview-frame {
+  width: 100%;
+  min-height: 36rem;
+  margin-top: 1rem;
+  border: 1px solid rgba(139, 92, 246, 0.36);
+  border-radius: 0.85rem;
+  background: #0a0a12;
+  box-shadow: 0 18px 42px rgba(5, 4, 18, 0.34);
+}
+
+@media (max-width: 720px) {
+  .kf-preview-frame { min-height: 24rem; }
+}
