@@ -127,7 +127,8 @@ export async function initializeTaskStore(workspaceRoot: string) {
         task.mission.state = "interrupted";
         const current = task.mission.steps.find((step) => step.status === "running" || step.status === "waiting-confirmation");
         if (current) { current.status = "blocked"; current.finishedAt = task.finishedAt; current.error = "Interrupted by a previous KForge session. Inspect, resume safely, or roll back explicitly."; current.logs.push(current.error); }
-        task.mission.recovery = { resume: false, rollback: Boolean(task.mission.snapshotId), inspect: true, detail: "The prior session interrupted this mission. Inspect persisted steps and logs before creating a new execution." };
+        const pendingWrite = task.mission.steps.some((step) => Boolean(step.requiresConfirmation) && !["succeeded", "skipped"].includes(step.status));
+        task.mission.recovery = { resume: !pendingWrite, rollback: Boolean(task.mission.snapshotId), inspect: true, detail: pendingWrite ? "The prior session interrupted a write-capable mission. Inspect evidence and explicitly roll back or create a new confirmed mission; KForge will not resume it automatically." : "The prior session interrupted read-only mission work. Inspect persisted evidence, then resume it explicitly if the project remains trusted.", recoveryRequired: pendingWrite };
       }
       append(task, task.error, "stderr");
       interrupted += 1;
@@ -186,7 +187,7 @@ export function updateMissionStep(taskId: string, stepId: string, patch: Partial
   const evidence = patch.evidence || (patch.output === undefined ? [] : [{ id: `${step.id}:${Date.now()}`, stepId: step.id, kind: step.kind, recordedAt: now, summary: `${step.name} recorded output.`, data: patch.output }]);
   if (evidence.length) { step.evidence = [...step.evidence, ...evidence].slice(-50); mission.evidence = [...mission.evidence, ...evidence].slice(-250); }
   mission.currentStepId = ["running", "waiting-confirmation"].includes(step.status) ? step.id : mission.currentStepId === step.id ? undefined : mission.currentStepId;
-  mission.state = step.status === "waiting-confirmation" ? "waiting-confirmation" : step.status === "failed" ? "failed" : step.status === "blocked" ? "blocked" : mission.state === "queued" || mission.state === "planning" ? "running" : mission.state;
+  mission.state = step.status === "waiting-confirmation" ? "waiting-confirmation" : step.status === "failed" ? "failed" : step.status === "blocked" ? "blocked" : mission.state === "queued" || mission.state === "planning" || mission.state === "recovering" ? "running" : mission.state;
   refreshMission(task, mission);
   append(task, `Mission step ${step.name}: ${step.status}.`);
   queuePersist();

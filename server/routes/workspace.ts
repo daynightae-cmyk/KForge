@@ -889,6 +889,51 @@ router.post("/tasks/:taskId/retry", async (req, res) => {
   return res.status(202).json({ task, recoveredFrom: original.id });
 });
 
+router.post("/tasks/:taskId/mission/resume", async (req, res) => {
+  const original = getTask(req.params.taskId);
+  const mission = original?.mission;
+  if (!original || !mission) return res.status(404).json({ error: "Mission task not found." });
+  if (!mission.recovery.resume || mission.recovery.recoveryRequired) return res.status(409).json({ error: "This mission cannot be resumed automatically because it contains interrupted write-capable work. Inspect or roll back the snapshot explicitly.", task: original });
+  if (mission.state !== "interrupted") return res.status(409).json({ error: "Only an interrupted read-only mission can be resumed. Blocked and failed mission evidence must be inspected and retried through a new mission when appropriate.", task: original });
+  const project = await resolveProject(original.projectId);
+  if (!project) return res.status(404).json({ error: "Project for the persisted mission is no longer available." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Mission resume"));
+  let resumedTaskId = "";
+  const resumed = startTask(project.id, "agent", async () => {
+    const context: MissionExecutionContext = {};
+    const execution = await executeMissionDag(resumedTaskId, (missionStep) => executeMissionStrategyStep(project, mission.type, missionStep, context));
+    return { ok: execution.ok, blocked: execution.state === "blocked", message: `Resumed mission ${execution.state}.`, output: JSON.stringify({ mission: getTask(resumedTaskId)?.mission, execution, resumedFrom: original.id }, null, 2) };
+  }, original.id);
+  resumedTaskId = resumed.id;
+  const cloned = JSON.parse(JSON.stringify(mission)) as KForgeMission;
+  cloned.state = "recovering";
+  cloned.status = "recovering";
+  cloned.finishedAt = undefined;
+  cloned.recovery = { ...cloned.recovery, resume: true, recoveryRequired: false, detail: `Resumed from interrupted mission task ${original.id}; only unfinished read-only steps are eligible for replay.` };
+  for (const missionStep of cloned.steps) {
+    if (missionStep.status === "blocked" && /Interrupted by a previous KForge session/i.test(missionStep.error || "")) { missionStep.status = "queued"; missionStep.error = undefined; missionStep.finishedAt = undefined; missionStep.logs.push("Queued for explicit safe replay after interruption."); }
+  }
+  attachMission(resumedTaskId, cloned);
+  appendTaskLog(resumedTaskId, `Explicitly resumed read-only mission evidence from ${original.id}.`, 0);
+  return res.status(202).json({ task: getTask(resumedTaskId) || resumed, resumedFrom: original.id });
+});
+
+router.post("/tasks/:taskId/mission/rollback", async (req, res) => {
+  const task = getTask(req.params.taskId);
+  const mission = task?.mission;
+  if (!task || !mission) return res.status(404).json({ error: "Mission task not found." });
+  if (!mission.snapshotId) return res.status(409).json({ error: "No snapshot is available for this mission; rollback cannot be claimed." });
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Rollback requires explicit confirmation.", snapshotId: mission.snapshotId });
+  const project = await resolveProject(task.projectId);
+  if (!project) return res.status(404).json({ error: "Project for the mission is no longer available." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Mission rollback"));
+  const restored = await restoreSnapshot(project.path, mission.snapshotId);
+  mission.recovery = { ...mission.recovery, resume: false, rollback: false, recoveryRequired: false, detail: `Snapshot ${mission.snapshotId} restored explicitly at ${new Date().toISOString()}.` };
+  mission.finalResult = { summary: "Snapshot rollback completed after explicit confirmation.", state: "blocked", recordedAt: new Date().toISOString() };
+  appendTaskLog(task.id, `Explicit rollback restored snapshot ${mission.snapshotId}.`, 100);
+  return res.json({ task, restored });
+});
+
 async function gitCenter(project: ProjectSummary) {
   const [status, diffStat, branches, history, stash, tags] = await Promise.all([
     run("git", ["status", "--porcelain=v1", "--branch"], project.path),

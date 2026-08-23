@@ -65,3 +65,35 @@ describe("KForge mission graph execution", () => {
     expect(completed.mission?.steps.find((step) => step.id === "health")?.status).toBe("blocked");
   });
 });
+
+
+describe("KForge V3 mission recovery", () => {
+  it("marks an interrupted read-only mission as explicitly resumable after restart", async () => {
+    const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-v3-recovery-"));
+    const stateDir = path.join(root, ".kforge");
+    const now = new Date().toISOString();
+    const task = {
+      id: "interrupted-v3-audit", projectId: "project", kind: "agent", status: "running", progress: 50, logs: [], startedAt: now,
+      mission: {
+        id: "interrupted-v3-audit", projectId: "project", type: "audit", name: "Audit project", goal: "Collect read-only evidence.", state: "running", status: "running", createdAt: now, progress: 50,
+        steps: [
+          { id: "scan", missionId: "interrupted-v3-audit", index: 0, name: "Scan", kind: "discovery", tool: "scan", status: "succeeded", dependencies: [], logs: [], evidence: [], requiresConfirmation: false, attempts: 1, retryCount: 0 },
+          { id: "graph", missionId: "interrupted-v3-audit", index: 1, name: "Graph", kind: "analysis", tool: "graph", status: "running", dependencies: ["scan"], logs: [], evidence: [], requiresConfirmation: false, attempts: 1, retryCount: 0 },
+        ], evidence: [], changedFiles: [], warnings: [], recovery: { resume: true, rollback: false, inspect: true, detail: "Original state." },
+      },
+    };
+    try {
+      await fs.mkdir(stateDir, { recursive: true });
+      await fs.writeFile(path.join(stateDir, "tasks.json"), JSON.stringify({ tasks: [task] }), "utf8");
+      await initializeTaskStore(root);
+      const restored = listTasks("project").find((entry) => entry.id === task.id);
+      expect(restored?.mission?.state).toBe("interrupted");
+      expect(restored?.mission?.recovery.resume).toBe(true);
+      expect(restored?.mission?.recovery.recoveryRequired).toBe(false);
+      expect(restored?.mission?.steps.find((entry) => entry.id === "graph")?.status).toBe("blocked");
+    } finally {
+      await flushTaskStore();
+      await fs.rm(root, { recursive: true, force: true, maxRetries: 4, retryDelay: 75 });
+    }
+  });
+});
