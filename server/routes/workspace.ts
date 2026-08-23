@@ -13,6 +13,7 @@ import type {
   ProjectHealth,
   ProjectHealthEvidenceSource,
   ProjectHealthEvidenceSourceKind,
+  OperationResultState,
   ReleaseGateResult,
   ReleaseGateSourceKind,
   ReleaseGateSourceVerdict,
@@ -45,6 +46,8 @@ import { getMarketplace, listMarketplaceRegistryAdapters, previewMarketplaceInst
 import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
+import { createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "../services/onlineControlCenter";
+import { redactProjectText } from "../services/redaction";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -96,10 +99,10 @@ async function run(command: string, args: string[], cwd: string, timeout = 15_00
       windowsHide: true,
       maxBuffer: 2_500_000,
     });
-    return { ok: true, code: 0, output: `${result.stdout || ""}${result.stderr || ""}`.trim() };
+    return { ok: true, code: 0, output: redactProjectText("command-output", `${result.stdout || ""}${result.stderr || ""}`.trim()).content };
   } catch (error: unknown) {
     const details = errorDetails(error);
-    return { ok: false, code: details.code, output: `${details.stdout}${details.stderr || details.message}`.trim() };
+    return { ok: false, code: details.code, output: redactProjectText("command-output", `${details.stdout}${details.stderr || details.message}`.trim()).content };
   }
 }
 
@@ -117,6 +120,20 @@ function commandResultFromTask(task: KForgeTask): CommandResult | undefined {
     output: task.output || "",
     message: task.error || task.logs.at(-1)?.message || `${action} completed from persisted task evidence.`,
     evidenceSource: "persisted",
+    transparency: createOperationTransparency({
+      execution: action === "pull" || action === "push" ? "HYBRID" : "LOCAL",
+      network: action === "pull" || action === "push" ? "REQUIRED" : "NOT_REQUIRED",
+      dataClasses: action === "push" ? ["METADATA", "SOURCE_CODE"] : action === "pull" ? ["METADATA", "ARTIFACT"] : ["PROJECT_CONTEXT"],
+      projectSourceSent: action === "push",
+      provider: action === "pull" || action === "push" ? "Git" : "Local project toolchain",
+      destination: action === "pull" || action === "push" ? "Configured Git upstream (redacted task evidence)" : "Selected project process",
+      purpose: `Execute the explicit ${action} project action.`,
+      confirmation: action === "push" ? "CONFIRMED" : "NOT_REQUIRED",
+      startedAt: task.startedAt,
+      completedAt: task.finishedAt,
+      result: task.status === "succeeded" ? "SUCCEEDED" : "FAILED",
+      reason: task.error,
+    }),
   };
 }
 
@@ -458,8 +475,9 @@ async function toolAvailability(project: ProjectSummary, profile: ProjectProfile
   const trusted = project.trust === "trusted";
   const typescriptAvailable = trusted && (Boolean(profile.scripts.typecheck) || (await pathExists(path.join(project.path, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc"))));
   const eslintAvailable = trusted && (Boolean(profile.scripts.lint) || (await pathExists(path.join(project.path, "node_modules", ".bin", process.platform === "win32" ? "eslint.cmd" : "eslint"))));
-  const auditAvailable = trusted && onlineOptional && profile.packageManager === "npm" && await pathExists(path.join(project.path, "package-lock.json"));
   const security = await detectSecurityTools(project.path, trusted);
+  const npmAudit = security.find((entry) => entry.id === "npm-audit");
+  const auditAvailable = onlineOptional && npmAudit?.state === "AVAILABLE";
   const external = (name: "gitleaks" | "semgrep" | "sonar") => {
     const tool = security.find((entry) => entry.id === name)!;
     return { name, available: tool.state === "AVAILABLE", version: tool.version, reason: tool.detail };
@@ -468,7 +486,7 @@ async function toolAvailability(project: ProjectSummary, profile: ProjectProfile
   return [
     { name: "typescript", available: typescriptAvailable, reason: typescriptAvailable ? undefined : trusted ? "No TypeScript compiler or typecheck script detected." : blocked },
     { name: "eslint", available: eslintAvailable, reason: eslintAvailable ? undefined : trusted ? "No ESLint command or lint script detected." : blocked },
-    { name: "npm-audit", available: auditAvailable, reason: auditAvailable ? undefined : !trusted ? blocked : !onlineOptional ? "Offline Mode blocks network-based npm audit; enable Online Optional and run an explicit audit to request registry data." : "npm audit requires a package-lock.json file." },
+    { name: "npm-audit", available: auditAvailable, version: npmAudit?.version, reason: auditAvailable ? "Available only through the explicit Security Tool Manager action; ordinary project scans never contact the npm registry." : !trusted ? blocked : !onlineOptional ? "Offline Mode blocks network-based npm audit; enable Online Optional and run an explicit audit to request registry data." : npmAudit?.detail || "npm audit is unavailable." },
     external("gitleaks"), external("semgrep"), external("sonar"),
   ];
 }
@@ -478,21 +496,6 @@ function parseTypecheckDiagnostics(projectId: string, output: string) {
     const match = line.match(/^(.+?)\((\d+),(\d+)\): error TS(\d+): (.+)$/);
     if (!match) return [];
     return [issue(projectId, `typecheck-${match[1]}-${match[2]}-${match[4]}-${index}`, "high", "typecheck", `TypeScript TS${match[4]}`, match[5], { file: match[1].split(path.sep).join("/"), line: Number(match[2]), source: "TypeScript", fixability: "guided", suggestion: "Review the compiler diagnostic and the inferred types at the reported location." })];
-  });
-}
-
-async function npmAuditIssues(project: ProjectSummary, profile: ProjectProfile, onlineOptional: boolean) {
-  if (!onlineOptional || profile.packageManager !== "npm" || !(await pathExists(path.join(project.path, "package-lock.json")))) return [] as ScanIssue[];
-  const audit = await run("npm", ["audit", "--json", "--omit=dev", "--package-lock-only"], project.path, 60_000);
-  let parsed: JsonRecord | null = null;
-  try { const value: unknown = JSON.parse(audit.output); parsed = typeof value === "object" && value !== null ? value as JsonRecord : null; } catch { return [] as ScanIssue[]; }
-  const vulnerabilities = recordOf(parsed?.vulnerabilities);
-  return Object.entries(vulnerabilities).map(([name, raw]) => {
-    const detail = recordOf(raw);
-    const severityRaw = asString(detail.severity);
-    const severity: DiagnosticSeverity = severityRaw === "critical" || severityRaw === "high" || severityRaw === "low" ? severityRaw : severityRaw === "moderate" ? "medium" : "info";
-    const via = Array.isArray(detail.via) ? detail.via.map((entry) => typeof entry === "string" ? entry : asString(recordOf(entry).title)).filter(Boolean).join("; ") : "Reported by npm audit.";
-    return issue(project.id, `npm-audit-${name}`, severity, "dependency", `${name}: ${severityRaw || "reported"} dependency finding`, via, { source: "npm audit", fixability: detail.fixAvailable ? "guided" : "manual", suggestion: detail.fixAvailable ? "Review and apply the offered dependency remediation." : "Review the advisory and update strategy." });
   });
 }
 
@@ -841,7 +844,7 @@ export async function scanProject(project: ProjectSummary): Promise<ProjectScan>
     if (!execution.ok && !diagnostics.length) diagnostics.push(issue(project.id, "typecheck-command", "high", "typecheck", "Typecheck command failed", execution.output || "The TypeScript command exited with a non-zero status.", { source: "TypeScript", fixability: "guided", suggestion: "Inspect the TypeScript output and correct the project types before continuing." }));
   }
   const safeReadOnly = project.trust !== "trusted";
-  const [sensitiveFiles, secretLiterals, dependencyIssues, completeness, advancedCompletion, eslintFindings, externalFindings] = await Promise.all([trackedSensitiveFiles(project), secretLiteralIssues(project), safeReadOnly || !onlineOptional ? Promise.resolve([] as ScanIssue[]) : npmAuditIssues(project, profile, onlineOptional), completenessIssues(project, profile), advancedCompletionIssues(project), safeReadOnly ? Promise.resolve([] as ScanIssue[]) : lintIssues(project, profile, tools), externalScannerIssues(project, tools)]);
+  const [sensitiveFiles, secretLiterals, dependencyIssues, completeness, advancedCompletion, eslintFindings, externalFindings] = await Promise.all([trackedSensitiveFiles(project), secretLiteralIssues(project), Promise.resolve([] as ScanIssue[]), completenessIssues(project, profile), advancedCompletionIssues(project), safeReadOnly ? Promise.resolve([] as ScanIssue[]) : lintIssues(project, profile, tools), externalScannerIssues(project, tools)]);
   sensitiveFiles.forEach((file) => diagnostics.push(issue(project.id, `tracked-sensitive-${file}`, "high", "security", "Potentially sensitive file is tracked by Git", `${file} is version-controlled and requires review.`, { file, source: "Git", rule: "git/tracked-sensitive-file", fixability: "guided", risk: "approval", suggestion: "Move secrets to an ignored local file and rotate any exposed credentials." })));
   diagnostics.push(...secretLiterals, ...dependencyIssues, ...completeness, ...advancedCompletion, ...eslintFindings, ...externalFindings);
   if (project.modifiedFiles + project.untrackedFiles > 0) diagnostics.push(issue(project.id, "working-tree-changed", "info", "git", "Local changes are present", `${project.modifiedFiles} modified and ${project.untrackedFiles} untracked file(s) are present.`, { source: "Git", fixability: "manual", suggestion: "Review the diff before pulling, pushing, or creating a release." }));
@@ -863,9 +866,31 @@ function addActivity(projectId: string, activity: Omit<WorkspaceActivity, "id" |
   activities.set(projectId, [entry, ...(activities.get(projectId) || [])].slice(0, 50));
 }
 
+function projectActionTransparency(project: ProjectSummary, action: WorkspaceAction, startedAt: string, completedAt: string | null, result: OperationResultState, reason?: string, confirmedRemoteWrite = false) {
+  const remote = action === "pull" || action === "push";
+  return createOperationTransparency({
+    execution: remote ? "HYBRID" : "LOCAL",
+    network: remote ? "REQUIRED" : "NOT_REQUIRED",
+    dataClasses: action === "push" ? ["METADATA", "SOURCE_CODE"] : action === "pull" ? ["METADATA", "ARTIFACT"] : ["PROJECT_CONTEXT"],
+    projectSourceSent: action === "push",
+    provider: remote ? "Git" : "Local project toolchain",
+    destination: remote ? (project.remoteUrl || "Configured Git upstream") : project.path,
+    purpose: action === "push" ? "Send the selected branch commits to its configured upstream." : action === "pull" ? "Receive and integrate the selected branch upstream." : `Run the detected ${action} workflow against the selected local project.`,
+    confirmation: action === "push" ? (confirmedRemoteWrite ? "CONFIRMED" : "REQUIRED") : "NOT_REQUIRED",
+    startedAt,
+    completedAt,
+    result,
+    reason,
+  });
+}
+
 async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): Promise<CommandResult> {
   const startedAt = new Date().toISOString();
-  if (!profile.scripts.start) return { action: "runtime", projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: "No production start script was detected." };
+  if (!profile.scripts.start) {
+    const completedAt = new Date().toISOString();
+    const message = "No production start script was detected.";
+    return { action: "runtime", projectId: project.id, ok: false, startedAt, completedAt, output: "", message, transparency: projectActionTransparency(project, "runtime", startedAt, completedAt, "BLOCKED", message) };
+  }
   const port = 32100 + Math.floor(Math.random() * 500);
   const selected = commandFor(profile.packageManager, "start");
   const executable = process.platform === "win32" && ["npm", "pnpm", "yarn"].includes(selected.command) ? `${selected.command}.cmd` : selected.command;
@@ -884,17 +909,20 @@ async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): P
     output += `\n${error instanceof Error ? error.message : String(error)}`;
   }
   child.kill();
-  return { action: "runtime", projectId: project.id, ok, startedAt, completedAt: new Date().toISOString(), exitCode: ok ? 0 : 1, output: output.trim(), message: ok ? "Runtime start and main-route HTTP check completed successfully." : "Runtime verification could not obtain a successful main-route response." };
+  const completedAt = new Date().toISOString();
+  const message = ok ? "Runtime start and main-route HTTP check completed successfully." : "Runtime verification could not obtain a successful main-route response.";
+  return { action: "runtime", projectId: project.id, ok, startedAt, completedAt, exitCode: ok ? 0 : 1, output: output.trim(), message, transparency: projectActionTransparency(project, "runtime", startedAt, completedAt, ok ? "SUCCEEDED" : "FAILED", ok ? undefined : message) };
 }
 
-export async function executeProjectAction(project: ProjectSummary, action: WorkspaceAction): Promise<CommandResult> {
+export async function executeProjectAction(project: ProjectSummary, action: WorkspaceAction, confirmedRemoteWrite = false): Promise<CommandResult> {
   const startedAt = new Date().toISOString();
   await recordProjectTask(getWorkspaceRoot(), project.path);
   const profile = await detectProjectProfile(project);
   if (action === "scan") {
     const scan = await scanProject(project);
     const highPriority = scan.issues.filter((entry) => entry.severity === "critical" || entry.severity === "high").length;
-    const result: CommandResult = { action, projectId: project.id, ok: true, startedAt, completedAt: new Date().toISOString(), output: JSON.stringify(scan, null, 2), message: `Project scan completed with ${scan.issues.length} finding(s), ${highPriority} high-priority.` };
+    const completedAt = new Date().toISOString();
+    const result: CommandResult = { action, projectId: project.id, ok: true, startedAt, completedAt, output: JSON.stringify(scan, null, 2), message: `Project scan completed with ${scan.issues.length} finding(s), ${highPriority} high-priority.`, transparency: projectActionTransparency(project, action, startedAt, completedAt, "SUCCEEDED") };
     latestActions.set(project.id, { ...(latestActions.get(project.id) || {}), [action]: result });
     addActivity(project.id, { kind: "scan", title: "Project scan completed", detail: result.message });
     return result;
@@ -905,12 +933,32 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
     addActivity(project.id, { kind: "runtime", title: result.ok ? "Runtime verification passed" : "Runtime verification failed", detail: result.message });
     return result;
   }
-  if ((action === "pull" || action === "push") && !(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: "Remote Git sync is disabled in Offline Mode. Switch KForge to Online Optional only when you explicitly want to contact a remote." };
-  if ((action === "pull" || action === "push") && project.modifiedFiles + project.untrackedFiles > 0) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: "Git operation blocked because the working tree contains local changes. Review or commit them first." };
+  if ((action === "pull" || action === "push") && !(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
+    const completedAt = new Date().toISOString();
+    const message = "Remote Git sync is disabled in Offline Mode. Switch KForge to Online Optional only when you explicitly want to contact a remote.";
+    return { action, projectId: project.id, ok: false, startedAt, completedAt, output: "", message, transparency: projectActionTransparency(project, action, startedAt, completedAt, "BLOCKED", message, confirmedRemoteWrite) };
+  }
+  if (action === "push" && !confirmedRemoteWrite) {
+    const completedAt = new Date().toISOString();
+    const message = "Git push is blocked until this remote write is explicitly confirmed.";
+    return { action, projectId: project.id, ok: false, startedAt, completedAt, output: "", message, transparency: projectActionTransparency(project, action, startedAt, completedAt, "BLOCKED", message, false) };
+  }
+  if ((action === "pull" || action === "push") && project.modifiedFiles + project.untrackedFiles > 0) {
+    const completedAt = new Date().toISOString();
+    const message = "Git operation blocked because the working tree contains local changes. Review or commit them first.";
+    return { action, projectId: project.id, ok: false, startedAt, completedAt, output: "", message, transparency: projectActionTransparency(project, action, startedAt, completedAt, "BLOCKED", message, confirmedRemoteWrite) };
+  }
   const command = action === "test" || action === "build" || action === "typecheck" ? await detectedProjectCommand(project, profile, action) : { command: "git", args: [action] };
-  if (!command) return { action, projectId: project.id, ok: false, startedAt, completedAt: new Date().toISOString(), output: "", message: `No verified ${action} command was detected from the project manifests.` };
+  if (!command) {
+    const completedAt = new Date().toISOString();
+    const message = `No verified ${action} command was detected from the project manifests.`;
+    return { action, projectId: project.id, ok: false, startedAt, completedAt, output: "", message, transparency: projectActionTransparency(project, action, startedAt, completedAt, "BLOCKED", message, confirmedRemoteWrite) };
+  }
   const execution = await run(command.command, command.args, project.path, commandTimeoutMs);
-  const result: CommandResult = { action, projectId: project.id, ok: execution.ok, startedAt, completedAt: new Date().toISOString(), exitCode: execution.code, output: execution.output, message: execution.ok ? `${action[0].toUpperCase()}${action.slice(1)} completed successfully.` : `${action[0].toUpperCase()}${action.slice(1)} failed.` };
+  const completedAt = new Date().toISOString();
+  const message = execution.ok ? `${action[0].toUpperCase()}${action.slice(1)} completed successfully.` : `${action[0].toUpperCase()}${action.slice(1)} failed.`;
+  const result: CommandResult = { action, projectId: project.id, ok: execution.ok, startedAt, completedAt, exitCode: execution.code, output: execution.output, message, transparency: projectActionTransparency(project, action, startedAt, completedAt, execution.ok ? "SUCCEEDED" : "FAILED", execution.ok ? undefined : message, confirmedRemoteWrite) };
+  if (action === "pull" || action === "push") await recordRemoteContact(getWorkspaceRoot(), "remote-repository", { attemptedAt: completedAt, succeeded: execution.ok, destination: project.remoteUrl, error: execution.ok ? null : execution.output || message });
   latestActions.set(project.id, { ...(latestActions.get(project.id) || {}), [action]: result });
   const kind = action === "test" || action === "build" || action === "typecheck" ? action : "git";
   addActivity(project.id, { kind, title: result.ok ? `${action} completed` : `${action} failed`, detail: result.message });
@@ -925,18 +973,45 @@ router.get("/projects/:id/security/tools", async (req, res) => {
 });
 
 router.post("/projects/:id/security/tools/:tool/run", async (req, res) => {
+  const startedAt = new Date().toISOString();
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (!isSecurityToolId(req.params.tool)) return res.status(400).json({ error: "Unknown security tool." });
   if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Security tool execution"));
+  const remoteTool = req.params.tool === "sonar" || req.params.tool === "npm-audit";
+  if (remoteTool && req.body?.confirmed !== true) {
+    const error = `${req.params.tool} can contact a remote service and requires explicit confirmation after reviewing its data disclosure.`;
+    const completedAt = new Date().toISOString();
+    return res.status(428).json({ error, permission: "ask", transparency: createOperationTransparency({ execution: "HYBRID", network: "REQUIRED", dataClasses: req.params.tool === "sonar" ? ["PROJECT_CONTEXT", "SOURCE_CODE", "CREDENTIAL_REFERENCE"] : ["METADATA"], projectSourceSent: req.params.tool === "sonar", provider: req.params.tool === "sonar" ? "Configured Sonar server" : "npm registry", destination: req.params.tool === "sonar" ? "Configured Sonar server (redacted)" : "https://registry.npmjs.org", purpose: req.params.tool === "sonar" ? "Run project analysis against the configured Sonar server." : "Request vulnerability advisories for dependency metadata in package-lock.json.", confirmation: "REQUIRED", startedAt, completedAt, result: "BLOCKED", reason: error }) });
+  }
   const result = await runSecurityTool(project.path, true, await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()), req.params.tool);
+  const completedAt = new Date().toISOString();
+  const succeeded = result.state === "PASSED" || result.state === "AVAILABLE" || result.state === "CONFIGURED";
+  const transparency = createOperationTransparency({
+    execution: remoteTool ? "HYBRID" : "LOCAL",
+    network: remoteTool ? "REQUIRED" : "NOT_REQUIRED",
+    dataClasses: req.params.tool === "sonar" ? ["PROJECT_CONTEXT", "SOURCE_CODE", "CREDENTIAL_REFERENCE"] : req.params.tool === "npm-audit" ? ["METADATA"] : ["PROJECT_CONTEXT"],
+    projectSourceSent: req.params.tool === "sonar",
+    provider: req.params.tool === "sonar" ? "Configured Sonar server" : req.params.tool === "npm-audit" ? "npm registry" : result.label,
+    destination: req.params.tool === "sonar" ? "Configured Sonar server (redacted)" : req.params.tool === "npm-audit" ? "https://registry.npmjs.org" : project.path,
+    purpose: req.params.tool === "sonar" ? "Run the explicitly confirmed project analysis against the configured Sonar server." : req.params.tool === "npm-audit" ? "Request vulnerability advisories for dependency metadata in package-lock.json." : `Run ${result.label} against the selected local project.`,
+    confirmation: remoteTool ? "CONFIRMED" : "NOT_REQUIRED",
+    startedAt,
+    completedAt,
+    result: result.state === "BLOCKED" ? "BLOCKED" : succeeded ? "SUCCEEDED" : "FAILED",
+    reason: succeeded ? undefined : result.detail,
+  });
+  if (req.params.tool === "npm-audit" && result.lastRun) await recordRemoteContact(getWorkspaceRoot(), "marketplace-registry", { attemptedAt: result.lastRun, succeeded, destination: "https://registry.npmjs.org", error: succeeded ? null : result.detail });
   const status = result.state === "PASSED" || result.state === "AVAILABLE" || result.state === "CONFIGURED" ? 200 : result.state === "BLOCKED" ? 409 : 422;
-  return res.status(status).json({ projectId: project.id, tool: result });
+  return res.status(status).json({ projectId: project.id, tool: result, transparency });
 });
 
 router.get("/marketplace", async (_req, res) => {
   const workspaceRoot = getWorkspaceRoot();
-  return res.json(await getMarketplace(workspaceRoot, await isOptionalOnlineFeatureEnabled(workspaceRoot)));
+  const startedAt = new Date().toISOString();
+  const marketplace = await getMarketplace(workspaceRoot, await isOptionalOnlineFeatureEnabled(workspaceRoot));
+  const completedAt = new Date().toISOString();
+  return res.json({ ...marketplace, transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["NONE"], provider: "KForge Marketplace adapters", destination: workspaceRoot, purpose: "Read local registry, installed-model, and configured-adapter evidence without refreshing a remote catalog.", startedAt, completedAt, result: "SUCCEEDED" }) });
 });
 
 router.get("/marketplace/items/:id/install-preview", async (req, res) => {
@@ -951,6 +1026,14 @@ router.get("/marketplace/items/:id/install-preview", async (req, res) => {
 
 router.get("/platform", async (_req, res) => {
   res.json(await getLocalPlatformStatus(getWorkspaceRoot()));
+});
+
+router.get("/projects/:id/online/control-center", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const workspaceRoot = getWorkspaceRoot();
+  const [platform, profile] = await Promise.all([getLocalPlatformStatus(workspaceRoot), detectProjectProfile(project)]);
+  return res.json(await getOnlineControlCenter({ workspaceRoot, platform, project, hasCiConfiguration: profile.ci.length > 0, preview: getPreviewStatus(project.id) }));
 });
 
 router.post("/platform/mode", async (req, res) => {
@@ -1028,14 +1111,34 @@ router.post("/ai/models/active", async (req, res) => {
 });
 
 router.post("/ai/models/install", async (req, res) => {
+  const startedAt = new Date().toISOString();
   const provider = typeof req.body?.provider === "string" ? req.body.provider : "";
   const model = typeof req.body?.model === "string" ? req.body.model : "";
   const confirmed = req.body?.confirmed === true;
-  if (provider !== "ollama" || !model) return res.status(400).json({ error: "KForge currently supports confirmed installation through Ollama only." });
-  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return res.status(409).json({ error: "Model downloads are disabled in Offline Mode. Existing local models remain usable; choose Online Optional only after you decide to download." });
-  if (!confirmed) return res.status(428).json({ error: "Model download requires explicit confirmation because it can consume substantial disk, RAM, and network resources.", permission: "ask" });
-  const task = startTask("ai-center", "agent", async () => installOllamaModel(model));
-  return res.status(202).json({ task });
+  const disclosure = (result: OperationResultState, reason?: string) => createOperationTransparency({ execution: "HYBRID", network: "REQUIRED", dataClasses: ["METADATA", "ARTIFACT"], provider: "Ollama", destination: "https://ollama.com/library", purpose: `Download model ${model || "(not selected)"} into the local Ollama runtime.`, confirmation: confirmed ? "CONFIRMED" : "REQUIRED", startedAt, completedAt: result === "PENDING" ? null : new Date().toISOString(), result, reason });
+  if (provider !== "ollama" || !/^[A-Za-z0-9._:-]+$/.test(model)) {
+    const error = "KForge currently supports confirmed installation through Ollama model identifiers only.";
+    return res.status(400).json({ error, transparency: disclosure("BLOCKED", error) });
+  }
+  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
+    const error = "Model downloads are disabled in Offline Mode. Existing local models remain usable; choose Online Optional only after you decide to download.";
+    return res.status(409).json({ error, transparency: disclosure("BLOCKED", error) });
+  }
+  if (!confirmed) {
+    const error = "Model download requires explicit confirmation because it can consume substantial disk, RAM, and network resources.";
+    return res.status(428).json({ error, permission: "ask", transparency: disclosure("BLOCKED", error) });
+  }
+  const task = startTask("ai-center", "agent", async () => {
+    try {
+      const result = await installOllamaModel(model);
+      await recordRemoteContact(getWorkspaceRoot(), "model-registry", { attemptedAt: new Date().toISOString(), succeeded: result.ok, destination: "https://ollama.com/library", error: result.ok ? null : result.output || result.message });
+      return result;
+    } catch (error: unknown) {
+      await recordRemoteContact(getWorkspaceRoot(), "model-registry", { attemptedAt: new Date().toISOString(), succeeded: false, destination: "https://ollama.com/library", error: error instanceof Error ? error.message : "Model download failed." });
+      throw error;
+    }
+  });
+  return res.status(202).json({ task, transparency: disclosure("PENDING") });
 });
 
 router.delete("/ai/models/:model", async (req, res) => {
@@ -1091,7 +1194,12 @@ router.post("/tasks/:taskId/retry", async (req, res) => {
   const project = await resolveProject(original.projectId);
   if (!project) return res.status(404).json({ error: "Project for the interrupted task is no longer available." });
   if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Interrupted task replay"));
-  const task = startTask(project.id, original.kind, () => executeProjectAction(project, action), original.id, original.recovery);
+  if (action === "push" && req.body?.confirmed !== true) {
+    const startedAt = new Date().toISOString();
+    const error = "Retrying a Git push requires a new explicit confirmation.";
+    return res.status(428).json({ error, permission: "ask", task: original, transparency: projectActionTransparency(project, "push", startedAt, startedAt, "BLOCKED", error, false) });
+  }
+  const task = startTask(project.id, original.kind, () => executeProjectAction(project, action, action === "push"), original.id, original.recovery);
   appendTaskLog(task.id, `Recovered from interrupted task ${original.id}; replaying explicit ${action} action after current trust validation.`, 5);
   return res.status(202).json({ task, recoveredFrom: original.id });
 });
@@ -1197,11 +1305,20 @@ router.post("/projects/:id/git/branches", async (req, res) => {
 });
 
 router.get("/projects/:id/github", async (req, res) => {
+  const startedAt = new Date().toISOString();
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
-  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return res.status(428).json({ error: "GitHub metadata is disabled in Offline Mode. Enable Online Optional after reviewing purpose, data, and destination.", permission: "online-optional" });
+  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
+    const completedAt = new Date().toISOString();
+    const error = "GitHub metadata is disabled in Offline Mode. Enable Online Optional after reviewing purpose, data, and destination.";
+    return res.status(428).json({ error, permission: "online-optional", transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: "https://api.github.com", purpose: "Read repository, issue, pull request, workflow, and release metadata.", startedAt, completedAt, result: "BLOCKED", reason: error }) });
+  }
   const slug = githubSlug(project.remoteUrl);
-  if (!slug) return res.status(422).json({ error: "This project has no GitHub origin remote." });
+  if (!slug) {
+    const completedAt = new Date().toISOString();
+    const error = "This project has no GitHub origin remote.";
+    return res.status(422).json({ error, transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: "https://api.github.com", purpose: "Read repository, issue, pull request, workflow, and release metadata.", startedAt, completedAt, result: "BLOCKED", reason: error }) });
+  }
   const [repository, issues, pullRequests, actions, releases] = await Promise.all([
     run("gh", ["api", `repos/${slug}`], project.path, 20_000),
     run("gh", ["api", `repos/${slug}/issues?state=open&per_page=20`], project.path, 20_000),
@@ -1210,7 +1327,15 @@ router.get("/projects/:id/github", async (req, res) => {
     run("gh", ["api", `repos/${slug}/releases?per_page=10`], project.path, 20_000),
   ]);
   const parse = (execution: CommandExecution) => { try { return execution.ok ? JSON.parse(execution.output) : { error: execution.output }; } catch { return { error: execution.output || "GitHub returned invalid JSON." }; } };
-  return res.json({ slug, repository: parse(repository), issues: parse(issues), pullRequests: parse(pullRequests), actions: parse(actions), releases: parse(releases) });
+  const completedAt = new Date().toISOString();
+  const ok = repository.ok;
+  const error = ok ? undefined : repository.output || "GitHub repository metadata request failed.";
+  await Promise.all([
+    recordRemoteContact(getWorkspaceRoot(), "github", { attemptedAt: completedAt, succeeded: ok, destination: `https://api.github.com/repos/${slug}`, error }),
+    recordRemoteContact(getWorkspaceRoot(), "remote-ci", { attemptedAt: completedAt, succeeded: actions.ok, destination: `https://api.github.com/repos/${slug}/actions/runs`, error: actions.ok ? null : actions.output }),
+  ]);
+  const transparency = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: `https://api.github.com/repos/${slug}`, purpose: "Read repository, issue, pull request, workflow, and release metadata.", startedAt, completedAt, result: ok ? "SUCCEEDED" : "FAILED", reason: error });
+  return res.status(ok ? 200 : 502).json({ slug, repository: parse(repository), issues: parse(issues), pullRequests: parse(pullRequests), actions: parse(actions), releases: parse(releases), transparency, ...(error ? { error } : {}) });
 });
 
 async function environmentExamplePreview(project: ProjectSummary, problem: ScanIssue) {
@@ -1565,7 +1690,7 @@ router.post("/projects/:id/agent/runs", async (req, res) => {
     return { ok: true, message: "Agent run completed with evidence and typed-tool results.", output: JSON.stringify({ goal, context, plan, records, commitSummary, status: "COMPLETED_NO_AUTOFIX" }, null, 2) };
   });
   taskId = task.id;
-  return res.status(202).json({ task, goal, permissions: agentPermissions });
+  return res.status(202).json({ task, goal, permissions: agentPermissions, transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT", "SOURCE_CODE"], provider: "KForge Agent with optional local model", destination: project.path, purpose: "Run the explicit engineering goal using bounded redacted context, typed local tools, snapshots, and verification.", startedAt: task.startedAt, result: "PENDING" }) });
 });
 
 router.get("/projects/:id/agent/context", async (req, res) => {
@@ -1577,6 +1702,7 @@ router.get("/projects/:id/agent/context", async (req, res) => {
 });
 
 router.post("/projects/:id/problems/:problemId/explain", async (req, res) => {
+  const startedAt = new Date().toISOString();
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   const scan = await scanProject(project);
@@ -1585,14 +1711,17 @@ router.post("/projects/:id/problems/:problemId/explain", async (req, res) => {
   const context = await buildAgentContext(project, scan, problem.id);
   try {
     const generated = await generateWithLocalAI(getWorkspaceRoot(), "You explain a deterministic KForge Sonar diagnostic. Do not invent diagnostics, edits, test results, or secret values. Explain impact, risk, and a safe verification path using only the supplied evidence.", JSON.stringify({ diagnostic: problem, context }));
-    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, explanation: generated.content, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path) });
+    const completedAt = new Date().toISOString();
+    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, explanation: generated.content, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT", "SOURCE_CODE"], provider: generated.provider.name, destination: generated.provider.endpoint, purpose: "Explain the selected diagnostic using bounded redacted project context in the active local model.", startedAt, completedAt, result: "SUCCEEDED" }) });
   } catch {
     const explanation = { mode: "evidence-based", finding: problem.title, severity: problem.severity, source: problem.source, rule: problem.rule, file: problem.file, line: problem.line, impact: problem.description, risk: problem.risk, proposedAction: problem.suggestion || "Review the diagnostic evidence and run the relevant project check.", verification: problem.category === "typecheck" ? ["typecheck", "test", "build"] : problem.category === "security" ? ["review scanner evidence", "scan", "test"] : ["scan", "test", "build"] };
-    return res.json({ mode: "rules", provider: "none", explanation, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path), notice: "No active local model is available. This is deterministic diagnostic evidence, not AI-generated explanation." });
+    const completedAt = new Date().toISOString();
+    return res.json({ mode: "rules", provider: "none", explanation, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path), notice: "No active local model is available. This is deterministic diagnostic evidence, not AI-generated explanation.", transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], provider: "KForge deterministic rules", destination: project.path, purpose: "Explain the selected diagnostic from local normalized evidence.", startedAt, completedAt, result: "SUCCEEDED" }) });
   }
 });
 
 router.post("/projects/:id/ask", async (req, res) => {
+  const startedAt = new Date().toISOString();
   const project = await resolveProject(req.params.id);
   const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
@@ -1601,11 +1730,13 @@ router.post("/projects/:id/ask", async (req, res) => {
   const context = await buildAgentContext(project, scan);
   try {
     const generated = await generateWithLocalAI(getWorkspaceRoot(), "You are Ask KForge. Answer only from the redacted project context. Cite specific diagnostic titles, files, or verification evidence. Do not invent results or expose secrets.", `Question: ${question}\n\nContext:\n${JSON.stringify(context)}`);
-    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, answer: generated.content, contextFiles: context.files.map((entry) => entry.path) });
+    const completedAt = new Date().toISOString();
+    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, answer: generated.content, contextFiles: context.files.map((entry) => entry.path), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT", "SOURCE_CODE"], provider: generated.provider.name, destination: generated.provider.endpoint, purpose: "Answer the explicit project question using bounded redacted context in the active local model.", startedAt, completedAt, result: "SUCCEEDED" }) });
   } catch {
     const top = [...scan.issues].sort((left, right) => ({ critical: 4, high: 3, medium: 2, low: 1, info: 0 }[right.severity] - { critical: 4, high: 3, medium: 2, low: 1, info: 0 }[left.severity])).slice(0, 5);
     const answer = { notice: "No active local model is available; this is a deterministic answer from the current scan and project graph context, not generated AI.", question, project: project.name, health: scan.health.score, topRisks: top.map((entry) => ({ title: entry.title, severity: entry.severity, file: entry.file, source: entry.source, suggestion: entry.suggestion })), verification: scan.health.metrics.filter((entry) => entry.status !== "unknown").map((entry) => ({ check: entry.label, status: entry.status, evidence: entry.evidence })) };
-    return res.json({ mode: "rules", provider: "none", answer, contextFiles: context.files.map((entry) => entry.path) });
+    const completedAt = new Date().toISOString();
+    return res.json({ mode: "rules", provider: "none", answer, contextFiles: context.files.map((entry) => entry.path), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], provider: "KForge deterministic rules", destination: project.path, purpose: "Answer the explicit project question from current local scan evidence.", startedAt, completedAt, result: "SUCCEEDED" }) });
   }
 });
 
@@ -1717,7 +1848,7 @@ router.post("/projects/:id/agent/missions", async (req, res) => {
   });
   taskId = task.id;
   attachMission(taskId, createMissionFromStrategy(project.id, taskId, mission as MissionType));
-  return res.status(202).json({ task: getTask(taskId) || task, mission, permissions: agentPermissions });
+  return res.status(202).json({ task: getTask(taskId) || task, mission, permissions: agentPermissions, transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT", "SOURCE_CODE"], provider: "KForge mission orchestrator with optional local model", destination: project.path, purpose: `Run the explicit ${mission} mission with typed local evidence and verification.`, startedAt: task.startedAt, result: "PENDING" }) });
 });
 
 router.post("/projects/:id/agent/plan", async (req, res) => {
@@ -1815,19 +1946,38 @@ router.post("/projects/open", async (req, res) => {
 });
 
 router.post("/projects/clone", async (req, res) => {
-  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return res.status(409).json({ error: "Remote cloning is disabled in Offline Mode. Open an existing local project instead, or explicitly switch to Online Optional." });
+  const startedAt = new Date().toISOString();
   const remoteUrl = typeof req.body?.remoteUrl === "string" ? req.body.remoteUrl.trim() : "";
   const targetName = typeof req.body?.targetName === "string" ? req.body.targetName.trim() : "";
-  if (!/^https:\/\/(github\.com|gitlab\.com)\/.+/.test(remoteUrl) || !/^[A-Za-z0-9._-]+$/.test(targetName)) return res.status(400).json({ error: "Provide a supported HTTPS repository URL and a safe target folder name." });
+  const confirmed = req.body?.confirmed === true;
+  const disclosure = (result: OperationResultState, reason?: string, completedAt: string | null = new Date().toISOString()) => createOperationTransparency({ execution: "HYBRID", network: "REQUIRED", dataClasses: ["METADATA", "ARTIFACT"], provider: "Git", destination: remoteUrl || "Remote repository not provided", purpose: `Clone the selected repository into ${targetName || "a local destination"}.`, confirmation: confirmed ? "CONFIRMED" : "REQUIRED", startedAt, completedAt, result, reason });
+  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
+    const error = "Remote cloning is disabled in Offline Mode. Open an existing local project instead, or explicitly switch to Online Optional.";
+    return res.status(409).json({ error, transparency: disclosure("BLOCKED", error) });
+  }
+  if (!confirmed) {
+    const error = "Cloning a remote repository requires explicit confirmation after reviewing destination and data transfer.";
+    return res.status(428).json({ error, permission: "ask", transparency: disclosure("BLOCKED", error) });
+  }
+  if (!/^https:\/\/(github\.com|gitlab\.com)\/.+/.test(remoteUrl) || !/^[A-Za-z0-9._-]+$/.test(targetName)) {
+    const error = "Provide a supported HTTPS repository URL and a safe target folder name.";
+    return res.status(400).json({ error, transparency: disclosure("BLOCKED", error) });
+  }
   const targetPath = path.join(getWorkspaceRoot(), targetName);
-  if (await pathExists(targetPath)) return res.status(409).json({ error: "That target folder already exists." });
+  if (await pathExists(targetPath)) {
+    const error = "That target folder already exists.";
+    return res.status(409).json({ error, transparency: disclosure("BLOCKED", error) });
+  }
   const result = await run("git", ["clone", remoteUrl, targetPath], getWorkspaceRoot(), commandTimeoutMs);
-  if (!result.ok) return res.status(422).json({ error: "Clone failed.", output: result.output });
+  const completedAt = new Date().toISOString();
+  await recordRemoteContact(getWorkspaceRoot(), "remote-repository", { attemptedAt: completedAt, succeeded: result.ok, destination: remoteUrl, error: result.ok ? null : result.output || "Clone failed." });
+  const transparency = disclosure(result.ok ? "SUCCEEDED" : "FAILED", result.ok ? undefined : "Clone failed.", completedAt);
+  if (!result.ok) return res.status(422).json({ error: "Clone failed.", output: result.output, transparency });
   openedPaths.add(targetPath);
   await recordProjectOpened(getWorkspaceRoot(), targetPath);
   const project = await makeProjectSummary(targetPath);
   addActivity(project.id, { kind: "git", title: "Repository cloned", detail: remoteUrl });
-  return res.status(201).json({ project, output: result.output });
+  return res.status(201).json({ project, output: result.output, transparency });
 });
 
 router.get("/projects", async (_req, res) => {
@@ -1970,8 +2120,14 @@ router.post("/projects/:id/tasks", async (req, res) => {
   if (!isWorkspaceAction(action)) return res.status(400).json({ error: "Unsupported KForge action." });
   if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Task execution"));
   const kind: TaskKind = action === "pull" || action === "push" ? "git" : action;
-  const task = startTask(project.id, kind, () => executeProjectAction(project, action), undefined, { strategy: "replay-action", action, detail: `Replays the explicit ${action} action only after retry and current project trust checks.` });
-  return res.status(202).json({ task });
+  if (action === "push" && req.body?.confirmed !== true) {
+    const startedAt = new Date().toISOString();
+    const error = "Git push requires explicit confirmation because it writes source and commit metadata to the configured remote.";
+    return res.status(428).json({ error, permission: "ask", transparency: projectActionTransparency(project, action, startedAt, startedAt, "BLOCKED", error, false) });
+  }
+  const confirmedRemoteWrite = action === "push" && req.body?.confirmed === true;
+  const task = startTask(project.id, kind, () => executeProjectAction(project, action, confirmedRemoteWrite), undefined, { strategy: "replay-action", action, detail: `Replays the explicit ${action} action only after retry and current project trust checks.` });
+  return res.status(202).json({ task, transparency: projectActionTransparency(project, action, task.startedAt, null, "PENDING", undefined, confirmedRemoteWrite) });
 });
 
 router.post("/projects/:id/actions", async (req, res) => {
@@ -1980,8 +2136,13 @@ router.post("/projects/:id/actions", async (req, res) => {
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (!isWorkspaceAction(action)) return res.status(400).json({ error: "Unsupported KForge action." });
   if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Project command"));
+  if (action === "push" && req.body?.confirmed !== true) {
+    const startedAt = new Date().toISOString();
+    const error = "Git push requires explicit confirmation because it writes source and commit metadata to the configured remote.";
+    return res.status(428).json({ error, permission: "ask", transparency: projectActionTransparency(project, action, startedAt, startedAt, "BLOCKED", error, false) });
+  }
   try {
-    const result = await executeProjectAction(project, action);
+    const result = await executeProjectAction(project, action, action === "push" && req.body?.confirmed === true);
     return res.status(result.ok ? 200 : 422).json(result);
   } catch (error: unknown) {
     return res.status(500).json({ error: error instanceof Error ? error.message : "KForge could not complete the action." });

@@ -2,10 +2,11 @@ import { promises as fs } from "fs";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { redactProjectText } from "./redaction";
 
 const execFileAsync = promisify(execFile);
 
-export type SecurityToolId = "gitleaks" | "semgrep" | "sonar";
+export type SecurityToolId = "gitleaks" | "semgrep" | "sonar" | "npm-audit";
 export type SecurityToolState = "AVAILABLE" | "UNAVAILABLE" | "CONFIGURED" | "FAILED" | "PASSED" | "BLOCKED";
 
 export interface SecurityToolFinding {
@@ -40,6 +41,7 @@ const definitions: Record<SecurityToolId, { label: string; command: string; env:
   gitleaks: { label: "Gitleaks", command: "gitleaks", env: "KFORGE_GITLEAKS_PATH" },
   semgrep: { label: "Semgrep", command: "semgrep", env: "KFORGE_SEMGREP_PATH" },
   sonar: { label: "SonarScanner", command: "sonar-scanner", env: "KFORGE_SONAR_PATH" },
+  "npm-audit": { label: "npm audit", command: "npm", env: "KFORGE_NPM_PATH" },
 };
 
 const maxCapturedOutput = 80_000;
@@ -47,7 +49,7 @@ const maxCapturedOutput = 80_000;
 function candidateNames(command: string) {
   if (process.platform !== "win32") return [command];
   const extensions = (process.env.PATHEXT || ".EXE;.CMD;.BAT").split(";").filter(Boolean);
-  return [command, ...extensions.map((extension) => `${command}${extension.toLowerCase()}`), ...extensions.map((extension) => `${command}${extension.toUpperCase()}`)];
+  return [...extensions.map((extension) => `${command}${extension.toLowerCase()}`), ...extensions.map((extension) => `${command}${extension.toUpperCase()}`), command];
 }
 
 async function isFile(target: string) {
@@ -70,7 +72,12 @@ async function locateExecutable(id: SecurityToolId) {
 
 async function execute(executable: string, args: string[], cwd?: string, timeout = 90_000) {
   try {
-    const result = await execFileAsync(executable, args, { cwd, timeout, windowsHide: true, maxBuffer: 2_500_000, shell: false });
+    const npmCli = process.platform === "win32" && /^npm\.cmd$/i.test(path.basename(executable)) ? path.join(path.dirname(executable), "node_modules", "npm", "bin", "npm-cli.js") : undefined;
+    const useNpmCli = Boolean(npmCli && await isFile(npmCli));
+    const selectedExecutable = useNpmCli ? process.execPath : executable;
+    const selectedArgs = useNpmCli ? [npmCli!, ...args] : args;
+    const windowsCommandShim = process.platform === "win32" && !useNpmCli && /\.(?:cmd|bat)$/i.test(executable);
+    const result = await execFileAsync(selectedExecutable, selectedArgs, { cwd, timeout, windowsHide: true, maxBuffer: 2_500_000, shell: windowsCommandShim });
     return { ok: true, code: 0, stdout: String(result.stdout || "").slice(-maxCapturedOutput), stderr: String(result.stderr || "").slice(-maxCapturedOutput) };
   } catch (cause: unknown) {
     const error = cause as { code?: number; stdout?: string; stderr?: string; message?: string };
@@ -112,6 +119,17 @@ function normalizeSemgrep(value: unknown): SecurityToolFinding[] {
   });
 }
 
+function normalizeNpmAudit(value: unknown): SecurityToolFinding[] {
+  const parsed = typeof value === "object" && value !== null ? value as { vulnerabilities?: Record<string, unknown> } : {};
+  return Object.entries(parsed.vulnerabilities || {}).slice(0, 1_000).map(([name, entry]) => {
+    const row = typeof entry === "object" && entry !== null ? entry as Record<string, unknown> : {};
+    const rawSeverity = typeof row.severity === "string" ? row.severity.toLowerCase() : "info";
+    const severity: SecurityToolFinding["severity"] = rawSeverity === "critical" ? "critical" : rawSeverity === "high" ? "high" : rawSeverity === "moderate" ? "medium" : rawSeverity === "low" ? "low" : "info";
+    const via = Array.isArray(row.via) ? row.via.map((item) => typeof item === "string" ? item : typeof item === "object" && item !== null && typeof (item as Record<string, unknown>).title === "string" ? String((item as Record<string, unknown>).title) : "").filter(Boolean).join("; ") : "npm registry advisory";
+    return { id: `npm-audit:${name}`, source: "npm audit", severity, rule: `npm/${name}`, message: `${name}: ${via || rawSeverity}`, confidence: "high", risk: "review", status: "open", toolAvailability: "FAILED" };
+  });
+}
+
 export async function detectSecurityTools(projectPath: string, trusted: boolean): Promise<SecurityToolStatus[]> {
   return Promise.all((Object.keys(definitions) as SecurityToolId[]).map(async (id) => {
     const definition = definitions[id];
@@ -120,6 +138,7 @@ export async function detectSecurityTools(projectPath: string, trusted: boolean)
     if (!trusted) return { id, label: definition.label, state: "BLOCKED", executable, detail: "Executable was located, but version probing and project scanning are blocked in Untrusted Project Mode." };
     const version = await execute(executable, ["--version"], undefined, 5_000);
     if (!version.ok) return { id, label: definition.label, state: "FAILED", executable, exitCode: version.code, stdout: version.stdout, stderr: version.stderr, detail: "Executable was found but could not report its version." };
+    if (id === "npm-audit" && !(await isFile(path.join(projectPath, "package-lock.json")))) return { id, label: definition.label, state: "CONFIGURED", executable, version: version.stdout.split(/\r?\n/)[0], detail: "npm is available, but this project has no package-lock.json. KForge will not invent or modify a lockfile for an audit." };
     if (id === "semgrep" && !(await localSemgrepConfig(projectPath))) return { id, label: definition.label, state: "CONFIGURED", executable, version: version.stdout.split(/\r?\n/)[0], detail: "Executable is available. Add a local .semgrep.yml/.yaml rule file before running; KForge will not fetch remote rules automatically." };
     if (id === "sonar" && !(await isFile(path.join(projectPath, "sonar-project.properties")))) return { id, label: definition.label, state: "CONFIGURED", executable, version: version.stdout.split(/\r?\n/)[0], detail: "Executable is available. Add sonar-project.properties and explicitly enable Online Optional before a server-connected scan." };
     return { id, label: definition.label, state: "AVAILABLE", executable, version: version.stdout.split(/\r?\n/)[0], detail: "Local executable and required local configuration were detected. Run is explicit and evidence is captured." };
@@ -130,17 +149,17 @@ export async function runSecurityTool(projectPath: string, trusted: boolean, onl
   const current = (await detectSecurityTools(projectPath, trusted)).find((entry) => entry.id === id)!;
   if (!trusted || current.state === "BLOCKED") return { ...current, state: "BLOCKED", detail: "Security tool execution is blocked until the project is explicitly trusted." };
   if (current.state === "UNAVAILABLE" || current.state === "FAILED") return current;
-  if (id === "sonar" && !onlineOptional) return { ...current, state: "BLOCKED", detail: "SonarScanner can contact a server and is blocked in Offline Mode. Enable Online Optional explicitly before running it." };
+  if ((id === "sonar" || id === "npm-audit") && !onlineOptional) return { ...current, state: "BLOCKED", detail: `${current.label} can contact a remote service and is blocked in Offline Mode. Enable Online Optional explicitly before running it.` };
   if (!current.executable) return { ...current, state: "FAILED", detail: "Executable path is unavailable." };
-  const args = id === "gitleaks" ? ["detect", "--no-git", "--report-format", "json", "--report-path", "-"] : id === "semgrep" ? ["--json", "--config", await localSemgrepConfig(projectPath) || ".semgrep.yml", "--quiet"] : [];
+  const args = id === "gitleaks" ? ["detect", "--no-git", "--report-format", "json", "--report-path", "-"] : id === "semgrep" ? ["--json", "--config", await localSemgrepConfig(projectPath) || ".semgrep.yml", "--quiet"] : id === "npm-audit" ? ["audit", "--json", "--omit=dev", "--package-lock-only"] : [];
   const result = await execute(current.executable, args, projectPath, id === "sonar" ? 120_000 : 90_000);
   const output = `${result.stdout}\n${result.stderr}`.trim();
   let findings: SecurityToolFinding[] = [];
-  try { findings = id === "gitleaks" ? normalizeGitleaks(JSON.parse(result.stdout || result.stderr || "[]")) : id === "semgrep" ? normalizeSemgrep(JSON.parse(result.stdout || result.stderr || "{}")) : []; } catch { /* Raw output remains evidence when a tool cannot emit machine-readable findings. */ }
-  const passed = (id === "gitleaks" && (result.code === 0 || (result.code === 1 && findings.length === 0))) || (id === "semgrep" && result.code === 0) || (id === "sonar" && result.code === 0);
-  return { ...current, state: passed ? "PASSED" : "FAILED", detail: passed ? `${current.label} completed without normalized findings.` : `${current.label} completed with a non-zero exit or normalized findings. Review captured evidence.`, lastRun: new Date().toISOString(), exitCode: result.code, stdout: result.stdout, stderr: result.stderr, findings };
+  try { findings = id === "gitleaks" ? normalizeGitleaks(JSON.parse(result.stdout || result.stderr || "[]")) : id === "semgrep" ? normalizeSemgrep(JSON.parse(result.stdout || result.stderr || "{}")) : id === "npm-audit" ? normalizeNpmAudit(JSON.parse(result.stdout || result.stderr || "{}")) : []; } catch { /* Raw output remains evidence when a tool cannot emit machine-readable findings. */ }
+  const passed = (id === "gitleaks" && (result.code === 0 || (result.code === 1 && findings.length === 0))) || (id === "semgrep" && result.code === 0) || (id === "sonar" && result.code === 0) || (id === "npm-audit" && result.code === 0 && findings.length === 0);
+  return { ...current, state: passed ? "PASSED" : "FAILED", detail: passed ? `${current.label} completed without normalized findings.` : `${current.label} completed with a non-zero exit or normalized findings. Review captured evidence.`, lastRun: new Date().toISOString(), exitCode: result.code, stdout: redactProjectText("security-tool-stdout", result.stdout).content, stderr: redactProjectText("security-tool-stderr", result.stderr).content, findings };
 }
 
 export function isSecurityToolId(value: string): value is SecurityToolId {
-  return value === "gitleaks" || value === "semgrep" || value === "sonar";
+  return value === "gitleaks" || value === "semgrep" || value === "sonar" || value === "npm-audit";
 }

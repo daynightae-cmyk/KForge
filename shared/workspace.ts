@@ -232,6 +232,59 @@ export interface CommandResult {
   output: string;
   message: string;
   evidenceSource?: "live" | "persisted";
+  transparency: OperationTransparency;
+}
+
+export type OperationExecution = "LOCAL" | "REMOTE" | "HYBRID";
+export type OperationNetwork = "REQUIRED" | "NOT_REQUIRED";
+export type OperationDataClass = "NONE" | "METADATA" | "PROJECT_CONTEXT" | "SOURCE_CODE" | "ARTIFACT" | "CREDENTIAL_REFERENCE" | "OTHER_EXPLICIT_CLASS";
+export type OperationConfirmation = "NOT_REQUIRED" | "REQUIRED" | "CONFIRMED";
+export type OperationResultState = "NOT_STARTED" | "PENDING" | "SUCCEEDED" | "FAILED" | "BLOCKED";
+
+export interface OperationTransparency {
+  execution: OperationExecution;
+  network: OperationNetwork;
+  dataClasses: OperationDataClass[];
+  projectSourceSent: boolean;
+  secretRedaction: true;
+  provider: string;
+  destination: string;
+  purpose: string;
+  confirmation: OperationConfirmation;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  result: OperationResultState;
+  reason?: string;
+}
+
+export type OnlineControlServiceId = "connection-mode" | "network-state" | "github" | "remote-repository" | "marketplace-registry" | "model-registry" | "cloud-ai" | "remote-documentation" | "remote-ci" | "remote-preview" | "updates";
+export type OnlineControlState = "CONNECTED" | "DISCONNECTED" | "OFFLINE" | "ERROR" | "NOT_CONFIGURED" | "UNAVAILABLE" | "BLOCKED";
+export type OnlineEvidenceFreshness = "LIVE" | "CURRENT" | "CACHED" | "STALE" | "UNKNOWN" | "NOT_APPLICABLE";
+
+export interface OnlineControlServiceStatus {
+  id: OnlineControlServiceId;
+  label: string;
+  state: OnlineControlState;
+  lastSuccessfulContact: string | null;
+  lastAttemptedContact: string | null;
+  source: string;
+  destination: string | null;
+  networkRequirement: OperationNetwork;
+  cachedEvidenceAvailable: boolean;
+  cachedEvidenceTimestamp: string | null;
+  freshness: OnlineEvidenceFreshness;
+  error: string | null;
+  reason: string;
+}
+
+export interface OnlineControlCenter {
+  projectId: string;
+  inspectedAt: string;
+  mode: LocalPlatformStatus["mode"];
+  remoteContactPerformed: false;
+  services: OnlineControlServiceStatus[];
+  openingDisclosure: OperationTransparency;
 }
 
 export type LocalCapabilityState = "ready" | "available" | "limited" | "unavailable";

@@ -88,6 +88,26 @@ describe("KForge Workspace engines", () => {
     expect(result.ok).toBe(false);
     expect(result.exitCode).not.toBe(0);
     expect(result.output).toContain("fixture test failed intentionally");
+    expect(result.transparency).toMatchObject({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], projectSourceSent: false, secretRedaction: true, result: "FAILED" });
+  }, 15_000);
+
+  it("blocks an unconfirmed Git push before any remote contact", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-push-confirmation-"));
+    const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
+    try {
+      process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
+      await setLocalPlatformMode(workspaceRoot, "online-optional");
+      const project = { ...(await makeProjectSummary(fixture("workspace-clean"))), remoteUrl: "https://github.com/knoux/forge.git", modifiedFiles: 0, untrackedFiles: 0 };
+      const result = await executeProjectAction(project, "push");
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain("explicitly confirmed");
+      expect(result.transparency).toMatchObject({ execution: "HYBRID", network: "REQUIRED", dataClasses: ["METADATA", "SOURCE_CODE"], projectSourceSent: true, confirmation: "REQUIRED", result: "BLOCKED" });
+      await expect(fs.stat(path.join(workspaceRoot, ".kforge", "network-contacts.json"))).rejects.toThrow();
+    } finally {
+      if (previousWorkspaceRoot === undefined) delete process.env.KFORGE_WORKSPACE_ROOT;
+      else process.env.KFORGE_WORKSPACE_ROOT = previousWorkspaceRoot;
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
   }, 15_000);
 
   it("defaults the local platform to offline core operation without a network requirement", async () => {
@@ -249,7 +269,7 @@ describe("KForge Workspace engines", () => {
       { id: "agent", projectId, kind: "agent", status: "succeeded", progress: 100, logs: [], startedAt: "2026-01-04T00:00:00.000Z", finishedAt: "2026-01-04T00:01:00.000Z", output: "not a command result" },
     ];
     const evidence = actionEvidenceFromTasks(tasks, {
-      test: { action: "test", projectId, ok: true, startedAt: "2026-01-05T00:00:00.000Z", completedAt: "2026-01-05T00:01:00.000Z", exitCode: 0, output: "current test pass", message: "Test completed successfully." },
+      test: { action: "test", projectId, ok: true, startedAt: "2026-01-05T00:00:00.000Z", completedAt: "2026-01-05T00:01:00.000Z", exitCode: 0, output: "current test pass", message: "Test completed successfully.", transparency: { execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], projectSourceSent: false, secretRedaction: true, provider: "Local project toolchain", destination: "Selected project process", purpose: "Run tests.", confirmation: "NOT_REQUIRED", startedAt: "2026-01-05T00:00:00.000Z", completedAt: "2026-01-05T00:01:00.000Z", durationMs: 60_000, result: "SUCCEEDED" } },
     });
     expect(evidence.test).toMatchObject({ ok: true, output: "current test pass" });
     expect(evidence.typecheck).toMatchObject({ ok: true, output: "typecheck pass" });
@@ -258,7 +278,7 @@ describe("KForge Workspace engines", () => {
 
   it("marks persisted command evidence as stale after the explicit freshness window", () => {
     const completedAt = new Date(Date.now() - STALE_TASK_EVIDENCE_MS - 1_000).toISOString();
-    const details = taskEvidenceDetails({ action: "test", projectId: "freshness-project", ok: true, startedAt: completedAt, completedAt, output: "pass", message: "persisted pass", evidenceSource: "persisted" });
+    const details = taskEvidenceDetails({ action: "test", projectId: "freshness-project", ok: true, startedAt: completedAt, completedAt, output: "pass", message: "persisted pass", evidenceSource: "persisted", transparency: { execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], projectSourceSent: false, secretRedaction: true, provider: "Local project toolchain", destination: "Selected project process", purpose: "Run tests.", confirmation: "NOT_REQUIRED", startedAt: completedAt, completedAt, durationMs: 0, result: "SUCCEEDED" } });
     expect(details.freshness).toBe("stale-task");
     expect(details.evidenceSource).toContain("stale");
     expect(details.evidenceAgeMs).toBeGreaterThan(STALE_TASK_EVIDENCE_MS);

@@ -34,6 +34,16 @@ describe("KForge Workspace capability coverage", () => {
     ONLINE_NAVIGATION_LABELS.forEach((label) => expect(CAPABILITY_RENDERER_IDS[label]).toBe("OnlineHubPanel"));
   });
 
+  it("renders the no-contact Online Control Center and operation transparency evidence", () => {
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    expect(source).toContain('/online/control-center');
+    expect(source).toContain('Online Control Center');
+    expect(source).toContain('NO REMOTE CONTACT');
+    expect(source).toContain('Opening disclosure');
+    expect(source).toContain('Execution and data disclosure');
+    expect(source).toContain('SOURCE_CODE');
+  });
+
   it("renders Projects and non-Workspace capabilities as mutually exclusive surfaces", () => {
     const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
     expect(source).toContain('activeNav === "Workspace" && <><section className="kf-workspace-panel"');
