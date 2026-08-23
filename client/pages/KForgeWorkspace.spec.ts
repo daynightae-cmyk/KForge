@@ -57,6 +57,16 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('/projects/${project.id}/marketplace');
   });
 
+  it("renders language-aware graph and transitive impact evidence without hiding unavailable boundaries", () => {
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    expect(source).toContain("Exported symbols");
+    expect(source).toContain("Transitive dependents");
+    expect(source).toContain("Language parser boundaries");
+    expect(source).toContain("Duplicated responsibility evidence");
+    expect(source).toContain("symbol node id");
+    expect(source).toContain("unsupported-language impact remain explicitly unavailable");
+  });
+
   it("renders Projects and non-Workspace capabilities as mutually exclusive surfaces", () => {
     const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
     expect(source).toContain('activeNav === "Workspace" && <><section className="kf-workspace-panel"');

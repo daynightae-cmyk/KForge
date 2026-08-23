@@ -2091,11 +2091,11 @@ router.get("/projects/:id/graph", async (req, res) => {
 
 router.get("/projects/:id/graph/impact", async (req, res) => {
   const project = await resolveProject(req.params.id);
-  const file = typeof req.query.file === "string" ? req.query.file : "";
+  const target = typeof req.query.target === "string" ? req.query.target : typeof req.query.file === "string" ? req.query.file : "";
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
-  if (!file) return res.status(400).json({ error: "Provide a project-relative file path." });
+  if (!target) return res.status(400).json({ error: "Provide a project-relative file path or exact symbol node id." });
   const graph = await buildProjectGraph(project.path);
-  return res.json({ projectId: project.id, impact: analyzeImpact(graph, file) });
+  return res.json({ projectId: project.id, impact: analyzeImpact(graph, target) });
 });
 
 router.get("/projects/:id/architecture", async (req, res) => {
@@ -2114,7 +2114,7 @@ router.get("/projects/:id/architecture", async (req, res) => {
   const highCoupling = [...incoming.entries()].filter(([, count]) => count >= 5).map(([id, dependents]) => ({ file: id.replace(/^file:/, ""), dependents })).sort((left, right) => right.dependents - left.dependents);
   const apiBoundaries = graph.nodes.filter((node) => node.type === "api").map((node) => ({ path: node.label, owner: node.path }));
   const routeBoundaries = graph.nodes.filter((node) => node.type === "route").map((node) => ({ path: node.label, owner: node.path }));
-  return res.json({ projectId: project.id, generatedAt: graph.generatedAt, modules, apiBoundaries, routeBoundaries, directCycles, highCoupling, limitations: ["Architecture evidence is static and import-based.", "Symbol-level ownership, transitive dependency cycles, and duplicated responsibility detection require language-aware analysis not yet available in this local engine."] });
+  return res.json({ projectId: project.id, generatedAt: graph.generatedAt, modules, apiBoundaries, routeBoundaries, directCycles, dependencyCycles: graph.analysis.cycles, duplicatedResponsibilities: graph.analysis.duplicatedResponsibilities, languageAdapters: graph.analysis.languageAdapters, highCoupling, limitations: ["Architecture and symbol evidence is static; runtime dispatch and dynamic imports are not inferred.", ...graph.analysis.limitations] });
 });
 
 router.get("/projects/:id/problems", async (req, res) => {
