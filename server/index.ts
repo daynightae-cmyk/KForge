@@ -1,7 +1,5 @@
 import express from "express";
 import cors from "cors";
-import { handleDemo } from "./routes/demo";
-import aiModelsRouter from "./routes/aiModels";
 import workspaceRouter from "./routes/workspace";
 
 export function createServer() {
@@ -15,8 +13,6 @@ export function createServer() {
     res.json({ message: "KForge server is online." });
   });
 
-  app.get("/api/demo", handleDemo);
-  app.use("/api/ai-models", aiModelsRouter);
   app.use("/api/workspace", workspaceRouter);
 
   return app;

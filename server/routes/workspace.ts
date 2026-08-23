@@ -39,6 +39,7 @@ import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../servi
 import { getMarketplace, previewMarketplaceInstall } from "../services/marketplace";
 import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, stopPreview } from "../services/previewRuntime";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
+import { readPlatformSettings, resetPlatformSettings, updatePlatformSettings } from "../services/platformSettings";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -775,6 +776,19 @@ router.post("/platform/mode", async (req, res) => {
   const mode = req.body?.mode;
   if (mode !== "offline" && mode !== "online-optional") return res.status(400).json({ error: "Choose offline or online-optional mode." });
   res.json(await setLocalPlatformMode(getWorkspaceRoot(), mode));
+});
+
+router.get("/settings", async (_req, res) => {
+  res.json({ settings: await readPlatformSettings(getWorkspaceRoot()) });
+});
+
+router.patch("/settings", async (req, res) => {
+  res.json({ settings: await updatePlatformSettings(getWorkspaceRoot(), req.body) });
+});
+
+router.post("/settings/reset", async (req, res) => {
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Resetting platform settings requires explicit confirmation." });
+  res.json({ settings: await resetPlatformSettings(getWorkspaceRoot()) });
 });
 
 router.get("/ai/providers", async (_req, res) => {
