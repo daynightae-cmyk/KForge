@@ -113,7 +113,9 @@ export async function previewDocumentationFix(projectPath: string, audit: Docume
   const documentPath = path.resolve(projectPath, finding.sourceDocument);
   if (!documentPath.startsWith(path.resolve(projectPath) + path.sep)) return { finding, patch: undefined, reason: "Unsafe documentation path." };
   const text = await fs.readFile(documentPath, "utf8").catch(() => "");
-  if (!text.includes(finding.fix.before)) return { finding, patch: undefined, reason: "The documented claim no longer matches the preview source." };
+  const occurrences = text.split(finding.fix.before).length - 1;
+  if (occurrences === 0) return { finding, patch: undefined, reason: "The documented claim no longer matches the preview source." };
+  if (occurrences !== 1) return { finding, patch: undefined, reason: "The documented claim is not unique, so KForge will not apply an ambiguous replacement." };
   return { finding, patch: { document: finding.sourceDocument, before: finding.fix.before, after: finding.fix.after } };
 }
 
