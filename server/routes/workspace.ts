@@ -42,7 +42,7 @@ import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } fr
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
 import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../services/securityTools";
 import { getMarketplace, listMarketplaceRegistryAdapters, previewMarketplaceInstall } from "../services/marketplace";
-import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, stopPreview } from "../services/previewRuntime";
+import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
 
@@ -745,6 +745,80 @@ export function releaseGateSourceVerdicts(scan: ProjectScan): { readiness: Relea
       ? "READY"
       : "READY WITH WARNINGS";
   return { readiness, verdicts };
+}
+
+type PreviewFixStageState = "PASSED" | "FAILED" | "BLOCKED" | "SKIPPED";
+type PreviewFixStage = { id: string; label: string; state: PreviewFixStageState; evidence: unknown };
+
+export async function executePreviewFixVerify(project: ProjectSummary, issueId: string) {
+  const stages: PreviewFixStage[] = [];
+  const record = (id: string, label: string, state: PreviewFixStageState, evidence: unknown) => stages.push({ id, label, state, evidence });
+  const before = await checkPreviewHealth(project.id);
+  const hasPreviewEvidence = !["idle", "unavailable", "stopped"].includes(before.state) && (before.health?.ok === false || Boolean(before.error) || before.state === "failed");
+  record("preview-evidence", "Preview error evidence", hasPreviewEvidence ? "PASSED" : "BLOCKED", { state: before.state, health: before.health, error: before.error, checkedAt: before.checkedAt, capturedLogLines: before.logs.length });
+  if (!hasPreviewEvidence) return { ok: false, rolledBack: false, error: "Preview Fix & Verify requires a started Preview session with current failing health or process error evidence.", stages, previewBefore: before };
+
+  const scan = await scanProject(project);
+  const issue = scan.issues.find((entry) => entry.id === issueId);
+  record("problem", "Problem selected from current scan", issue ? "PASSED" : "BLOCKED", issue || { issueId, scannedAt: scan.scannedAt });
+  if (!issue) return { ok: false, rolledBack: false, error: "The selected problem is not present in the current scan.", stages, previewBefore: before };
+
+  const context = await buildAgentContext(project, scan, issue.id);
+  record("ask-kforge", "Ask KForge evidence context", "PASSED", { issue: issue.title, files: context.files.map((entry) => entry.path), totalCharacters: context.totalCharacters });
+  const plan = buildRulePlan(context);
+  record("agent-plan", "Agent plan", "PASSED", plan);
+  const patch = await generateVerifiedPatch(project, issue);
+  const quality = patch ? await evaluatePatchQuality(project.path, patch) : null;
+  record("fix-eligibility", "Verified patch eligibility", patch && patch.risk === "safe" && quality?.ok ? "PASSED" : "BLOCKED", { patch, quality });
+  if (!patch || patch.risk !== "safe" || !quality?.ok) return { ok: false, rolledBack: false, error: "No verified safe patch is available for this Preview-linked problem.", stages, issue, previewBefore: before };
+
+  const snapshot = await createSnapshot(project.path, [patch.file], `Before Preview Fix & Verify ${patch.id}`);
+  record("snapshot", "Snapshot", "PASSED", snapshot);
+  let restored = false;
+  try {
+    const applied = await validateAndApplyPatch(project.path, patch);
+    record("fix", "Apply verified fix", "PASSED", applied);
+    const profile = await detectProjectProfile(project);
+    const verification: CommandResult[] = [];
+    let commandFailed = false;
+    for (const action of ["typecheck", "test", "build"] as const) {
+      if (commandFailed) { record(action, action, "SKIPPED", "A previous command verification failed."); continue; }
+      if (!profile.scripts[action]) { record(action, action, "SKIPPED", `No ${action} command was detected.`); continue; }
+      const result = await executeProjectAction(project, action);
+      verification.push(result);
+      record(action, action, result.ok ? "PASSED" : "FAILED", result);
+      if (!result.ok) commandFailed = true;
+    }
+    if (verification.some((entry) => !entry.ok)) {
+      await restoreSnapshot(project.path, snapshot.id); restored = true;
+      record("rollback", "Restore snapshot", "PASSED", { snapshotId: snapshot.id, reason: "Command verification failed." });
+      const rollbackPreview = await restartPreview(project.id, project.path, profile);
+      const rollbackHealth = await waitForPreviewHealth(project.id);
+      record("preview-rollback", "Restart restored Preview", rollbackHealth.health?.ok ? "PASSED" : "FAILED", { started: rollbackPreview, verified: rollbackHealth });
+      return { ok: false, rolledBack: true, error: "Verification failed; KForge restored the snapshot and restarted Preview with the original source.", stages, issue, patch, snapshot, verification, previewBefore: before, previewAfter: rollbackHealth };
+    }
+    const restarted = await restartPreview(project.id, project.path, profile);
+    record("preview-restart", "Restart Preview", restarted.state === "unavailable" || restarted.state === "failed" ? "FAILED" : "PASSED", restarted);
+    const verifiedPreview = await waitForPreviewHealth(project.id);
+    record("preview-verify", "Verify restarted Preview", verifiedPreview.health?.ok ? "PASSED" : "FAILED", verifiedPreview);
+    if (!verifiedPreview.health?.ok) {
+      await restoreSnapshot(project.path, snapshot.id); restored = true;
+      record("rollback", "Restore snapshot", "PASSED", { snapshotId: snapshot.id, reason: "Preview verification failed." });
+      const rollbackPreview = await restartPreview(project.id, project.path, profile);
+      const rollbackHealth = await waitForPreviewHealth(project.id);
+      record("preview-rollback", "Restart restored Preview", rollbackHealth.health?.ok ? "PASSED" : "FAILED", { started: rollbackPreview, verified: rollbackHealth });
+      return { ok: false, rolledBack: true, error: "Preview remained unhealthy; KForge restored the snapshot and preserved both verification attempts.", stages, issue, patch, snapshot, verification, previewBefore: before, previewAfter: rollbackHealth };
+    }
+    addActivity(project.id, { kind: "system", title: "Preview Fix & Verify completed", detail: `${patch.file} passed detected command checks and restarted Preview health verification.` });
+    return { ok: true, rolledBack: false, stages, issue, patch, snapshot, verification, previewBefore: before, previewAfter: verifiedPreview };
+  } catch (error: unknown) {
+    if (!restored) { await restoreSnapshot(project.path, snapshot.id).catch(() => undefined); record("rollback", "Restore snapshot", "PASSED", { snapshotId: snapshot.id, reason: "Unexpected loop failure." }); }
+    const profile = await detectProjectProfile(project);
+    const rollbackPreview = await restartPreview(project.id, project.path, profile).catch(() => getPreviewStatus(project.id));
+    const rollbackHealth = await waitForPreviewHealth(project.id).catch(() => rollbackPreview);
+    record("preview-rollback", "Restart restored Preview", rollbackHealth.health?.ok ? "PASSED" : "FAILED", rollbackHealth);
+    return { ok: false, rolledBack: true, error: error instanceof Error ? error.message : "Preview Fix & Verify failed and restored its snapshot.", stages, issue, patch, snapshot, previewBefore: before, previewAfter: rollbackHealth };
+  }
 }
 
 function awaitableScore(condition: boolean, score: number) {
@@ -1943,7 +2017,11 @@ router.post("/projects/:id/preview/stop", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Preview stop"));
-  return res.json({ projectId: project.id, preview: stopPreview(project.id) });
+  try {
+    return res.json({ projectId: project.id, preview: await stopPreviewAndWait(project.id) });
+  } catch (error: unknown) {
+    return res.status(500).json({ error: error instanceof Error ? error.message : "Preview process did not stop cleanly." });
+  }
 });
 
 router.post("/projects/:id/preview/restart", async (req, res) => {
@@ -1956,6 +2034,17 @@ router.post("/projects/:id/preview/restart", async (req, res) => {
   } catch (error: unknown) {
     return res.status(500).json({ error: error instanceof Error ? error.message : "Preview could not restart." });
   }
+});
+
+router.post("/projects/:id/preview/fix-verify", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const issueId = typeof req.body?.issueId === "string" ? req.body.issueId : "";
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Preview Fix & Verify"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Preview Fix & Verify can write one reviewed file after a snapshot. Explicit confirmation is required.", permission: "ask" });
+  if (!issueId) return res.status(400).json({ error: "A current problem id is required." });
+  const result = await executePreviewFixVerify(project, issueId);
+  return res.status(result.ok ? 200 : result.rolledBack ? 422 : 409).json(result);
 });
 
 export default router;

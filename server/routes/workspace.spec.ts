@@ -6,7 +6,8 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
+import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executePreviewFixVerify, executeProjectAction, makeProjectSummary, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
+import { startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import type { KForgeTask } from "../services/tasks";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
@@ -193,6 +194,51 @@ describe("KForge Workspace engines", () => {
     expect(release.verdicts.LOCAL.timestamp).toEqual(expect.any(String));
     expect(release.readiness).toBe("READY WITH WARNINGS");
   });
+
+  it("runs Preview Fix & Verify through a snapshot, deterministic patch, commands, restart, and healthy probe", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-preview-loop-"));
+    const projectPath = path.join(workspaceRoot, "project");
+    const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
+    let projectId = "";
+    try {
+      await fs.mkdir(path.join(projectPath, "src"), { recursive: true });
+      const typescriptCli = path.relative(projectPath, path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc")).replace(/\\/g, "/");
+      await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "preview-fix-verify", private: true, scripts: { typecheck: `node ${typescriptCli} --noEmit`, build: "node build.cjs", dev: "node server.cjs" } }), "utf8");
+      await fs.writeFile(path.join(projectPath, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2020", module: "ESNext", moduleResolution: "bundler", strict: true, noEmit: true }, include: ["src"] }), "utf8");
+      await fs.writeFile(path.join(projectPath, "src", "index.ts"), 'export const status: number = "ready";\n', "utf8");
+      await fs.writeFile(path.join(projectPath, "build.cjs"), "process.exit(0);\n", "utf8");
+      await fs.writeFile(path.join(projectPath, "server.cjs"), 'const http=require("http"),fs=require("fs"),path=require("path");const i=process.argv.indexOf("--port"),port=Number(i>=0?process.argv[i+1]:process.env.PORT);http.createServer((q,r)=>{const broken=fs.readFileSync(path.join(__dirname,"src/index.ts"),"utf8").includes(": number");r.statusCode=broken?500:200;r.setHeader("content-type","text/html");r.end(broken?"broken":"<a href=\\"/healthy\\">healthy</a>")}).listen(port,"127.0.0.1");', "utf8");
+      process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
+      await setProjectTrust(workspaceRoot, projectPath, "trusted");
+      const project = await makeProjectSummary(projectPath);
+      projectId = project.id;
+      const profile = await detectProjectProfile(project);
+      await startPreview(project.id, project.path, profile);
+      const failing = await waitForPreviewHealth(project.id, 10_000, 100);
+      expect(failing.health?.ok).toBe(false);
+      const scan = await scanProject(project);
+      const issue = scan.issues.find((entry) => entry.category === "typecheck" && entry.file === "src/index.ts");
+      expect(issue).toBeTruthy();
+      const result = await executePreviewFixVerify(project, issue!.id);
+      expect(result).toMatchObject({ ok: true, rolledBack: false, previewAfter: { health: { ok: true } } });
+      expect(result.stages.map((stage) => `${stage.id}:${stage.state}`)).toEqual(expect.arrayContaining(["preview-evidence:PASSED", "snapshot:PASSED", "fix:PASSED", "typecheck:PASSED", "build:PASSED", "preview-restart:PASSED", "preview-verify:PASSED"]));
+      expect(await fs.readFile(path.join(projectPath, "src", "index.ts"), "utf8")).toContain('status: string = "ready"');
+
+      await fs.writeFile(path.join(projectPath, "src", "index.ts"), 'export const status: number = "ready";\n', "utf8");
+      await fs.writeFile(path.join(projectPath, "build.cjs"), "process.exit(9);\n", "utf8");
+      const failingAgain = await waitForPreviewHealth(project.id, 2_000, 100);
+      expect(failingAgain.health?.ok).toBe(false);
+      const failed = await executePreviewFixVerify(project, issue!.id);
+      expect(failed).toMatchObject({ ok: false, rolledBack: true });
+      expect(failed.stages.map((stage) => `${stage.id}:${stage.state}`)).toEqual(expect.arrayContaining(["build:FAILED", "rollback:PASSED"]));
+      expect(await fs.readFile(path.join(projectPath, "src", "index.ts"), "utf8")).toContain('status: number = "ready"');
+    } finally {
+      if (projectId) await stopPreviewAndWait(projectId);
+      if (previousWorkspaceRoot === undefined) delete process.env.KFORGE_WORKSPACE_ROOT;
+      else process.env.KFORGE_WORKSPACE_ROOT = previousWorkspaceRoot;
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  }, 90_000);
 
   it("restores the latest completed verification evidence and preserves fresher in-memory results", () => {
     const projectId = "evidence-project";

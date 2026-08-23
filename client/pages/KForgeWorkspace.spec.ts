@@ -57,5 +57,8 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('KNOuX Forge Preview Engine');
     expect(source).toContain('Automatic health checks');
     expect(source).toContain('Browser console capture: NOT AVAILABLE');
+    expect(source).toContain('/preview/fix-verify');
+    expect(source).toContain('Preview → Fix → Verify');
+    expect(source).toContain('Local · GitHub · CI · Preview');
   });
 });

@@ -724,6 +724,8 @@ interface PreviewViewState {
 function PreviewPanel({ project, settings }: { project: ProjectSummary; settings?: KForgePlatformSettings["preview"] }) {
   const [preview, setPreview] = useState<PreviewViewState | null>(null);
   const [message, setMessage] = useState("Reading local Preview state…");
+  const [loopIssues, setLoopIssues] = useState<ScanIssue[]>([]);
+  const [loopResult, setLoopResult] = useState<Record<string, unknown> | null>(null);
   const [tab, setTab] = useState<"preview" | "console" | "routes" | "network" | "history" | "metadata">("preview");
   const [reloadKey, setReloadKey] = useState(0);
   const request = async (path: string, method = "GET") => {
@@ -740,8 +742,22 @@ function PreviewPanel({ project, settings }: { project: ProjectSummary; settings
     }
   };
   const refresh = async () => { await request(""); };
-  useEffect(() => { void refresh(); setTab("preview"); }, [project.id]);
+  const loadLoopIssues = async () => { try { const response = await fetch(`/api/workspace/projects/${project.id}/problems`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Problems are unavailable."); setLoopIssues((payload.problems || []).filter((entry: ScanIssue) => entry.fixability === "automatic")); } catch { setLoopIssues([]); } };
+  const fixAndVerify = async (issue: ScanIssue) => {
+    if (!window.confirm(`Apply the reviewed safe fix for “${issue.title}” after a snapshot, run detected verification, restart Preview, and roll back automatically on failure?`)) return;
+    try {
+      setMessage("Running Preview → Problem → Agent → Snapshot → Fix → Verify…");
+      const response = await fetch(`/api/workspace/projects/${project.id}/preview/fix-verify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ issueId: issue.id, confirmed: true }) });
+      const payload = await response.json();
+      setLoopResult(payload);
+      if (!response.ok) setMessage(payload.error || "Preview Fix & Verify did not pass; its evidence is preserved below."); else setMessage("Preview Fix & Verify passed with a healthy restarted Preview.");
+      if (payload.previewAfter) setPreview(payload.previewAfter);
+      await loadLoopIssues();
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Preview Fix & Verify failed."); }
+  };
+  useEffect(() => { void refresh(); void loadLoopIssues(); setLoopResult(null); setTab("preview"); }, [project.id]);
   const running = preview?.state === "running" || preview?.state === "starting";
+  const failingPreview = Boolean(preview && !["idle", "unavailable", "stopped"].includes(preview.state) && (preview.health?.ok === false || preview.error || preview.state === "failed"));
   useEffect(() => {
     if (!running || settings?.autoHealthCheck === false) return;
     const timer = window.setInterval(() => { void request("/health", "POST"); }, settings?.healthIntervalMs || 5_000);
@@ -765,6 +781,8 @@ function PreviewPanel({ project, settings }: { project: ProjectSummary; settings
       {tab === "metadata" && <article className="kf-command-evidence"><strong>Runtime metadata</strong><pre>{JSON.stringify({ project: project.name, sessionId: preview?.sessionId || "NOT_STARTED", command: preview?.command || "UNAVAILABLE", url: preview?.url || "UNAVAILABLE", pid: preview?.pid || "UNAVAILABLE", startedAt: preview?.startedAt || "UNAVAILABLE", stoppedAt: preview?.stoppedAt || "UNAVAILABLE", checkedAt: preview?.checkedAt || "UNAVAILABLE", runtime: preview?.runtime, telemetry: preview?.telemetry, settings: settings || "DEFAULT" }, null, 2)}</pre></article>}
     </div>
     {preview?.error && <article className="kf-command-evidence"><strong>Preview error</strong><pre>{preview.error}</pre></article>}
+    <article className="kf-command-evidence"><strong>Preview → Fix → Verify</strong><small>This path requires current failing Preview evidence, a scanner problem with a verified deterministic patch, project trust, and explicit confirmation. It creates a snapshot, runs detected typecheck/test/build commands, restarts this same Preview engine, verifies HTTP health, and restores the snapshot on any failure.</small>{failingPreview ? loopIssues.length ? <div className="kf-issues">{loopIssues.map((issue) => <div className="kf-issue" key={issue.id}><p><strong>{issue.title}</strong></p><small>{issue.file || issue.category} · {issue.suggestion || issue.message}</small><button disabled={project.trust !== "trusted"} onClick={() => void fixAndVerify(issue)}>Fix, restart, and verify</button></div>)}</div> : <p>No current scanner problem has a verified automatic patch. KForge will not invent a fix for this Preview failure.</p> : <p>Start Preview and capture a failing health or process result before linking a problem to the repair loop.</p>}<button onClick={() => void loadLoopIssues()}>Refresh eligible problems</button></article>
+    {loopResult && <article className="kf-command-evidence"><strong>Fix & Verify evidence</strong><pre>{JSON.stringify(loopResult, null, 2)}</pre></article>}
   </section>;
 }
 

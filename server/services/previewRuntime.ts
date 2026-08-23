@@ -170,7 +170,7 @@ export async function startPreview(projectId: string, projectPath: string, profi
     status.stoppedAt = new Date().toISOString();
     appendLog(status, `Preview process exited: code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}.`);
     recordEvent(status, "exit", `Process exited with code ${code ?? "unknown"}${signal ? ` and signal ${signal}` : ""}.`);
-    activePreviews.delete(projectId);
+    if (activePreviews.get(projectId)?.child === child) activePreviews.delete(projectId);
   });
   setTimeout(() => { void probe(status).then((health) => { if (status.state === "starting" && health.ok) status.state = "running"; }); }, 1_500).unref();
   return cloneStatus(status);
@@ -182,6 +182,16 @@ export async function checkPreviewHealth(projectId: string): Promise<PreviewStat
   const health = await probe(active.status);
   if (active.status.state === "starting" && health.ok) active.status.state = "running";
   return cloneStatus(active.status);
+}
+
+export async function waitForPreviewHealth(projectId: string, timeoutMs = 10_000, intervalMs = 250): Promise<PreviewStatus> {
+  const deadline = Date.now() + timeoutMs;
+  let status = await checkPreviewHealth(projectId);
+  while (Date.now() < deadline && !status.health?.ok && status.health?.status === undefined && !["failed", "blocked", "unavailable", "stopped"].includes(status.state)) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    status = await checkPreviewHealth(projectId);
+  }
+  return status;
 }
 
 export function stopPreview(projectId: string): PreviewStatus {
@@ -203,7 +213,21 @@ export function stopPreview(projectId: string): PreviewStatus {
   return cloneStatus(active.status);
 }
 
-export async function restartPreview(projectId: string, projectPath: string, profile: ProjectProfile) {
+export async function stopPreviewAndWait(projectId: string, timeoutMs = 5_000): Promise<PreviewStatus> {
+  const child = activePreviews.get(projectId)?.child;
+  if (!child) return stopPreview(projectId);
+  const exitPromise = new Promise<boolean>((resolve) => {
+    if (child.exitCode !== null) { resolve(true); return; }
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    child.once("exit", () => { clearTimeout(timer); resolve(true); });
+  });
   stopPreview(projectId);
+  const exited = await exitPromise;
+  if (!exited) throw new Error(`Preview process ${child.pid || "unknown"} did not exit within ${timeoutMs}ms.`);
+  return getPreviewStatus(projectId);
+}
+
+export async function restartPreview(projectId: string, projectPath: string, profile: ProjectProfile) {
+  await stopPreviewAndWait(projectId);
   return startPreview(projectId, projectPath, profile);
 }
