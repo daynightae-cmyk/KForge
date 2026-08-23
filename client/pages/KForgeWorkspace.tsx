@@ -40,6 +40,8 @@ import type {
   CommandResult,
   ProjectScan,
   ProjectSummary,
+  ProjectHealthEvidenceSource,
+  ProjectHealthEvidenceSourceKind,
   ScanIssue,
   KForgePlatformSettings,
   LocalPlatformStatus,
@@ -47,7 +49,7 @@ import type {
   WorkspaceResponse,
   WorkspaceStatus,
 } from "@shared/workspace";
-import { KFORGE_STARTUP_CAPABILITIES } from "@shared/workspace";
+import { KFORGE_SETTINGS_DOMAIN_HANDLING, KFORGE_STARTUP_CAPABILITIES } from "@shared/workspace";
 
 const NAVIGATION = [
   { group: "Projects", items: [["Workspace", LayoutDashboard], ["Project health", HeartPulse], ["Recent projects", History], ["Favorites", Star], ["Pinned", Pin], ["Archive", Archive], ["Open project", FolderOpen], ["Import project", FolderGit2]] },
@@ -636,12 +638,25 @@ function CapabilitySurface({ activeNav, project, projects, scan, tasks, results,
 }
 
 function ProjectHealthPanel({ project }: { project: ProjectSummary }) {
-  const [data, setData] = useState<{ health: { score: number | null; evidenceCoverage: number; calculatedAt: string; metrics: Array<{ key: string; label: string; status: WorkspaceStatus; score: number | null; weight: number; evidence: string[]; findings: string[]; lastScan: string; evidenceSource: string; evidenceAgeMs: number; freshness: "current-scan" | "live-task" | "persisted-task" | "stale-task" | "unknown" }>; release: { state: string; blockers: Array<{ title: string; source: string; file?: string }>; warnings: Array<{ title: string; source: string; file?: string }>; evidence: string[] } }; scannedAt: string; issueCount: number; tools: Array<{ name: string; available: boolean; version?: string; reason?: string }> } | null>(null);
+  const [data, setData] = useState<{ health: { score: number | null; evidenceCoverage: number; calculatedAt: string; metrics: Array<{ key: string; label: string; status: WorkspaceStatus; score: number | null; weight: number; evidence: string[]; findings: string[]; lastScan: string; evidenceSource: string; evidenceAgeMs: number; freshness: "current-scan" | "live-task" | "persisted-task" | "stale-task" | "unknown" }>; sources: Record<ProjectHealthEvidenceSourceKind, ProjectHealthEvidenceSource>; release: { state: string; blockers: Array<{ title: string; source: string; file?: string }>; warnings: Array<{ title: string; source: string; file?: string }>; evidence: string[] } }; scannedAt: string; issueCount: number; tools: Array<{ name: string; available: boolean; version?: string; reason?: string }> } | null>(null);
   const [message, setMessage] = useState("Loading Project Health from local evidence…");
   const refresh = async () => { try { setMessage("Recalculating local health evidence…"); const response = await fetch(`/api/workspace/projects/${project.id}/health`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Project Health is unavailable."); setData(payload); setMessage(""); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Project Health request failed."); } };
   useEffect(() => { void refresh(); }, [project.id]);
   const health = data?.health;
-  return <section className="kf-capability-panel"><div className="kf-card-heading"><div><HeartPulse size={17} /><h3>Project Health</h3></div><button onClick={() => void refresh()}>Refresh evidence</button></div>{message && <StatusMessage>{message}</StatusMessage>}{health ? <><div className="kf-hardware-grid"><span><strong>Health score</strong>{health.score === null ? "Evidence pending" : `${health.score}%`}</span><span><strong>Evidence coverage</strong>{health.evidenceCoverage}%</span><span><strong>Findings</strong>{data.issueCount}</span><span><strong>Release</strong>{health.release.state}</span></div><p className="kf-capability-copy">Calculated {formatDate(health.calculatedAt)} from local scan, command evidence, Git state, configuration, dependency, documentation, and architecture evidence. Every metric lists its source evidence below.</p><div className="kf-issues">{health.metrics.map((metric) => <details className="kf-issue" key={metric.key}><summary><span className={statusClass(metric.status)}>{statusLabel(metric.status)}</span><span><strong>{metric.label}</strong><small>{metric.score === null ? "No score" : `${metric.score}%`} · weight {metric.weight} · {metric.freshness} · {Math.round(metric.evidenceAgeMs / 1000)}s old</small></span><ChevronRight size={15} /></summary><div><p><strong>Evidence</strong></p><p className="kf-capability-copy">Source: {metric.evidenceSource} · freshness: {metric.freshness} · captured {formatDate(metric.lastScan)}</p><pre>{metric.evidence.length ? metric.evidence.join("\n") : "No measured evidence is available for this metric."}</pre>{metric.findings.length ? <><p><strong>Findings</strong></p><pre>{metric.findings.join("\n")}</pre></> : <p className="kf-capability-copy">No findings were recorded for this metric.</p>}</div></details>)}</div><article className="kf-command-evidence"><strong>Release decision · {health.release.state}</strong><pre>{JSON.stringify({ blockers: health.release.blockers, warnings: health.release.warnings, evidence: health.release.evidence }, null, 2)}</pre></article><article className="kf-command-evidence"><strong>Local tool availability</strong><pre>{JSON.stringify(data.tools, null, 2)}</pre></article></> : <p className="kf-capability-copy">{message || "No Project Health evidence is loaded."}</p>}</section>;
+  const sourceOrder: ProjectHealthEvidenceSourceKind[] = ["LOCAL", "GITHUB", "CI", "REMOTE_REGISTRY", "PREVIEW"];
+  return <section className="kf-capability-panel">
+    <div className="kf-card-heading"><div><HeartPulse size={17} /><h3>Project Health</h3></div><button onClick={() => void refresh()}>Refresh evidence</button></div>
+    {message && <StatusMessage>{message}</StatusMessage>}
+    {health ? <>
+      <div className="kf-hardware-grid"><span><strong>Health score</strong>{health.score === null ? "Evidence pending" : `${health.score}%`}</span><span><strong>Evidence coverage</strong>{health.evidenceCoverage}%</span><span><strong>Findings</strong>{data.issueCount}</span><span><strong>Overall recommendation</strong>{health.release.state}</span></div>
+      <p className="kf-capability-copy">Each source below is independent. Project Health does not contact GitHub, CI, or registries implicitly; missing remote evidence remains UNKNOWN, OFFLINE, or NOT_CONFIGURED before the overall recommendation.</p>
+      <div className="kf-provider-grid">{sourceOrder.map((kind) => { const source = health.sources[kind]; return <article className="kf-provider-card" key={kind}><div><strong>{kind.replace("_", " ")}</strong><span>{source.state}</span></div><p>{source.provider}</p><small>{source.source} · {source.freshness} · {formatDate(source.timestamp || undefined)}</small><small>Network: {source.network}</small><small>{source.evidence.join(" ")}</small>{(source.blocker || source.error) && <small>{source.blocker || source.error}</small>}</article>; })}</div>
+      <p className="kf-capability-copy">Local metrics were calculated {formatDate(health.calculatedAt)} from scan, command, Git, configuration, dependency, documentation, and architecture evidence.</p>
+      <div className="kf-issues">{health.metrics.map((metric) => <details className="kf-issue" key={metric.key}><summary><span className={statusClass(metric.status)}>{statusLabel(metric.status)}</span><span><strong>{metric.label}</strong><small>{metric.score === null ? "No score" : `${metric.score}%`} · weight {metric.weight} · {metric.freshness} · {Math.round(metric.evidenceAgeMs / 1000)}s old</small></span><ChevronRight size={15} /></summary><div><p><strong>Evidence</strong></p><p className="kf-capability-copy">Source: {metric.evidenceSource} · freshness: {metric.freshness} · captured {formatDate(metric.lastScan)}</p><pre>{metric.evidence.length ? metric.evidence.join("\n") : "No measured evidence is available for this metric."}</pre>{metric.findings.length ? <><p><strong>Findings</strong></p><pre>{metric.findings.join("\n")}</pre></> : <p className="kf-capability-copy">No findings were recorded for this metric.</p>}</div></details>)}</div>
+      <article className="kf-command-evidence"><strong>Overall recommendation · {health.release.state}</strong><pre>{JSON.stringify({ blockers: health.release.blockers, warnings: health.release.warnings, evidence: health.release.evidence }, null, 2)}</pre></article>
+      <article className="kf-command-evidence"><strong>Local tool availability</strong><pre>{JSON.stringify(data.tools, null, 2)}</pre></article>
+    </> : <p className="kf-capability-copy">{message || "No Project Health evidence is loaded."}</p>}
+  </section>;
 }
 
 function RecentProjectsPanel({ projects }: { projects: ProjectSummary[] }) {
@@ -793,24 +808,6 @@ function SnapshotsPanel({ project }: { project: ProjectSummary }) {
 
 
 
-const SETTINGS_DOMAIN_STATUS = [
-  ["General", "CONFIGURED", "Startup destination is persisted by the platform settings engine."],
-  ["Appearance", "CONFIGURED", "Density and reduced-motion preferences apply immediately to the workspace shell."],
-  ["Workspace / Projects", "CONFIGURED", "Collections, labels, last-opened state, archive, favorite, and pin state use the project collection store."],
-  ["AI / Models / Providers", "MANAGED", "Runtime and model selection are managed in the existing AI Center using detected providers only."],
-  ["Online Hub / Marketplace", "MANAGED", "Registry state comes from configured adapters; missing remote adapters remain NOT CONFIGURED."],
-  ["Privacy", "ENFORCED", "Secret redaction cannot be disabled. Remote context is blocked or requires an explicit prompt."],
-  ["Security / Trust / Permissions", "MANAGED", "Project trust and agent permissions remain scoped to their existing persistent stores."],
-  ["Git / GitHub", "ENFORCED", "Remote writes always require confirmation; Offline Mode blocks remote access."],
-  ["Updates", "NOT CONFIGURED", "No remote update registry is configured, so latest versions are not fabricated."],
-  ["Storage / Cache", "MANAGED", "Only KForge-owned cache and evidence storage is exposed for cleanup."],
-  ["Tasks / Agents", "PERSISTENT", "Task, mission, evidence, recovery, and snapshot state use the existing task store."],
-  ["Preview", "CONFIGURED", "Automatic local HTTP health-check behavior is persisted here."],
-  ["Notifications", "UNAVAILABLE", "No desktop notification adapter is configured in this browser-hosted runtime."],
-  ["Keyboard Shortcuts", "ACTIVE", "Ctrl/Cmd+K opens global discovery; Escape closes dialogs."],
-  ["Diagnostics", "MANAGED", "Measured local platform capabilities are available in System diagnostics."],
-] as const;
-
 function SettingsCenter({ settings, platform, onSettingsChange, onModeChange }: { settings: KForgePlatformSettings | null; platform?: LocalPlatformStatus; onSettingsChange: (settings: KForgePlatformSettings) => void; onModeChange: (mode: LocalPlatformStatus["mode"]) => void }) {
   const [draft, setDraft] = useState<KForgePlatformSettings | null>(settings);
   const [message, setMessage] = useState(settings ? "" : "Loading persisted platform settings…");
@@ -845,15 +842,30 @@ function SettingsCenter({ settings, platform, onSettingsChange, onModeChange }: 
   };
   if (!draft) return <section className="kf-capability-panel"><p className="kf-capability-copy">{message}</p></section>;
   return <section className="kf-settings-center">
-    <header className="kf-settings-header"><div><p className="kf-eyebrow">Persistent platform policy</p><h2>Settings Center</h2><p>Only controls connected to real platform behavior are editable. Unconfigured adapters remain explicit instead of becoming decorative switches.</p></div><div className="kf-heading-actions"><button className="kf-button kf-button--ghost" disabled={saving} onClick={() => void reset()}>Reset</button><button className="kf-button kf-button--primary" disabled={saving} onClick={() => void persist(draft)}>{saving ? "Saving…" : "Save settings"}</button></div></header>
+    <header className="kf-settings-header"><div><p className="kf-eyebrow">Persistent platform policy</p><h2>Settings Center</h2><p>Editable controls are connected to real runtime behavior. Every other requested domain is classified by its actual owner or availability.</p></div><div className="kf-heading-actions"><button className="kf-button kf-button--ghost" disabled={saving} onClick={() => void reset()}>Reset</button><button className="kf-button kf-button--primary" disabled={saving} onClick={() => void persist(draft)}>{saving ? "Saving…" : "Save settings"}</button></div></header>
     {message && <StatusMessage>{message}</StatusMessage>}
     <div className="kf-settings-layout"><div className="kf-settings-form">
-      <fieldset><legend>General</legend><label>Startup capability<select value={draft.general.startupCapability} onChange={(event) => setDraft({ ...draft, general: { startupCapability: event.target.value as KForgePlatformSettings["general"]["startupCapability"] } })}>{KFORGE_STARTUP_CAPABILITIES.map((capability) => <option key={capability}>{capability}</option>)}</select><small>Applied the next time the Workspace loads.</small></label></fieldset>
-      <fieldset><legend>Appearance</legend><label>Information density<select value={draft.appearance.density} onChange={(event) => setDraft({ ...draft, appearance: { ...draft.appearance, density: event.target.value as KForgePlatformSettings["appearance"]["density"] } })}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label className="kf-settings-check"><input type="checkbox" checked={draft.appearance.reducedMotion} onChange={(event) => setDraft({ ...draft, appearance: { ...draft.appearance, reducedMotion: event.target.checked } })} /><span><strong>Reduce motion</strong><small>Disables nonessential workspace transitions immediately after saving.</small></span></label></fieldset>
-      <fieldset><legend>Preview</legend><label className="kf-settings-check"><input type="checkbox" checked={draft.preview.autoHealthCheck} onChange={(event) => setDraft({ ...draft, preview: { ...draft.preview, autoHealthCheck: event.target.checked } })} /><span><strong>Automatic health checks</strong><small>Polls only the allocated local Preview URL while its process is running.</small></span></label><label>Health interval<select disabled={!draft.preview.autoHealthCheck} value={draft.preview.healthIntervalMs} onChange={(event) => setDraft({ ...draft, preview: { ...draft.preview, healthIntervalMs: Number(event.target.value) as KForgePlatformSettings["preview"]["healthIntervalMs"] } })}><option value={3000}>3 seconds</option><option value={5000}>5 seconds</option><option value={10000}>10 seconds</option><option value={30000}>30 seconds</option></select></label></fieldset>
-      <fieldset><legend>Privacy & remote context</legend><label>Remote source context<select value={draft.privacy.remoteContextPolicy} onChange={(event) => setDraft({ ...draft, privacy: { ...draft.privacy, remoteContextPolicy: event.target.value as KForgePlatformSettings["privacy"]["remoteContextPolicy"] } })}><option value="ask">Ask before sending</option><option value="blocked">Block remote context</option></select></label><div className="kf-settings-lock"><ShieldAlert size={16} /><span><strong>Secret redaction: ENFORCED</strong><small>.env values, tokens, credentials, private keys, cookies, and authorization headers cannot be opted out here.</small></span></div><div className="kf-settings-lock"><GitBranch size={16} /><span><strong>Remote Git writes: CONFIRMATION REQUIRED</strong><small>Push and other remote writes cannot be made silent by a setting.</small></span></div></fieldset>
-      <fieldset><legend>Operating mode</legend><div className="kf-inline-controls"><button className={`kf-button ${platform?.mode === "offline" ? "kf-button--primary" : "kf-button--ghost"}`} onClick={() => onModeChange("offline")}>Offline</button><button className={`kf-button ${platform?.mode === "online-optional" ? "kf-button--primary" : "kf-button--ghost"}`} onClick={() => onModeChange("online-optional")}>Online Optional</button></div><small>Core project, Git, tests, build, Preview, and local AI capabilities remain local-first.</small></fieldset>
-    </div><aside className="kf-settings-domains" aria-label="Settings domain capability status"><h3>Platform domains</h3>{SETTINGS_DOMAIN_STATUS.map(([domain, state, detail]) => <article key={domain}><div><strong>{domain}</strong><span data-state={state}>{state}</span></div><p>{detail}</p></article>)}</aside></div>
+      <fieldset><legend>General · EDITABLE_REAL</legend>
+        <label>Startup capability<select value={draft.general.startupCapability} onChange={(event) => setDraft({ ...draft, general: { ...draft.general, startupCapability: event.target.value as KForgePlatformSettings["general"]["startupCapability"] } })}>{KFORGE_STARTUP_CAPABILITIES.map((capability) => <option key={capability}>{capability}</option>)}</select><small>Applied the next time the Workspace loads.</small></label>
+      </fieldset>
+      <fieldset><legend>Appearance · EDITABLE_REAL</legend>
+        <label>Information density<select value={draft.appearance.density} onChange={(event) => setDraft({ ...draft, appearance: { ...draft.appearance, density: event.target.value as KForgePlatformSettings["appearance"]["density"] } })}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+        <label className="kf-settings-check"><input type="checkbox" checked={draft.appearance.reducedMotion} onChange={(event) => setDraft({ ...draft, appearance: { ...draft.appearance, reducedMotion: event.target.checked } })} /><span><strong>Reduce motion</strong><small>Disables nonessential workspace transitions immediately after saving.</small></span></label>
+      </fieldset>
+      <fieldset><legend>Privacy · EDITABLE_REAL</legend>
+        <div className="kf-settings-lock"><ShieldAlert size={16} /><span><strong>Secret redaction: ENFORCED</strong><small>Cannot be disabled. .env, tokens, keys, credentials, cookies, auth headers are always redacted.</small></span></div>
+        <label>Remote context policy<select value={draft.privacy.remoteContextPolicy} onChange={(event) => setDraft({ ...draft, privacy: { ...draft.privacy, remoteContextPolicy: event.target.value as KForgePlatformSettings["privacy"]["remoteContextPolicy"] } })}><option value="ask">Ask before sending</option><option value="blocked">Block remote context</option></select></label>
+        <div className="kf-settings-lock"><GitBranch size={16} /><span><strong>Confirm remote writes: ENFORCED</strong><small>Push and other remote writes cannot be made silent.</small></span></div>
+      </fieldset>
+      <fieldset><legend>Online / Offline · MANAGED_ELSEWHERE</legend>
+        <div className="kf-inline-controls"><button className={`kf-button ${platform?.mode === "offline" ? "kf-button--primary" : "kf-button--ghost"}`} onClick={() => onModeChange("offline")}>Offline</button><button className={`kf-button ${platform?.mode === "online-optional" ? "kf-button--primary" : "kf-button--ghost"}`} onClick={() => onModeChange("online-optional")}>Online Optional</button></div>
+        <small>The canonical local-platform store persists this mode and remote routes enforce it.</small>
+      </fieldset>
+      <fieldset><legend>Preview · EDITABLE_REAL</legend>
+        <label className="kf-settings-check"><input type="checkbox" checked={draft.preview.autoHealthCheck} onChange={(event) => setDraft({ ...draft, preview: { ...draft.preview, autoHealthCheck: event.target.checked } })} /><span><strong>Automatic health checks</strong><small>Polls only the allocated local Preview URL while its process is running.</small></span></label>
+        <label>Health interval<select disabled={!draft.preview.autoHealthCheck} value={draft.preview.healthIntervalMs} onChange={(event) => setDraft({ ...draft, preview: { ...draft.preview, healthIntervalMs: Number(event.target.value) as KForgePlatformSettings["preview"]["healthIntervalMs"] } })}><option value={3000}>3 seconds</option><option value={5000}>5 seconds</option><option value={10000}>10 seconds</option><option value={30000}>30 seconds</option></select></label>
+      </fieldset>
+    </div><aside className="kf-settings-domains" aria-label="Settings domain handling"><h3>Requested settings domains</h3>{KFORGE_SETTINGS_DOMAIN_HANDLING.map(([domain, state, detail]) => <article key={domain}><div><strong>{domain}</strong><span data-state={state}>{state}</span></div><p>{detail}</p></article>)}</aside></div>
   </section>;
 }
 

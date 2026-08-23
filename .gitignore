@@ -38,3 +38,20 @@ pnpm-debug.log*
 .kforge/
 _Knoux_Audit/
 _Knoux_Extracted/
+
+# Agent configuration directories (not part of KForge source)
+.claude/
+.ctrlnode/
+.cursor/
+.qodo/
+CLAUDE.md
+.hermes.md
+
+# Hermes temporary recovery artifacts
+/kforge-recovery-*
+/*.log
+/phase*-*.log
+/typecheck-*.log
+/build-*.log
+/final-*.log
+/verify-runtime*.log

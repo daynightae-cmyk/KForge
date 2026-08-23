@@ -11,6 +11,8 @@ import type {
   HealthMetric,
   ProjectDetailResponse,
   ProjectHealth,
+  ProjectHealthEvidenceSource,
+  ProjectHealthEvidenceSourceKind,
   ProjectProfile,
   ProjectScan,
   ProjectSummary,
@@ -36,10 +38,10 @@ import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
 import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../services/securityTools";
-import { getMarketplace, previewMarketplaceInstall } from "../services/marketplace";
+import { getMarketplace, listMarketplaceRegistryAdapters, previewMarketplaceInstall } from "../services/marketplace";
 import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, stopPreview } from "../services/previewRuntime";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
-import { readPlatformSettings, resetPlatformSettings, updatePlatformSettings } from "../services/platformSettings";
+import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -603,7 +605,80 @@ export function taskEvidenceDetails(result: CommandResult | undefined): Partial<
   return { lastScan: result.completedAt, evidenceSource: stale ? "KForge persisted task evidence (stale)" : persisted ? "KForge persisted task evidence" : "KForge live task evidence", evidenceAgeMs, freshness: stale ? "stale-task" : persisted ? "persisted-task" : "live-task" };
 }
 
-async function calculateHealth(project: ProjectSummary, profile: ProjectProfile, diagnostics: ScanIssue[], actionState: Partial<Record<WorkspaceAction, CommandResult>>, typecheckStatus: WorkspaceStatus): Promise<ProjectHealth> {
+function healthSource(kind: ProjectHealthEvidenceSourceKind, value: Omit<ProjectHealthEvidenceSource, "kind">): ProjectHealthEvidenceSource {
+  return { kind, ...value };
+}
+
+export function projectHealthEvidenceSources(project: ProjectSummary, profile: ProjectProfile, localState: ProjectHealth["release"]["state"], onlineOptional: boolean, calculatedAt: string): Record<ProjectHealthEvidenceSourceKind, ProjectHealthEvidenceSource> {
+  const preview = getPreviewStatus(project.id);
+  const previewSupported = Boolean(profile.scripts.preview || profile.scripts.dev || profile.scripts.start || profile.commands.dev || profile.commands.runtime);
+  const previewState: ProjectHealthEvidenceSource["state"] = !previewSupported ? "UNAVAILABLE"
+    : preview.state === "running" && preview.health?.ok ? "READY"
+      : preview.state === "failed" || preview.state === "blocked" || preview.health && !preview.health.ok && Boolean(preview.checkedAt) ? "BLOCKED"
+        : preview.state === "unavailable" ? "UNAVAILABLE" : "UNKNOWN";
+  const githubRemote = Boolean(githubSlug(project.remoteUrl));
+  const githubState: ProjectHealthEvidenceSource["state"] = !githubRemote ? "NOT_CONFIGURED" : onlineOptional ? "UNKNOWN" : "OFFLINE";
+  const registryAdapters = listMarketplaceRegistryAdapters(onlineOptional).filter((adapter) => adapter.kind === "remote");
+  const configuredRegistry = registryAdapters.find((adapter) => adapter.configured);
+  const registryState: ProjectHealthEvidenceSource["state"] = !onlineOptional ? "OFFLINE" : configuredRegistry ? "UNKNOWN" : "NOT_CONFIGURED";
+  const ciProvider = profile.ci.some((entry) => entry.startsWith(".github/workflows/")) ? "GitHub Actions"
+    : profile.ci.some((entry) => entry.includes("gitlab")) ? "GitLab CI"
+      : profile.ci.length ? "Detected CI configuration" : "No CI provider";
+  return {
+    LOCAL: healthSource("LOCAL", {
+      state: localState === "READY WITH WARNINGS" ? "READY_WITH_WARNINGS" : localState,
+      timestamp: calculatedAt,
+      freshness: "CURRENT_SCAN",
+      evidence: ["Current project scan, local command evidence, Git worktree state, and detected project metadata."],
+      source: "KForge local Health engine",
+      provider: "Local workspace",
+      network: "NOT_REQUIRED",
+      blocker: localState === "BLOCKED" ? "One or more local health checks or diagnostics are blocking." : undefined,
+    }),
+    GITHUB: healthSource("GITHUB", {
+      state: githubState,
+      timestamp: calculatedAt,
+      freshness: "CURRENT_SCAN",
+      evidence: githubRemote ? [`GitHub remote is configured for ${githubSlug(project.remoteUrl)}. No remote API call was made by Project Health.`] : ["No GitHub origin remote was detected."],
+      source: "Local Git remote configuration",
+      provider: githubRemote ? "GitHub" : "Not configured",
+      network: githubRemote ? "REQUIRED_NOT_CONTACTED" : "NOT_REQUIRED",
+      blocker: githubState === "OFFLINE" ? "Offline Mode blocks GitHub evidence refresh." : githubState === "UNKNOWN" ? "Open the GitHub surface and explicitly refresh to collect remote evidence." : undefined,
+    }),
+    CI: healthSource("CI", {
+      state: profile.ci.length ? "UNKNOWN" : "NOT_CONFIGURED",
+      timestamp: calculatedAt,
+      freshness: "CURRENT_SCAN",
+      evidence: profile.ci.length ? profile.ci.map((entry) => `CI configuration detected: ${entry}; remote run status was not queried.`) : ["No supported CI configuration was detected."],
+      source: "Project metadata discovery",
+      provider: ciProvider,
+      network: profile.ci.length ? "REQUIRED_NOT_CONTACTED" : "NOT_REQUIRED",
+      blocker: profile.ci.length ? "Remote CI run evidence is not available in this health calculation." : undefined,
+    }),
+    REMOTE_REGISTRY: healthSource("REMOTE_REGISTRY", {
+      state: registryState,
+      timestamp: calculatedAt,
+      freshness: "CURRENT_SCAN",
+      evidence: registryAdapters.map((adapter) => `${adapter.label}: ${adapter.configured ? "configured" : "not configured"}; ${adapter.state}.`),
+      source: "Marketplace registry adapter configuration",
+      provider: configuredRegistry?.label || "No configured remote registry",
+      network: configuredRegistry ? "REQUIRED_NOT_CONTACTED" : "NOT_REQUIRED",
+      blocker: registryState === "OFFLINE" ? "Offline Mode blocks remote registry refresh." : registryState === "NOT_CONFIGURED" ? "No remote registry adapter is configured." : "A configured registry exists but was not contacted by Project Health.",
+    }),
+    PREVIEW: healthSource("PREVIEW", {
+      state: previewState,
+      timestamp: preview.checkedAt || preview.startedAt || calculatedAt,
+      freshness: preview.state === "running" ? "LIVE" : preview.checkedAt || preview.startedAt ? "CACHED" : "UNKNOWN",
+      evidence: [`Preview state: ${preview.state}.`, preview.health?.detail || "No Preview health probe evidence exists."],
+      source: "Existing Preview runtime",
+      provider: "Local Preview process",
+      network: "NOT_REQUIRED",
+      blocker: previewState === "BLOCKED" ? preview.error || preview.health?.detail || "Preview verification failed." : previewState === "UNKNOWN" ? "Preview has not produced current health evidence." : previewState === "UNAVAILABLE" ? "No supported Preview command was detected." : undefined,
+    }),
+  };
+}
+
+async function calculateHealth(project: ProjectSummary, profile: ProjectProfile, diagnostics: ScanIssue[], actionState: Partial<Record<WorkspaceAction, CommandResult>>, typecheckStatus: WorkspaceStatus, onlineOptional: boolean): Promise<ProjectHealth> {
   const has = (category: DiagnosticCategory) => diagnostics.filter((entry) => entry.category === category);
   const security = has("security");
   const dependencies = has("dependency");
@@ -635,9 +710,13 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
   const staleVerification = metrics.filter((entry) => ["tests", "build", "runtime"].includes(entry.key) && entry.freshness === "stale-task");
   const blockers = [...blockingIssues.map(toDecisionEntry), ...failedMetrics.map((entry) => ({ title: `${entry.label} failed`, source: "KForge health" }))];
   const warnings = [...warningIssues.map(toDecisionEntry), ...unknownVerification.map((entry) => ({ title: `${entry.label} has not been verified`, source: "KForge health" })), ...staleVerification.map((entry) => ({ title: `${entry.label} evidence is stale`, source: "KForge health" }))];
-  const releaseState: ProjectHealth["release"]["state"] = blockers.length ? "BLOCKED" : warnings.length ? "READY WITH WARNINGS" : "READY";
-  const release = { state: releaseState, blockers, warnings, evidence: metrics.flatMap((entry) => entry.evidence) };
-  return { score: totalWeight ? Math.round(measured.reduce((total, entry) => total + (entry.score || 0) * entry.weight, 0) / totalWeight) : null, evidenceCoverage: Math.round((measured.length / metrics.length) * 100), metrics, release, calculatedAt: new Date().toISOString() };
+  const localState: ProjectHealth["release"]["state"] = blockers.length ? "BLOCKED" : warnings.length ? "READY WITH WARNINGS" : "READY";
+  const calculatedAt = new Date().toISOString();
+  const sources = projectHealthEvidenceSources(project, profile, localState, onlineOptional, calculatedAt);
+  const sourceWarnings = Object.values(sources).filter((entry) => entry.kind !== "LOCAL" && entry.state !== "READY").map((entry) => ({ title: `${entry.kind} evidence is ${entry.state}`, source: entry.source }));
+  const releaseState: ProjectHealth["release"]["state"] = localState === "BLOCKED" ? "BLOCKED" : sourceWarnings.length || localState === "READY WITH WARNINGS" ? "READY WITH WARNINGS" : "READY";
+  const release = { state: releaseState, blockers, warnings: [...warnings, ...sourceWarnings], evidence: [...metrics.flatMap((entry) => entry.evidence), ...Object.values(sources).flatMap((entry) => entry.evidence)] };
+  return { score: totalWeight ? Math.round(measured.reduce((total, entry) => total + (entry.score || 0) * entry.weight, 0) / totalWeight) : null, evidenceCoverage: Math.round((measured.length / metrics.length) * 100), metrics, sources, release, calculatedAt };
 }
 
 function awaitableScore(condition: boolean, score: number) {
@@ -665,7 +744,7 @@ export async function scanProject(project: ProjectSummary): Promise<ProjectScan>
   diagnostics.push(...secretLiterals, ...dependencyIssues, ...completeness, ...advancedCompletion, ...eslintFindings, ...externalFindings);
   if (project.modifiedFiles + project.untrackedFiles > 0) diagnostics.push(issue(project.id, "working-tree-changed", "info", "git", "Local changes are present", `${project.modifiedFiles} modified and ${project.untrackedFiles} untracked file(s) are present.`, { source: "Git", fixability: "manual", suggestion: "Review the diff before pulling, pushing, or creating a release." }));
   if (project.behind > 0) diagnostics.push(issue(project.id, "remote-behind", "medium", "git", "Remote updates are available", `The current branch is ${project.behind} commit(s) behind its upstream branch.`, { source: "Git", fixability: "guided", suggestion: "Pull and resolve conflicts before dependent work." }));
-  const health = await calculateHealth(project, profile, diagnostics, actionState, typecheckStatus);
+  const health = await calculateHealth(project, profile, diagnostics, actionState, typecheckStatus, onlineOptional);
   const scannedAt = new Date().toISOString();
   await recordProjectScanned(getWorkspaceRoot(), project.path);
   return {
@@ -783,7 +862,12 @@ router.get("/settings", async (_req, res) => {
 });
 
 router.patch("/settings", async (req, res) => {
-  res.json({ settings: await updatePlatformSettings(getWorkspaceRoot(), req.body) });
+  try {
+    return res.json({ settings: await updatePlatformSettings(getWorkspaceRoot(), req.body) });
+  } catch (error: unknown) {
+    if (error instanceof SettingsValidationError) return res.status(400).json({ error: error.message, issues: error.issues });
+    return res.status(500).json({ error: error instanceof Error ? error.message : "Platform settings could not be saved." });
+  }
 });
 
 router.post("/settings/reset", async (req, res) => {

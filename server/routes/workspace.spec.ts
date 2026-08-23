@@ -6,7 +6,7 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
+import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, projectHealthEvidenceSources, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
 import type { KForgeTask } from "../services/tasks";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
@@ -20,6 +20,23 @@ describe("KForge Workspace engines", () => {
     expect(scan.profile.languages).toEqual(expect.arrayContaining(["TypeScript", "JavaScript"]));
     expect(scan.profile.scripts).toHaveProperty("build");
     expect(scan.profile.sourceFileCount).toBeGreaterThan(0);
+  }, 15_000);
+
+  it("separates Project Health sources without silently contacting remote providers", async () => {
+    const project = await makeProjectSummary(fixture("workspace-clean"));
+    const profile = await detectProjectProfile(project);
+    const timestamp = "2026-08-24T00:00:00.000Z";
+    const sources = projectHealthEvidenceSources(project, profile, "READY", false, timestamp);
+    expect(Object.keys(sources)).toEqual(["LOCAL", "GITHUB", "CI", "REMOTE_REGISTRY", "PREVIEW"]);
+    expect(sources.LOCAL).toMatchObject({ state: "READY", timestamp, freshness: "CURRENT_SCAN", network: "NOT_REQUIRED" });
+    expect(sources.GITHUB.state).toBe(project.remoteUrl?.includes("github.com") ? "OFFLINE" : "NOT_CONFIGURED");
+    expect(sources.REMOTE_REGISTRY).toMatchObject({ state: "OFFLINE", network: "NOT_REQUIRED" });
+    expect(sources.PREVIEW.network).toBe("NOT_REQUIRED");
+    for (const source of Object.values(sources)) {
+      expect(source.source).toBeTruthy();
+      expect(source.provider).toBeTruthy();
+      expect(source.evidence.length).toBeGreaterThan(0);
+    }
   }, 15_000);
 
   it("normalizes a TypeScript compiler failure into a typecheck diagnostic after explicit trust", async () => {
