@@ -50,7 +50,7 @@ import type {
 const NAVIGATION = [
   { group: "Projects", items: [["Workspace", LayoutDashboard], ["Project health", HeartPulse], ["Recent projects", History], ["Favorites", Star], ["Pinned", Pin], ["Archive", Archive], ["Open project", FolderOpen], ["Import project", FolderGit2]] },
   { group: "AI", items: [["AI providers", Bot], ["Models", Cpu], ["Agents", Bot], ["Tasks", Activity]] },
-  { group: "Marketplace", items: [["Marketplace", Box]] },
+  { group: "Online", items: [["Discover", Search], ["Marketplace", Box], ["Extensions", Box], ["Model Hub", Cpu], ["Agent Marketplace", Bot], ["Tool Marketplace", Wrench], ["Integrations", Network], ["Providers", CircleDot], ["Installed", FolderOpen], ["Updates", RefreshCw], ["Security Center", ShieldAlert]] },
   { group: "Intelligence", items: [["Project graph", Network], ["Dependencies", Box], ["Impact analysis", Network], ["Code understanding", Code2], ["Ask KForge", MessageSquare], ["Architecture", Box]] },
   { group: "Quality", items: [["KForge Sonar", ShieldAlert], ["Problems", ShieldAlert], ["Solutions", Wrench], ["Security", ShieldAlert], ["Performance", Activity], ["Technical debt", Wrench], ["Snapshots", History]] },
   { group: "Release", items: [["Release Gate", Rocket], ["Release preparation", Rocket], ["Artifacts", Box], ["Versioning", GitBranch]] },
@@ -64,6 +64,16 @@ const NAV_SERVICE_INFO: Record<string, { description: string; capability: string
   "Agents": { description: "Persistent strategy missions with explicit trust, tool, and confirmation boundaries.", capability: "Mission orchestration" },
   "Tasks": { description: "Persisted task logs, evidence, recovery, and safe controls.", capability: "Task evidence" },
   "Marketplace": { description: "Local runtime metadata and configured provider adapters only; no invented registry data.", capability: "Registry inspection" },
+  "Discover": { description: "Searches every configured local and official catalog source from one dense discovery surface.", capability: "Global online discovery" },
+  "Extensions": { description: "Shows verified extension metadata, compatibility, source, permissions, and local installation state.", capability: "Extension catalog" },
+  "Model Hub": { description: "Compares installed and compatible local models using detected runtime and hardware evidence.", capability: "Model discovery" },
+  "Agent Marketplace": { description: "Lists registered engineering agents with their capabilities, trust, and project permissions.", capability: "Agent catalog" },
+  "Tool Marketplace": { description: "Lists registered engineering tools and the exact local permissions each tool requires.", capability: "Tool catalog" },
+  "Integrations": { description: "Reports configured integrations and truthful offline or unavailable states without fabricated connections.", capability: "Integration registry" },
+  "Providers": { description: "Inspects local and remote registry adapters, configuration state, and supported catalog operations.", capability: "Provider center" },
+  "Installed": { description: "Shows only items verified as installed by a local runtime or the KForge registry.", capability: "Installed center" },
+  "Updates": { description: "Shows update evidence only when a configured provider supplies a trustworthy version comparison.", capability: "Update center" },
+  "Security Center": { description: "Reviews marketplace trust, permissions, compatibility, and network requirements before any action.", capability: "Marketplace security" },
   "Project graph": { description: "Local source imports and dependencies derived from the selected project.", capability: "Dependency graph" },
   "KForge Sonar": { description: "Local scanner evidence and installed-tool availability, including explicit unavailable states.", capability: "Quality analysis" },
   "Release Gate": { description: "Runs selected local verification and reports actual blockers, warnings, and Preview evidence.", capability: "Release evidence" },
@@ -77,6 +87,17 @@ export function navHoverInfo(label: string, group: string) {
 }
 
 function navCardId(label: string) { return `nav-card-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`; }
+
+export const ONLINE_NAVIGATION_LABELS = ["Discover", "Marketplace", "Extensions", "Model Hub", "Agent Marketplace", "Tool Marketplace", "Integrations", "Providers", "Installed", "Updates", "Security Center"] as const;
+
+function navigationContext(label: string) {
+  const section = NAVIGATION.find((entry) => entry.items.some((item) => item[0] === label));
+  return { group: section?.group || "Workspace", ...navHoverInfo(label, section?.group || "Workspace") };
+}
+
+function isOnlineNavigation(label: string): label is typeof ONLINE_NAVIGATION_LABELS[number] {
+  return (ONLINE_NAVIGATION_LABELS as readonly string[]).includes(label);
+}
 
 type Status = WorkspaceStatus;
 type SortKey = "name" | "projectType" | "branch" | "lastActivity" | "sync";
@@ -463,6 +484,8 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
 
   const activeScan = activeProject ? scans[activeProject.id] : undefined;
   const activeTaskList = tasks.filter((task) => task.projectId === activeProject?.id).slice(0, 4);
+  const activeContext = navigationContext(activeNav);
+  const activeTitle = activeNav === "Workspace" ? "Projects" : activeNav;
 
   return (
     <div className="kf-app">
@@ -482,21 +505,21 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
 
       <main className="kf-main">
         <header className="kf-topbar">
-          <div className="kf-breadcrumb"><span>Projects</span><ChevronRight size={14} /><strong>Workspace</strong></div>
+          <div className="kf-breadcrumb"><span>{activeContext.group}</span><ChevronRight size={14} /><strong>{activeTitle}</strong></div>
           <button className="kf-command-trigger" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Ask KForge or run a command</span><kbd>Ctrl K</kbd></button>
           <div className="kf-topbar-state"><span><i className="kf-connection-dot" />{localPlatform?.mode === "online-optional" ? "Online optional" : "Offline mode"}</span><span><i className="kf-connection-dot" />Local AI</span></div>
         </header>
 
         <section className="kf-content">
           <div className="kf-page-heading">
-            <div><p className="kf-eyebrow">KForge workspace</p><h1>Projects</h1><p className="kf-page-subtitle">Real local repositories, Git state, audits, and engineering actions in one workspace.</p></div>
-            <div className="kf-heading-actions"><button className="kf-button kf-button--ghost" onClick={() => void refreshProjects()} disabled={loading}><RefreshCw size={16} className={loading ? "kf-spin" : ""} />Refresh</button><button className="kf-button kf-button--secondary" onClick={() => setModal("clone")} disabled={localPlatform?.mode !== "online-optional"} title={localPlatform?.mode !== "online-optional" ? "Enable Online Optional mode to clone a remote repository." : "Clone a remote repository"}><Github size={16} />Clone repository</button><button className="kf-button kf-button--primary" onClick={() => setModal("open")}><Plus size={16} />Open project</button></div>
+            <div><p className="kf-eyebrow">{activeContext.group}</p><h1>{activeTitle}</h1><p className="kf-page-subtitle">{activeNav === "Workspace" ? "Real local repositories, Git state, audits, and engineering actions in one workspace." : activeContext.description}</p></div>
+            {activeNav === "Workspace" ? <div className="kf-heading-actions"><button className="kf-button kf-button--ghost" onClick={() => void refreshProjects()} disabled={loading}><RefreshCw size={16} className={loading ? "kf-spin" : ""} />Refresh</button><button className="kf-button kf-button--secondary" onClick={() => setModal("clone")} disabled={localPlatform?.mode !== "online-optional"} title={localPlatform?.mode !== "online-optional" ? "Enable Online Optional mode to clone a remote repository." : "Clone a remote repository"}><Github size={16} />Clone repository</button><button className="kf-button kf-button--primary" onClick={() => setModal("open")}><Plus size={16} />Open project</button></div> : <div className="kf-heading-actions"><span className="kf-active-project-chip"><FolderGit2 size={14} />{activeProject?.name || "No project selected"}</span><button className="kf-button kf-button--ghost" onClick={() => setActiveNav("Workspace")}><LayoutDashboard size={16} />Projects</button></div>}
           </div>
 
           {error && <div className="kf-alert"><ShieldAlert size={17} /><span>{error}</span><button onClick={() => setError("")}><X size={16} /></button></div>}
           {activeProject?.trust === "untrusted" && <div className="kf-alert"><ShieldAlert size={17} /><span><strong>UNTRUSTED PROJECT</strong> — read-only inspection is available. Tests, builds, runtime checks, and agent patches require your approval.</span><button className="kf-button kf-button--secondary" onClick={() => void approveProjectTrust(activeProject)}>Trust local execution</button></div>}
 
-          <section className="kf-workspace-panel">
+          {activeNav === "Workspace" && <><section className="kf-workspace-panel">
             <div className="kf-toolbar">
               <div className="kf-search"><Search size={16} /><input aria-label="Search local projects" placeholder="Search projects, paths, branches…" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)} aria-label="Project filter"><option value="all">All projects</option><option value="synced">Synced</option><option value="changes">Local changes</option><option value="review">Needs review</option></select>
@@ -521,9 +544,10 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
             )}
             <div className="kf-group-header kf-group-header--collapsed"><button onClick={() => setOpenGroups((state) => ({ ...state, others: !state.others }))}>{openGroups.others ? <ChevronDown size={16} /> : <ChevronRight size={16} />}<span>Connected & recent</span><small>{projects.filter((project) => project.provider === "GitHub").length}</small></button><span>{openGroups.others ? "GitHub-connected repositories appear in the local projects list." : ""}</span></div>
           </section>
+          {activeProject && <ProjectInspectorV2 project={activeProject} scan={activeScan} results={actionResults[activeProject.id]} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} />}</>}
 
-          {activeProject && activeNav !== "Workspace" && <CapabilitySurface activeNav={activeNav} project={activeProject} projects={projects} scan={activeScan} tasks={activeTaskList} results={actionResults[activeProject.id]} platform={localPlatform} onPlatformModeChange={(mode) => void setPlatformMode(mode)} onOpenProject={() => setModal("open")} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} onTrust={() => void approveProjectTrust(activeProject)} onNavigate={(label) => setActiveNav(label)} />}
-          {activeProject && <ProjectInspectorV2 project={activeProject} scan={activeScan} results={actionResults[activeProject.id]} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} />}
+          {activeProject && activeNav !== "Workspace" && <section className={`kf-active-surface ${isOnlineNavigation(activeNav) ? "kf-active-surface--online" : ""}`} aria-label={`${activeTitle} capability`}><CapabilitySurface activeNav={activeNav} project={activeProject} projects={projects} scan={activeScan} tasks={activeTaskList} results={actionResults[activeProject.id]} platform={localPlatform} onPlatformModeChange={(mode) => void setPlatformMode(mode)} onOpenProject={() => setModal("open")} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} onTrust={() => void approveProjectTrust(activeProject)} onNavigate={(label) => setActiveNav(label)} /></section>}
+          {!activeProject && activeNav !== "Workspace" && <WorkspaceEmpty onOpen={() => setModal("open")} />}
         </section>
       </main>
 
@@ -558,7 +582,8 @@ function ProjectInspector({ project, scan, results, tasks, onRun, onTaskControl 
 
 export const CAPABILITY_RENDERER_IDS: Record<string, string> = {
   "Workspace": "WorkspaceProjectList", "Project health": "ProjectHealthPanel", "Recent projects": "RecentProjectsPanel", "Favorites": "CollectionProjectsPanel", "Pinned": "CollectionProjectsPanel", "Archive": "CollectionProjectsPanel", "Open project": "OpenProjectPanel", "Import project": "OpenProjectPanel",
-  "AI providers": "AICenter", "Models": "LocalAIOnboarding", "Agents": "AgentMissionCenter", "Tasks": "TaskCenterPanel", "Marketplace": "MarketplacePanel",
+  "AI providers": "AICenter", "Models": "LocalAIOnboarding", "Agents": "AgentMissionCenter", "Tasks": "TaskCenterPanel",
+  "Discover": "OnlineHubPanel", "Marketplace": "OnlineHubPanel", "Extensions": "OnlineHubPanel", "Model Hub": "OnlineHubPanel", "Agent Marketplace": "OnlineHubPanel", "Tool Marketplace": "OnlineHubPanel", "Integrations": "OnlineHubPanel", "Providers": "OnlineHubPanel", "Installed": "OnlineHubPanel", "Updates": "OnlineHubPanel", "Security Center": "OnlineHubPanel",
   "Project graph": "GraphPanel", "Dependencies": "DependenciesPanel", "Impact analysis": "ImpactAnalysisPanel", "Code understanding": "CodeUnderstandingPanel", "Ask KForge": "AskKForgePanel", "Architecture": "ArchitecturePanel",
   "KForge Sonar": "SecurityToolsPanel", "Problems": "QualityPanel", "Solutions": "SolutionsPanel", "Security": "SecurityToolsPanel", "Performance": "QualityCategoryPanel", "Technical debt": "QualityCategoryPanel", "Snapshots": "SnapshotsPanel",
   "Release Gate": "ReleaseGatePanel", "Release preparation": "ReleasePreparationPanel", "Artifacts": "ReleasePreparationPanel", "Versioning": "ReleasePreparationPanel",
@@ -575,7 +600,8 @@ function UnavailableCapabilityPanel({ label }: { label: string }) { return <sect
 function CapabilitySurface({ activeNav, project, projects, scan, tasks, results, platform, onPlatformModeChange, onOpenProject, onRun, onTaskControl, onTrust, onNavigate }: { activeNav: string; project: ProjectSummary; projects: ProjectSummary[]; scan?: ProjectScan; tasks: TaskItem[]; results?: Partial<Record<WorkspaceAction, CommandResult>>; platform?: LocalPlatformStatus; onPlatformModeChange: (mode: LocalPlatformStatus["mode"]) => void; onOpenProject: () => void; onRun: (action: WorkspaceAction) => void; onTaskControl: (task: TaskItem, control: "cancel" | "retry" | "resume" | "rollback") => void; onTrust: () => void; onNavigate: (label: string) => void }) {
   const renderers: Record<string, ReactNode> = {
     "Workspace": <CollectionProjectsPanel title="Workspace Projects" projects={projects.filter((entry) => !entry.archived)} empty="No local project is currently available in this workspace." icon={<LayoutDashboard size={17} />} />, "Project health": <ProjectHealthPanel project={project} />, "Recent projects": <RecentProjectsPanel projects={projects} />, "Favorites": <CollectionProjectsPanel title="Favorite Projects" projects={projects.filter((entry) => entry.categories.favorite)} empty="No projects have been marked as favorite in the local workspace." icon={<Star size={17} />} />, "Pinned": <CollectionProjectsPanel title="Pinned Projects" projects={projects.filter((entry) => entry.categories.pinned && !entry.archived)} empty="No projects have been pinned in the local workspace." icon={<Pin size={17} />} />, "Archive": <CollectionProjectsPanel title="Archived Projects" projects={projects.filter((entry) => entry.categories.archive)} empty="No projects have been archived in the local workspace." icon={<Archive size={17} />} />, "Open project": <OpenProjectPanel onOpen={onOpenProject} />, "Import project": <OpenProjectPanel onOpen={onOpenProject} />,
-    "AI providers": <AICenter view="providers" onlineOptional={platform?.mode === "online-optional"} />, "Models": <LocalAIOnboarding onlineOptional={platform?.mode === "online-optional"} />, "Agents": <AgentMissionCenter project={project} />, "Tasks": <TaskCenterPanel tasks={tasks} onTaskControl={onTaskControl} />, "Marketplace": <MarketplacePanel />,
+    "AI providers": <AICenter view="providers" onlineOptional={platform?.mode === "online-optional"} />, "Models": <LocalAIOnboarding onlineOptional={platform?.mode === "online-optional"} />, "Agents": <AgentMissionCenter project={project} />, "Tasks": <TaskCenterPanel tasks={tasks} onTaskControl={onTaskControl} />,
+    "Discover": <OnlineHubPanel initialView="discover" project={project} platform={platform} />, "Marketplace": <OnlineHubPanel initialView="marketplace" project={project} platform={platform} />, "Extensions": <OnlineHubPanel initialView="extensions" project={project} platform={platform} />, "Model Hub": <OnlineHubPanel initialView="models" project={project} platform={platform} />, "Agent Marketplace": <OnlineHubPanel initialView="agents" project={project} platform={platform} />, "Tool Marketplace": <OnlineHubPanel initialView="tools" project={project} platform={platform} />, "Integrations": <OnlineHubPanel initialView="integrations" project={project} platform={platform} />, "Providers": <OnlineHubPanel initialView="providers" project={project} platform={platform} />, "Installed": <OnlineHubPanel initialView="installed" project={project} platform={platform} />, "Updates": <OnlineHubPanel initialView="updates" project={project} platform={platform} />, "Security Center": <OnlineHubPanel initialView="security" project={project} platform={platform} />,
     "Project graph": <GraphPanel project={project} />, "Dependencies": <DependenciesPanel project={project} />, "Impact analysis": <ImpactAnalysisPanel project={project} />, "Code understanding": <CodeUnderstandingPanel project={project} />, "Ask KForge": <AskKForgePanel project={project} />, "Architecture": <ArchitecturePanel project={project} />,
     "KForge Sonar": <SecurityToolsPanel project={project} scan={scan} onScan={() => onRun("scan")} />, "Problems": <QualityPanel title="Problems" scan={scan} onScan={() => onRun("scan")} />, "Solutions": <SolutionsPanel scan={scan} onScan={() => onRun("scan")} onNavigate={onNavigate} />, "Security": <SecurityToolsPanel project={project} scan={scan} onScan={() => onRun("scan")} />, "Performance": <QualityCategoryPanel title="Performance Evidence" description="Performance diagnostics are shown only when the local scanner produces performance evidence; no synthetic score is assigned." categories={["performance"]} scan={scan} onScan={() => onRun("scan")} />, "Technical debt": <QualityCategoryPanel title="Technical Debt Evidence" description="Technical debt is derived from the scanner's explicit completeness, quality, complexity, and architecture findings." categories={["completeness", "quality", "architecture"]} scan={scan} onScan={() => onRun("scan")} />, "Snapshots": <SnapshotsPanel project={project} />,
     "Release Gate": <ReleaseGatePanel project={project} />, "Release preparation": <ReleasePreparationPanel project={project} view="Release preparation" />, "Artifacts": <ReleasePreparationPanel project={project} view="Artifacts" />, "Versioning": <ReleasePreparationPanel project={project} view="Versioning" />,
@@ -799,7 +825,172 @@ function ReleasePreparationPanel({ project, view }: { project: ProjectSummary; v
   return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Rocket size={17} /><h3>{view}</h3></div><button onClick={() => void refresh()}>Refresh evidence</button></div><p className="kf-capability-copy">This is a local, read-only release preparation preview. It does not create tags, artifacts, releases, or remote requests.</p>{message && <StatusMessage>{message}</StatusMessage>}{preparation && <article className="kf-command-evidence"><strong>Local release evidence</strong><pre>{JSON.stringify(value, null, 2)}</pre></article>}</section>;
 }
 
-type MarketplaceItemView = { id: string; category: string; name: string; description: string; source: string; sourceUrl?: string; version?: string; license?: string; capabilities: string[]; requirements: string[]; compatibility: string; permissions: Array<{ id: string; required: boolean; detail: string }>; trust: string; installed: boolean; enabled: boolean; local: boolean; installAction: string; dataState: string };
+type MarketplaceItemView = { id: string; category: string; name: string; description: string; source: string; sourceUrl?: string; version?: string; license?: string; capabilities: string[]; requirements: string[]; compatibility: string; permissions: Array<{ id: string; required: boolean; detail: string }>; trust: string; installed: boolean; enabled: boolean; local: boolean; installAction: string; dataState: string; updatedAt?: string };
+type MarketplaceProviderView = { id: string; label: string; state: string; detail: string; sourceUrl?: string; adapterKind?: "local" | "remote"; configured?: boolean; capabilities?: string[] };
+type OnlineHubView = "discover" | "marketplace" | "extensions" | "models" | "agents" | "tools" | "integrations" | "providers" | "installed" | "updates" | "security";
+
+const ONLINE_HUB_VIEWS: Array<{ id: OnlineHubView; label: string; icon: typeof Search }> = [
+  { id: "discover", label: "Discover", icon: Search },
+  { id: "marketplace", label: "Marketplace", icon: Box },
+  { id: "extensions", label: "Extensions", icon: Code2 },
+  { id: "models", label: "Models", icon: Cpu },
+  { id: "agents", label: "Agents", icon: Bot },
+  { id: "tools", label: "Tools", icon: Wrench },
+  { id: "integrations", label: "Integrations", icon: Network },
+  { id: "providers", label: "Providers", icon: CircleDot },
+  { id: "installed", label: "Installed", icon: FolderOpen },
+  { id: "updates", label: "Updates", icon: RefreshCw },
+  { id: "security", label: "Security", icon: ShieldAlert },
+];
+
+function OnlineHubPanel({ initialView, project, platform }: { initialView: OnlineHubView; project: ProjectSummary; platform?: LocalPlatformStatus }) {
+  const [view, setView] = useState<OnlineHubView>(initialView);
+  const [items, setItems] = useState<MarketplaceItemView[]>([]);
+  const [providers, setProviders] = useState<MarketplaceProviderView[]>([]);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"name" | "category" | "state">("name");
+  const [selected, setSelected] = useState<MarketplaceItemView | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<MarketplaceProviderView | null>(null);
+  const [message, setMessage] = useState("Loading verified registry evidence…");
+
+  const load = async () => {
+    try {
+      const response = await fetch("/api/workspace/marketplace");
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Online Hub is unavailable.");
+      const nextItems = Array.isArray(payload.items) ? payload.items : [];
+      const nextProviders = Array.isArray(payload.providers) ? payload.providers : [];
+      setItems(nextItems);
+      setProviders(nextProviders);
+      setSelected((current) => nextItems.find((item: MarketplaceItemView) => item.id === current?.id) || nextItems[0] || null);
+      setSelectedProvider((current) => nextProviders.find((provider: MarketplaceProviderView) => provider.id === current?.id) || nextProviders[0] || null);
+      setMessage("");
+    } catch (cause: unknown) {
+      setMessage(cause instanceof Error ? cause.message : "Online Hub could not load registry evidence.");
+    }
+  };
+
+  useEffect(() => { setView(initialView); }, [initialView]);
+  useEffect(() => { void load(); }, []);
+
+  const visibleItems = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    const matchesView = (item: MarketplaceItemView) => {
+      if (view === "extensions") return item.category === "plugins";
+      if (["models", "agents", "tools", "integrations"].includes(view)) return item.category === view;
+      if (view === "installed") return item.installed;
+      if (view === "updates") return item.installed && Boolean(item.updatedAt);
+      if (view === "security") return item.permissions.length > 0 || item.trust !== "TRUSTED";
+      return true;
+    };
+    return items
+      .filter((item) => matchesView(item) && (!normalized || `${item.name} ${item.description} ${item.category} ${item.source} ${item.capabilities.join(" ")}`.toLowerCase().includes(normalized)))
+      .sort((left, right) => {
+        if (sort === "category") return `${left.category}:${left.name}`.localeCompare(`${right.category}:${right.name}`);
+        if (sort === "state") return `${left.installed ? 0 : 1}:${left.enabled ? 0 : 1}:${left.name}`.localeCompare(`${right.installed ? 0 : 1}:${right.enabled ? 0 : 1}:${right.name}`);
+        return left.name.localeCompare(right.name);
+      });
+  }, [items, query, sort, view]);
+
+  const visibleProviders = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return providers.filter((provider) => !normalized || `${provider.label} ${provider.detail} ${provider.state} ${(provider.capabilities || []).join(" ")}`.toLowerCase().includes(normalized));
+  }, [providers, query]);
+
+  useEffect(() => {
+    if (view === "providers") return;
+    setSelected((current) => visibleItems.find((item) => item.id === current?.id) || visibleItems[0] || null);
+  }, [view, visibleItems]);
+
+  useEffect(() => {
+    if (view !== "providers") return;
+    setSelectedProvider((current) => visibleProviders.find((provider) => provider.id === current?.id) || visibleProviders[0] || null);
+  }, [view, visibleProviders]);
+
+  const viewCount = (id: OnlineHubView) => {
+    if (id === "providers") return providers.length;
+    if (id === "extensions") return items.filter((item) => item.category === "plugins").length;
+    if (["models", "agents", "tools", "integrations"].includes(id)) return items.filter((item) => item.category === id).length;
+    if (id === "installed") return items.filter((item) => item.installed).length;
+    if (id === "updates") return items.filter((item) => item.installed && item.updatedAt).length;
+    if (id === "security") return items.filter((item) => item.permissions.length > 0 || item.trust !== "TRUSTED").length;
+    return items.length;
+  };
+
+  const inspect = async (item: MarketplaceItemView) => {
+    try {
+      const response = await fetch(`/api/workspace/marketplace/items/${encodeURIComponent(item.id)}/install-preview`);
+      const payload = await response.json();
+      if (!response.ok && !payload.reason) throw new Error(payload.error || "Install review is unavailable.");
+      setMessage(payload.reason || "Registry review completed.");
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Marketplace inspection failed."); }
+  };
+
+  const installModel = async (item: MarketplaceItemView) => {
+    const model = item.id.replace(/^ollama:/, "");
+    if (item.category !== "models" || item.installAction !== "INSTALL_REQUIRES_CONFIRMATION") { setMessage("No verified installation adapter is available for this item."); return; }
+    if (!window.confirm(`Download ${model} after reviewing its source, requirements, and permissions?`)) return;
+    try {
+      const response = await fetch("/api/workspace/ai/models/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: "ollama", model, confirmed: true }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Model installation could not start.");
+      setMessage(`Installation task ${payload.task?.id || "started"} is available in Task Center.`);
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Model installation failed."); }
+  };
+
+  const activateModel = async (item: MarketplaceItemView) => {
+    const model = item.id.replace(/^ollama:/, "");
+    try {
+      const response = await fetch("/api/workspace/ai/models/active", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: "ollama", model }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Model activation failed.");
+      setMessage(`Local model ${model} is active.`);
+      await load();
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Model activation failed."); }
+  };
+
+  const removeModel = async (item: MarketplaceItemView) => {
+    const model = item.id.replace(/^ollama:/, "");
+    if (!window.confirm(`Remove installed local model ${model}?`)) return;
+    try {
+      const response = await fetch(`/api/workspace/ai/models/${encodeURIComponent(model)}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: "ollama", confirmed: true }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Model removal failed.");
+      setMessage(payload.message || `Removed ${model}.`);
+      await load();
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Model removal failed."); }
+  };
+
+  const providerMode = view === "providers";
+  const emptyCopy = view === "updates"
+    ? "No update is claimed because no configured provider supplied a trustworthy installed-versus-latest version comparison."
+    : `No verified ${ONLINE_HUB_VIEWS.find((entry) => entry.id === view)?.label.toLowerCase() || "catalog"} item matches the current search.`;
+
+  return <section className="kf-online-hub">
+    <aside className="kf-online-rail" aria-label="Online Hub navigation">
+      <div className="kf-online-rail-brand"><span><Network size={15} /></span><div><strong>Online Hub</strong><small>{platform?.mode === "online-optional" ? "Online optional" : "Offline evidence"}</small></div></div>
+      <nav>{ONLINE_HUB_VIEWS.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? "is-active" : ""} onClick={() => setView(id)}><Icon size={15} /><span>{label}</span><small>{viewCount(id)}</small></button>)}</nav>
+      <div className="kf-online-source-note"><ShieldAlert size={14} /><p>Only configured registries and detected local runtimes are shown. Unknown remote data stays unavailable.</p></div>
+    </aside>
+
+    <div className="kf-online-results">
+      <header className="kf-online-results-header"><div><p className="kf-eyebrow">{ONLINE_HUB_VIEWS.find((entry) => entry.id === view)?.label}</p><h2>{providerMode ? "Registry providers" : "Verified catalog"}</h2><small>Project context: {project.name} · {project.projectType}</small></div><button className="kf-button kf-button--ghost" onClick={() => void load()}><RefreshCw size={14} />Refresh</button></header>
+      <div className="kf-online-search"><Search size={16} /><input aria-label="Search Online Hub" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search names, capabilities, sources…" /><select aria-label="Sort Online Hub results" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="name">Sort: name</option><option value="category">Sort: category</option><option value="state">Sort: install state</option></select></div>
+      {message && <StatusMessage>{message}</StatusMessage>}
+      <div className="kf-online-list" aria-live="polite">
+        {providerMode ? visibleProviders.map((provider) => <button key={provider.id} className={selectedProvider?.id === provider.id ? "is-selected" : ""} onClick={() => setSelectedProvider(provider)}><span className="kf-online-item-icon"><CircleDot size={16} /></span><span><strong>{provider.label}</strong><small>{provider.detail}</small><em>{provider.adapterKind || "registry"} · {provider.configured ? "configured" : "not configured"}</em></span><span className={`kf-online-state kf-online-state--${provider.state.toLowerCase()}`}>{provider.state}</span></button>) : visibleItems.map((item) => <button key={item.id} className={selected?.id === item.id ? "is-selected" : ""} onClick={() => setSelected(item)}><span className="kf-online-item-icon">{item.category === "models" ? <Cpu size={16} /> : item.category === "agents" ? <Bot size={16} /> : item.category === "tools" ? <Wrench size={16} /> : <Box size={16} />}</span><span><strong>{item.name}</strong><small>{item.description}</small><em>{item.source} · {item.version || "version unavailable"}</em></span><span className="kf-online-row-meta"><b>{item.category}</b><i>{item.enabled ? "Active" : item.installed ? "Installed" : item.dataState}</i></span></button>)}
+        {!providerMode && visibleItems.length === 0 && <div className="kf-online-empty"><Box size={24} /><strong>No verified results</strong><p>{emptyCopy}</p></div>}
+        {providerMode && visibleProviders.length === 0 && <div className="kf-online-empty"><CircleDot size={24} /><strong>No provider matches</strong><p>No configured registry provider matches the current search.</p></div>}
+      </div>
+    </div>
+
+    <aside className="kf-online-detail" aria-label="Online item details">
+      {providerMode ? selectedProvider ? <><div className="kf-online-detail-heading"><span><CircleDot size={18} /></span><div><p className="kf-eyebrow">Provider</p><h2>{selectedProvider.label}</h2><small>{selectedProvider.state}</small></div></div><p>{selectedProvider.detail}</p><dl><div><dt>Adapter</dt><dd>{selectedProvider.adapterKind || "registry"}</dd></div><div><dt>Configuration</dt><dd>{selectedProvider.configured ? "Configured" : "Not configured"}</dd></div><div><dt>Capabilities</dt><dd>{selectedProvider.capabilities?.join(", ") || "Not declared"}</dd></div></dl>{selectedProvider.sourceUrl && <a className="kf-button kf-button--ghost" href={selectedProvider.sourceUrl} target="_blank" rel="noreferrer">Official source</a>}</> : <OnlineDetailEmpty /> : selected ? <><div className="kf-online-detail-heading"><span>{selected.category === "models" ? <Cpu size={18} /> : selected.category === "agents" ? <Bot size={18} /> : <Box size={18} />}</span><div><p className="kf-eyebrow">{selected.category}</p><h2>{selected.name}</h2><small>{selected.enabled ? "Active locally" : selected.installed ? "Installed locally" : selected.dataState}</small></div></div><p>{selected.description}</p><dl><div><dt>Publisher / source</dt><dd>{selected.source}</dd></div><div><dt>Version</dt><dd>{selected.version || "DATA_UNAVAILABLE"}</dd></div><div><dt>License</dt><dd>{selected.license || "DATA_UNAVAILABLE"}</dd></div><div><dt>Trust</dt><dd>{selected.trust}</dd></div><div><dt>Compatibility</dt><dd>{selected.compatibility}</dd></div></dl><section><h3>Capabilities</h3><div className="kf-online-tags">{selected.capabilities.map((capability) => <span key={capability}>{capability}</span>)}</div></section><section><h3>Requirements</h3>{selected.requirements.length ? <ul>{selected.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul> : <p>No requirements declared.</p>}</section><section><h3>Permissions</h3>{selected.permissions.length ? <ul>{selected.permissions.map((permission) => <li key={permission.id}><strong>{permission.id}{permission.required ? " · required" : ""}</strong><span>{permission.detail}</span></li>)}</ul> : <p>No permissions declared.</p>}</section><div className="kf-online-detail-actions"><button onClick={() => void inspect(selected)}>Review install</button>{selected.category === "models" && !selected.installed && <button className="is-primary" disabled={selected.installAction !== "INSTALL_REQUIRES_CONFIRMATION"} onClick={() => void installModel(selected)}>Install</button>}{selected.category === "models" && selected.installed && !selected.enabled && <button className="is-primary" onClick={() => void activateModel(selected)}>Activate</button>}{selected.category === "models" && selected.installed && <button onClick={() => void removeModel(selected)}>Remove</button>}{selected.sourceUrl && <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Official source</a>}</div></> : <OnlineDetailEmpty />}
+    </aside>
+  </section>;
+}
+
+function OnlineDetailEmpty() { return <div className="kf-online-detail-empty"><Box size={24} /><strong>Select a verified item</strong><p>Details, compatibility, trust, requirements, and permissions will appear here.</p></div>; }
 
 function MarketplacePanel() {
   const [items, setItems] = useState<MarketplaceItemView[]>([]);
