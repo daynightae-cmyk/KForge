@@ -73,6 +73,23 @@ describe("KForge Workspace capability coverage", () => {
     expect(css).toContain('prefers-reduced-motion: reduce');
   });
 
+  it("provides rich Online Hub information cards on both hover and keyboard focus", () => {
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../global.css", import.meta.url), "utf8");
+    expect(source).toContain('type OnlineInfoCardData =');
+    expect(source).toContain('aria-label={`Information card for ${info.name}`}');
+    expect(source).toContain('<dt>Health</dt>');
+    expect(source).toContain('<dt>Availability</dt>');
+    expect(source).toContain('<dt>Privacy</dt>');
+    expect(source).toContain('<dt>Quick action</dt>');
+    expect(source.match(/onMouseEnter=\{/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(source.match(/onFocus=\{/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(source).toContain('opening this surface performs no remote contact');
+    expect(source).toContain('Open full item inspector');
+    expect(css).toContain('.kf-online-info-card { position: absolute;');
+    expect(css).toContain('pointer-events: none');
+  });
+
   it("renders language-aware graph and transitive impact evidence without hiding unavailable boundaries", () => {
     const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
     expect(source).toContain("Exported symbols");
