@@ -1,8 +1,14 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { execFile } from "child_process";
+import { randomUUID, createHash } from "crypto";
+import { promisify } from "util";
+import { z } from "zod";
 import type { ProjectProfile, ProjectSummary } from "../../shared/workspace";
 import { getModelCenter } from "./aiCenter";
 import { listAgentTools } from "./agentTools";
+
+const execFileAsync = promisify(execFile);
 
 export type MarketplaceCategory = "models" | "agents" | "tools" | "plugins" | "scanners" | "integrations" | "templates" | "presets";
 export type MarketplaceProductCategory = "models" | "extensions" | "agents" | "tools" | "analyzers" | "security" | "testing" | "build" | "runtime" | "git" | "github-integrations" | "templates" | "presets" | "themes" | "language-packs" | "integrations";
@@ -114,30 +120,55 @@ export interface MarketplaceRegistryAdapter {
   lastChecked: string;
 }
 
-export function listMarketplaceRegistryAdapters(onlineOptional: boolean): MarketplaceRegistryAdapter[] {
-  const lastChecked = new Date().toISOString();
-  return [
-    { id: "local-registry", label: "Local KForge Registry", kind: "local", configured: true, state: "AVAILABLE", capabilities: ["catalog", "extension-metadata"], detail: "Reads locally registered extensions and installed runtime metadata only.", lastChecked },
-    { id: "ollama-official", label: "Ollama official library", kind: "remote", sourceUrl: "https://ollama.com/library", configured: false, state: onlineOptional ? "NOT_CONFIGURED" : "OFFLINE", capabilities: ["catalog", "version", "changelog", "install"], detail: onlineOptional ? "An official source link is known, but no remote catalog adapter is configured. KForge will not claim live versions, changelogs, or downloads." : "Remote marketplace data is disabled in Offline Mode.", lastChecked },
-    { id: "extension-registries", label: "Extension registries", kind: "remote", configured: false, state: onlineOptional ? "NOT_CONFIGURED" : "OFFLINE", capabilities: ["catalog", "extension-metadata", "install"], detail: onlineOptional ? "No official extension registry adapter is configured. KForge shows no fabricated plugin, price, rating, or download data." : "Offline Mode blocks external extension registries.", lastChecked },
-  ];
+export interface InstallResult {
+  operationId: string;
+  itemId: string;
+  stage: string;
+  installed: boolean;
+  rollback: boolean;
+  integrityVerified: boolean;
+  sizeVerified: boolean;
+  error?: string;
 }
 
-interface LocalRegistryFile { items?: unknown[]; }
-function registryPath(workspaceRoot: string) { return path.join(workspaceRoot, ".kforge", "marketplace-registry.json"); }
-
-async function readLocalRegistry(workspaceRoot: string) {
-  try {
-    const parsed = JSON.parse(await fs.readFile(registryPath(workspaceRoot), "utf8")) as LocalRegistryFile;
-    return Array.isArray(parsed.items) ? parsed.items : [];
-  } catch { return [] as unknown[]; }
+type RegistryItem = Record<string, unknown>;
+interface LocalRegistryFile {
+  schemaVersion: 1;
+  items: RegistryItem[];
 }
 
 const permissionClasses: MarketplacePermissionClass[] = ["filesystem-read", "filesystem-write", "network", "process-execution", "git", "project-read", "project-write", "ai-access", "external-apis"];
+const packageIdPattern = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/;
+const registrySchema = z.object({ schemaVersion: z.literal(1).optional(), items: z.array(z.record(z.unknown())).optional() });
+const manifestPermissionSchema = z.object({ id: z.string().min(1), required: z.boolean(), detail: z.string().min(1) });
+const manifestDependencySchema = z.object({ id: z.string().min(1), version: z.string().optional() }).passthrough();
+const manifestSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  version: z.string().regex(/^\d+\.\d+\.\d+$/),
+  publisher: z.string().min(1),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  permissions: z.array(manifestPermissionSchema).optional(),
+  capabilities: z.array(z.string()).optional(),
+  compatibility: z.string().optional(),
+  requirements: z.array(z.string()).optional(),
+  dependencies: z.array(manifestDependencySchema).optional(),
+  license: z.string().optional(),
+  homepage: z.string().optional(),
+  repository: z.string().optional(),
+  downloadUrl: z.string().optional(),
+  size: z.number().int().positive(),
+  sha256: z.string().length(64, { message: "sha256 must be exactly 64 hex characters" }).regex(/^[a-f0-9]{64}$/),
+  integrity: z.object({ algorithm: z.literal("sha256"), expectedHash: z.string().length(64).regex(/^[a-f0-9]{64}$/) }).optional(),
+  runtimeRequirements: z.object({
+    kforgeVersion: z.string().optional(),
+    os: z.array(z.enum(["linux", "darwin", "win32"])).optional(),
+    commands: z.array(z.string()).optional(),
+  }).optional(),
+}).passthrough();
 
-function permissionReview(required: Partial<Record<MarketplacePermissionClass, string>> = {}): MarketplacePermission[] {
-  return permissionClasses.map((id) => ({ id, required: typeof required[id] === "string", detail: required[id] || "This capability is not requested by the verified package metadata." }));
-}
+type PackageManifest = z.infer<typeof manifestSchema>;
 
 function evidence(state: MarketplaceEvidenceState, source: string, value?: string): MarketplaceEvidenceField {
   return { state, source, ...(value ? { value } : {}) };
@@ -145,6 +176,10 @@ function evidence(state: MarketplaceEvidenceState, source: string, value?: strin
 
 function evidenceList(state: MarketplaceEvidenceState, source: string, items: string[] = []): MarketplaceEvidenceList {
   return { state, source, items };
+}
+
+function permissionReview(required: Partial<Record<MarketplacePermissionClass, string>> = {}): MarketplacePermission[] {
+  return permissionClasses.map((id) => ({ id, required: typeof required[id] === "string", detail: required[id] || "This capability is not requested by the verified package metadata." }));
 }
 
 function normalizedEvidenceField(value: unknown, fallback: MarketplaceEvidenceField): MarketplaceEvidenceField {
@@ -159,6 +194,103 @@ function normalizedEvidenceList(value: unknown, fallback: MarketplaceEvidenceLis
   const row = value as { state?: unknown; source?: unknown; items?: unknown };
   if (!["VERIFIED", "UNKNOWN", "NOT_AVAILABLE", "NOT_CONFIGURED"].includes(String(row.state)) || typeof row.source !== "string" || !Array.isArray(row.items)) return fallback;
   return { state: row.state as MarketplaceEvidenceState, source: row.source, items: row.items.filter((entry): entry is string => typeof entry === "string") };
+}
+
+function safePackageId(itemId: string): string {
+  if (!packageIdPattern.test(itemId) || itemId.includes("..") || itemId.includes("/") || itemId.includes("\\")) throw new Error("Invalid package ID. Package IDs must be bounded identifiers and cannot contain traversal segments or path separators.");
+  return itemId;
+}
+
+function packageStorageKey(itemId: string): string {
+  safePackageId(itemId);
+  return createHash("sha256").update(itemId).digest("hex");
+}
+
+function workspaceRootPath(workspaceRoot: string): string {
+  return path.resolve(workspaceRoot);
+}
+
+function marketplaceRoot(workspaceRoot: string): string {
+  return path.join(workspaceRootPath(workspaceRoot), ".kforge", "marketplace");
+}
+
+function registryPath(workspaceRoot: string): string {
+  return path.join(workspaceRootPath(workspaceRoot), ".kforge", "marketplace-registry.json");
+}
+
+function installedPackageDir(workspaceRoot: string, itemId: string): string {
+  return path.join(marketplaceRoot(workspaceRoot), "installed", packageStorageKey(itemId));
+}
+
+function ensureContained(base: string, candidate: string): string {
+  const resolvedBase = path.resolve(base);
+  const resolvedCandidate = path.resolve(candidate);
+  const relative = path.relative(resolvedBase, resolvedCandidate);
+  if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) return resolvedCandidate;
+  throw new Error("Package source path escapes the approved first-party fixture root.");
+}
+
+async function writeJsonAtomic(target: string, value: unknown): Promise<void> {
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  const temp = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  const handle = await fs.open(temp, "w");
+  try {
+    await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await fs.rename(temp, target);
+  } catch (error) {
+    await fs.rm(temp, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function readRegistry(workspaceRoot: string): Promise<LocalRegistryFile> {
+  try {
+    const parsed: unknown = JSON.parse(await fs.readFile(registryPath(workspaceRoot), "utf8"));
+    const validation = registrySchema.safeParse(parsed);
+    if (!validation.success) return { schemaVersion: 1, items: [] };
+    return { schemaVersion: 1, items: validation.data.items || [] };
+  } catch {
+    return { schemaVersion: 1, items: [] };
+  }
+}
+
+async function readLocalRegistry(workspaceRoot: string): Promise<RegistryItem[]> {
+  return (await readRegistry(workspaceRoot)).items;
+}
+
+function registryItemId(item: RegistryItem): string | null {
+  return typeof item.id === "string" ? item.id : null;
+}
+
+function findRegistryItem(registry: LocalRegistryFile, itemId: string): RegistryItem | undefined {
+  return registry.items.find((item) => registryItemId(item) === itemId);
+}
+
+function normalizedManifestPermissions(manifest: PackageManifest): MarketplacePermission[] {
+  const required: Partial<Record<MarketplacePermissionClass, string>> = {};
+  for (const permission of manifest.permissions || []) {
+    const normalizedId = permission.id === "process" ? "process-execution" : permission.id;
+    if (!permissionClasses.includes(normalizedId as MarketplacePermissionClass)) throw new Error(`Unknown permission '${permission.id}' in package manifest.`);
+    if (permission.required) required[normalizedId as MarketplacePermissionClass] = permission.detail;
+  }
+  return permissionReview(required);
+}
+
+function permissionsForRegistryRow(row: RegistryItem): MarketplacePermission[] {
+  const required: Partial<Record<MarketplacePermissionClass, string>> = {};
+  const declared = Array.isArray(row.permissions) ? row.permissions : [];
+  for (const permission of declared) {
+    if (!permission || typeof permission !== "object") continue;
+    const record = permission as { id?: unknown; required?: unknown; detail?: unknown };
+    const normalizedId = record.id === "process" ? "process-execution" : record.id;
+    if (permissionClasses.includes(normalizedId as MarketplacePermissionClass) && record.required === true) required[normalizedId as MarketplacePermissionClass] = typeof record.detail === "string" ? record.detail : "Required by persisted package metadata.";
+  }
+  return permissionReview(required);
 }
 
 function modelPermissions(): MarketplacePermission[] {
@@ -227,6 +359,7 @@ function localEngineItems(): MarketplaceItem[] {
     installAction: "MANAGE_LOCAL",
     dataState: "AVAILABLE",
   }));
+
   const agents: MarketplaceItem[] = [{
     id: "agent:kforge:engineer",
     category: "agents",
@@ -257,6 +390,7 @@ function localEngineItems(): MarketplaceItem[] {
     installAction: "MANAGE_LOCAL",
     dataState: "AVAILABLE",
   }];
+
   return [...agents, ...tools];
 }
 
@@ -285,24 +419,34 @@ function defaultTaxonomy(category: MarketplaceCategory): MarketplaceProductCateg
   return [category];
 }
 
+function semverParts(value: string): [number, number, number] {
+  const [major, minor, patchValue] = value.split(".").map((part) => Number(part));
+  return [major || 0, minor || 0, patchValue || 0];
+}
+
+function compareSemver(left: string, right: string): number {
+  const a = semverParts(left);
+  const b = semverParts(right);
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return 0;
+}
+
 function registeredItem(value: unknown): MarketplaceItem | null {
   if (!value || typeof value !== "object") return null;
-  const row = value as Partial<MarketplaceItem> & Record<string, unknown>;
+  const row = value as RegistryItem;
   if (typeof row.id !== "string" || typeof row.name !== "string" || typeof row.category !== "string" || !["models", "agents", "tools", "plugins", "scanners", "integrations", "templates", "presets"].includes(row.category)) return null;
   const category = row.category as MarketplaceCategory;
   const local = row.local === true;
-  const declaredPermissions = Array.isArray(row.permissions) ? row.permissions : [];
-  const permissionDetails: Partial<Record<MarketplacePermissionClass, string>> = {};
-  for (const permission of declaredPermissions) {
-    if (!permission || typeof permission !== "object") continue;
-    const record = permission as { id?: unknown; required?: unknown; detail?: unknown };
-    const id = record.id === "process" ? "process-execution" : record.id;
-    if (permissionClasses.includes(id as MarketplacePermissionClass) && record.required === true) permissionDetails[id as MarketplacePermissionClass] = typeof record.detail === "string" ? record.detail : "Required by local registry metadata.";
-  }
-  const taxonomy = Array.isArray(row.taxonomy) ? row.taxonomy.filter((entry): entry is MarketplaceProductCategory => taxonomyDefinitions.some((definition) => definition.id === entry)) : defaultTaxonomy(category);
+  const installed = local && row.installed === true;
+  const taxonomy = Array.isArray(row.taxonomy) ? row.taxonomy.filter((entry): entry is MarketplaceProductCategory => typeof entry === "string" && taxonomyDefinitions.some((definition) => definition.id === entry)) : defaultTaxonomy(category);
   const source = typeof row.source === "string" ? row.source : "Local KForge Registry";
   const description = typeof row.description === "string" ? row.description : "No overview was supplied by the configured registry.";
-  const installed = local && row.installed === true;
+  const rawHash = typeof row.sha256 === "string" && /^[a-f0-9]{64}$/.test(row.sha256) ? row.sha256 : undefined;
+  const integrityField = normalizedEvidenceField(row.integrity, rawHash ? evidence("VERIFIED", "Persisted installed package checksum", `sha256:${rawHash}`) : evidence("NOT_AVAILABLE", "No checksum or signature was supplied by the configured registry."));
+  const localVerifiedTrust = installed && integrityField.state === "VERIFIED";
+  const trust: MarketplaceItem["trust"] = localVerifiedTrust && row.trust === "TRUSTED" ? "TRUSTED" : local && row.trust === "PARTIALLY_TRUSTED" ? "PARTIALLY_TRUSTED" : "UNTRUSTED";
   return {
     id: row.id,
     category,
@@ -318,7 +462,7 @@ function registeredItem(value: unknown): MarketplaceItem | null {
     capabilities: Array.isArray(row.capabilities) ? row.capabilities.filter((entry): entry is string => typeof entry === "string") : [],
     requirements: Array.isArray(row.requirements) ? row.requirements.filter((entry): entry is string => typeof entry === "string") : [],
     compatibility: typeof row.compatibility === "string" ? row.compatibility : "UNKNOWN",
-    permissions: permissionReview(permissionDetails),
+    permissions: permissionsForRegistryRow(row),
     security: normalizedEvidenceField(row.security, evidence("UNKNOWN", "No security verdict was supplied by the configured registry.")),
     publisher: normalizedEvidenceField(row.publisher, evidence("UNKNOWN", "No publisher evidence was supplied by the configured registry.")),
     repository: normalizedEvidenceField(row.repository, evidence("UNKNOWN", "No repository evidence was supplied by the configured registry.")),
@@ -328,8 +472,8 @@ function registeredItem(value: unknown): MarketplaceItem | null {
     updateState: normalizedEvidenceField(row.updateState, evidence("NOT_CONFIGURED", "No update adapter was supplied by the configured registry.")),
     dependencies: normalizedEvidenceList(row.dependencies, evidenceList("UNKNOWN", "No dependency graph was supplied by the configured registry.")),
     provenance: normalizedEvidenceField(row.provenance, evidence("UNKNOWN", "No provenance chain was supplied by the configured registry.")),
-    integrity: normalizedEvidenceField(row.integrity, evidence("NOT_AVAILABLE", "No checksum or signature was supplied by the configured registry.")),
-    trust: local && (row.trust === "TRUSTED" || row.trust === "PARTIALLY_TRUSTED") ? row.trust : "UNTRUSTED",
+    integrity: integrityField,
+    trust,
     installed,
     enabled: installed && row.enabled === true,
     local,
@@ -354,28 +498,32 @@ const lifecycleLabels: Array<[MarketplaceLifecycleStage["id"], string]> = [
 
 function itemLifecycle(item: MarketplaceItem, onlineOptional: boolean): MarketplaceLifecycleStage[] {
   const model = item.category === "models";
-  const builtIn = item.local && item.installAction === "MANAGE_LOCAL" && !model;
-  const installReady = item.installAction === "INSTALL_REQUIRES_CONFIRMATION" && onlineOptional;
+  const builtIn = item.id.startsWith("tool:kforge:") || item.id.startsWith("agent:kforge:");
+  const managedPackage = item.id.startsWith("package:");
+  const localInstallReady = managedPackage && item.local && !item.installed && item.installAction === "INSTALL_REQUIRES_CONFIRMATION";
+  const remoteInstallReady = item.installAction === "INSTALL_REQUIRES_CONFIRMATION" && !item.local && onlineOptional;
+  const installReady = localInstallReady || remoteInstallReady;
   const installedVerified = item.installed && item.installationState.state === "VERIFIED" && item.installationState.value === "INSTALLED";
+  const updateAvailable = item.updateState.state === "VERIFIED" && item.updateState.value?.startsWith("UPDATE_AVAILABLE") === true;
   const stage = (id: MarketplaceLifecycleStage["id"]): Omit<MarketplaceLifecycleStage, "label"> => {
     if (id === "inspect") return { id, state: "VERIFIED", evidence: "The configured Marketplace source returned this normalized item contract." };
     if (id === "compatibility") return { id, state: item.compatibility === "UNKNOWN" ? "BLOCKED" : "VERIFIED", evidence: item.compatibility || "UNKNOWN" };
     if (id === "security") return { id, state: item.security.state === "VERIFIED" ? "VERIFIED" : "REQUIRED", evidence: `${item.security.state}: ${item.security.value || item.security.source}` };
     if (id === "permissions") return { id, state: "VERIFIED", evidence: `All ${permissionClasses.length} permission classes are declared before enablement.` };
-    if (id === "trust") return { id, state: item.trust === "TRUSTED" ? "VERIFIED" : "REQUIRED", evidence: `${item.trust}; downloaded content is never silently promoted to TRUSTED.` };
-    if (id === "confirmation") return { id, state: installReady ? "REQUIRED" : item.installed || builtIn ? "NOT_APPLICABLE" : "BLOCKED", evidence: installReady ? "Explicit user confirmation is required before download." : item.installed || builtIn ? "No installation is pending." : "No verified install adapter is available." };
-    if (id === "download") return { id, state: installReady ? "READY" : installedVerified || builtIn ? "NOT_APPLICABLE" : "NOT_CONFIGURED", evidence: installReady ? "The existing confirmed Ollama pull adapter is available." : installedVerified || builtIn ? "The item is already present locally." : "No trustworthy package download adapter is configured." };
-    if (id === "integrity-verification") return { id, state: item.integrity.state === "VERIFIED" ? "VERIFIED" : installedVerified && model ? "NOT_AVAILABLE" : "BLOCKED", evidence: `${item.integrity.state}: ${item.integrity.value || item.integrity.source}` };
-    if (id === "install") return { id, state: installedVerified || builtIn ? "VERIFIED" : installReady ? "READY" : "NOT_CONFIGURED", evidence: installedVerified ? item.installationState.source : builtIn ? "Bundled in-process registry evidence." : installReady ? "Installed state will be claimed only after the local runtime reports the item." : "No verified extension package adapter is configured." };
-    if (id === "register") return { id, state: installedVerified || builtIn ? "VERIFIED" : "BLOCKED", evidence: installedVerified ? "The local runtime inventory is the canonical registration source." : builtIn ? "The in-process registry reports this built-in item." : "Registration cannot precede a verified installation." };
-    if (id === "enable") return { id, state: item.enabled ? "VERIFIED" : installedVerified && model ? "READY" : builtIn && item.enabled ? "VERIFIED" : "BLOCKED", evidence: item.enabled ? "The canonical local state reports this item enabled." : installedVerified && model ? "The existing active-model endpoint can enable this installed model." : "No verified enable adapter is available." };
-    if (id === "runtime-verification") return { id, state: item.enabled && model ? "READY" : item.enabled && builtIn ? "VERIFIED" : "BLOCKED", evidence: item.enabled && model ? "The existing local model connection test is available." : item.enabled && builtIn ? "The item is present in the live in-process registry." : "Runtime verification requires an enabled item." };
-    if (id === "disable") return { id, state: "NOT_AVAILABLE", evidence: model ? "The active-model controller has no truthful disable-without-replacement operation." : "Built-in tools and agents cannot be independently disabled." };
-    if (id === "update") return { id, state: item.updateState.state === "VERIFIED" ? "READY" : "NOT_CONFIGURED", evidence: `${item.updateState.state}: ${item.updateState.value || item.updateState.source}` };
-    if (id === "verify-updated-version") return { id, state: item.updateState.state === "VERIFIED" ? "READY" : "BLOCKED", evidence: item.updateState.state === "VERIFIED" ? "A provider version comparison is available." : "No trustworthy latest-version evidence exists." };
-    if (id === "uninstall") return { id, state: installedVerified && model ? "READY" : builtIn ? "NOT_AVAILABLE" : "BLOCKED", evidence: installedVerified && model ? "The existing confirmed Ollama remove adapter is available; removal is verified on refresh." : builtIn ? "Bundled items cannot be independently uninstalled." : "No verified extension uninstall adapter is configured." };
-    if (id === "cleanup-registration") return { id, state: installedVerified && model ? "READY" : builtIn ? "NOT_APPLICABLE" : "BLOCKED", evidence: installedVerified && model ? "A successful runtime removal causes the item to disappear from canonical inventory." : builtIn ? "Bundled registration is owned by the running build." : "Cleanup cannot run without a verified uninstall adapter." };
-    return { id, state: installedVerified && model ? "READY" : item.enabled && builtIn ? "VERIFIED" : "BLOCKED", evidence: installedVerified && model ? "Refresh inventory and run the existing connection test after lifecycle changes." : item.enabled && builtIn ? "The live in-process registry verifies reconnect state." : "No restart/reconnect verification adapter is available." };
+    if (id === "trust") return { id, state: item.trust === "TRUSTED" ? "VERIFIED" : item.installed ? "REQUIRED" : "REQUIRED", evidence: `${item.trust}; downloaded or bundled content is never silently promoted to TRUSTED without integrity evidence.` };
+    if (id === "confirmation") return { id, state: installReady ? "REQUIRED" : item.installed || builtIn ? "NOT_APPLICABLE" : "BLOCKED", evidence: installReady ? "Explicit user confirmation is required before installation." : item.installed || builtIn ? "No installation is pending." : "No verified install adapter is available." };
+    if (id === "download") return { id, state: localInstallReady ? "NOT_APPLICABLE" : remoteInstallReady ? "READY" : installedVerified || builtIn ? "NOT_APPLICABLE" : "NOT_CONFIGURED", evidence: localInstallReady ? "The first-party artifact is bundled locally; no network download is required." : remoteInstallReady ? "A user-confirmed remote adapter is available." : installedVerified || builtIn ? "The item is already present locally." : "No trustworthy package download adapter is configured." };
+    if (id === "integrity-verification") return { id, state: item.integrity.state === "VERIFIED" ? "VERIFIED" : installReady ? "READY" : installedVerified && model ? "NOT_AVAILABLE" : "BLOCKED", evidence: `${item.integrity.state}: ${item.integrity.value || item.integrity.source}` };
+    if (id === "install") return { id, state: installedVerified || builtIn ? "VERIFIED" : installReady ? "READY" : "NOT_CONFIGURED", evidence: installedVerified ? item.installationState.source : builtIn ? "Bundled in-process registry evidence." : installReady ? "Installation state is claimed only after artifact verification and durable registration." : "No verified install adapter is configured." };
+    if (id === "register") return { id, state: installedVerified || builtIn ? "VERIFIED" : installReady ? "READY" : "BLOCKED", evidence: installedVerified ? "Canonical local registry reports the installed item." : builtIn ? "The in-process registry reports this built-in item." : installReady ? "Registration follows verified installation and uses atomic state persistence." : "Registration cannot precede a verified installation." };
+    if (id === "enable") return { id, state: item.enabled ? "VERIFIED" : installedVerified && model ? "READY" : managedPackage && installedVerified ? "READY" : "BLOCKED", evidence: item.enabled ? "The canonical local state reports this item enabled." : installedVerified && model ? "The existing active-model endpoint can enable this installed model." : managedPackage && installedVerified ? "A verified installed package may be enabled by a future permission-aware controller." : "No verified enable adapter is available." };
+    if (id === "runtime-verification") return { id, state: managedPackage && installedVerified ? "READY" : item.enabled && model ? "READY" : item.enabled && builtIn ? "VERIFIED" : "BLOCKED", evidence: managedPackage && installedVerified ? "The installed-package health adapter verifies manifest, size, SHA-256 and executable artifact before run." : item.enabled && model ? "The existing local model connection test is available." : item.enabled && builtIn ? "The item is present in the live in-process registry." : "Runtime verification requires an installed or enabled item." };
+    if (id === "disable") return { id, state: managedPackage && installedVerified ? "NOT_CONFIGURED" : "NOT_AVAILABLE", evidence: managedPackage && installedVerified ? "Independent package disable/enable persistence is intentionally not exposed until a permission-aware controller is implemented." : model ? "The active-model controller has no truthful disable-without-replacement operation." : "Built-in tools and agents cannot be independently disabled." };
+    if (id === "update") return { id, state: updateAvailable ? "READY" : item.updateState.state === "VERIFIED" ? "NOT_APPLICABLE" : "NOT_CONFIGURED", evidence: `${item.updateState.state}: ${item.updateState.value || item.updateState.source}` };
+    if (id === "verify-updated-version") return { id, state: updateAvailable || (managedPackage && installedVerified) ? "READY" : item.updateState.state === "VERIFIED" ? "VERIFIED" : "BLOCKED", evidence: managedPackage && installedVerified ? "Installed manifest and checksum are re-read after update." : item.updateState.state === "VERIFIED" ? "A provider version comparison is available." : "No trustworthy latest-version evidence exists." };
+    if (id === "uninstall") return { id, state: managedPackage && installedVerified ? "READY" : installedVerified && model ? "READY" : builtIn ? "NOT_AVAILABLE" : "BLOCKED", evidence: managedPackage && installedVerified ? "The installed package can be transactionally removed after explicit confirmation." : installedVerified && model ? "The existing confirmed Ollama remove adapter is available; removal is verified on refresh." : builtIn ? "Bundled items cannot be independently uninstalled." : "No verified uninstall adapter is configured." };
+    if (id === "cleanup-registration") return { id, state: managedPackage && installedVerified ? "READY" : installedVerified && model ? "READY" : builtIn ? "NOT_APPLICABLE" : "BLOCKED", evidence: managedPackage && installedVerified ? "Uninstall removes durable registry state only after filesystem staging succeeds." : installedVerified && model ? "A successful runtime removal causes the item to disappear from canonical inventory." : builtIn ? "Bundled registration is owned by the running build." : "Cleanup cannot run without a verified uninstall adapter." };
+    return { id, state: managedPackage && installedVerified ? "READY" : installedVerified && model ? "READY" : item.enabled && builtIn ? "VERIFIED" : "BLOCKED", evidence: managedPackage && installedVerified ? "Reload Marketplace state and run the installed-package health adapter after lifecycle changes." : installedVerified && model ? "Refresh inventory and run the existing connection test after lifecycle changes." : item.enabled && builtIn ? "The live in-process registry verifies reconnect state." : "No restart/reconnect verification adapter is available." };
   };
   return lifecycleLabels.map(([id, label]) => ({ ...stage(id), label }));
 }
@@ -385,18 +533,18 @@ function toolProjectCompatibility(item: MarketplaceItem, project: ProjectSummary
   const requiredCommand = tool === "typecheck" ? profile.commands.typecheck : tool === "test" ? profile.commands.test : tool === "build" ? profile.commands.build : ["start", "health"].includes(tool) ? profile.commands.runtime || profile.commands.production || profile.commands.dev : undefined;
   const commandBound = ["typecheck", "test", "build", "start", "health"].includes(tool);
   const state: MarketplaceProjectCompatibility["state"] = !tool ? "UNKNOWN" : !item.enabled ? "INCOMPATIBLE" : commandBound ? requiredCommand ? "COMPATIBLE" : "INCOMPATIBLE" : "COMPATIBLE";
-  const evidence = !tool ? ["This item is not a built-in project tool."] : !item.enabled ? ["The built-in tool is blocked or unavailable by its current runtime policy."] : commandBound ? requiredCommand ? [`Detected command: ${requiredCommand}`, `Project profile: ${profile.framework.join(", ") || project.projectType}`] : [`No verified ${tool} command is present in project command evidence.`] : [`The built-in ${tool} tool accepts the selected project through its typed local adapter.`, `Project profile: ${profile.framework.join(", ") || project.projectType}`];
+  const evidenceRows = !tool ? ["This item is not a built-in project tool."] : !item.enabled ? ["The built-in tool is blocked or unavailable by its current runtime policy."] : commandBound ? requiredCommand ? [`Detected command: ${requiredCommand}`, `Project profile: ${profile.framework.join(", ") || project.projectType}`] : [`No verified ${tool} command is present in project command evidence.`] : [`The built-in ${tool} tool accepts the selected project through its typed local adapter.`, `Project profile: ${profile.framework.join(", ") || project.projectType}`];
   const installed = item.installed && item.installationState.state === "VERIFIED";
   const flowState = state === "COMPATIBLE" ? "VERIFIED" : state === "INCOMPATIBLE" ? "BLOCKED" : "REQUIRED";
   return {
     state,
-    evidence,
+    evidence: evidenceRows,
     source: "KForge Agent capability analysis",
     flow: [
-      { stage: "agent-gap", state: state === "COMPATIBLE" ? "NOT_APPLICABLE" : flowState, evidence: state === "COMPATIBLE" ? "No missing capability is inferred; the Agent matched an already available item to project evidence." : evidence[0] },
+      { stage: "agent-gap", state: state === "COMPATIBLE" ? "NOT_APPLICABLE" : flowState, evidence: state === "COMPATIBLE" ? "No missing capability is inferred; the Agent matched an already available item to project evidence." : evidenceRows[0] },
       { stage: "marketplace", state: "VERIFIED", evidence: "The item came from the existing normalized Marketplace contract." },
       { stage: "inspect", state: "VERIFIED", evidence: "Full item evidence is available for inspection." },
-      { stage: "compatibility", state: flowState, evidence: evidence.join(" ") },
+      { stage: "compatibility", state: flowState, evidence: evidenceRows.join(" ") },
       { stage: "permissions", state: "VERIFIED", evidence: `All ${permissionClasses.length} capability classes are exposed before enablement.` },
       { stage: "trust", state: item.trust === "TRUSTED" ? "VERIFIED" : "REQUIRED", evidence: item.trust },
       { stage: "install", state: installed ? "VERIFIED" : item.installAction === "INSTALL_REQUIRES_CONFIRMATION" ? "READY" : "NOT_CONFIGURED", evidence: installed ? item.installationState.source : "No installed state is inferred." },
@@ -406,8 +554,148 @@ function toolProjectCompatibility(item: MarketplaceItem, project: ProjectSummary
   };
 }
 
+export function listMarketplaceRegistryAdapters(onlineOptional: boolean): MarketplaceRegistryAdapter[] {
+  const lastChecked = new Date().toISOString();
+  return [
+    { id: "local-registry", label: "Local KForge Registry", kind: "local", configured: true, state: "AVAILABLE", capabilities: ["catalog", "extension-metadata", "install", "version"], detail: "Reads locally registered extensions plus the bundled first-party package lifecycle adapter.", lastChecked },
+    { id: "ollama-official", label: "Ollama official library", kind: "remote", sourceUrl: "https://ollama.com/library", configured: false, state: onlineOptional ? "NOT_CONFIGURED" : "OFFLINE", capabilities: ["catalog", "version", "changelog", "install"], detail: onlineOptional ? "An official source link is known, but no remote catalog adapter is configured. KForge will not claim live versions, changelogs, or downloads." : "Remote marketplace data is disabled in Offline Mode.", lastChecked },
+    { id: "extension-registries", label: "Extension registries", kind: "remote", configured: false, state: onlineOptional ? "NOT_CONFIGURED" : "OFFLINE", capabilities: ["catalog", "extension-metadata", "install"], detail: onlineOptional ? "No remote third-party extension registry adapter is configured. KForge shows only locally evidenced or bundled first-party packages." : "Offline Mode blocks external extension registries.", lastChecked },
+  ];
+}
+
+function firstPartyFixturesRoot(): string {
+  return path.resolve(process.cwd(), "fixtures");
+}
+
+function firstPartyManifestPath(version: "1.0.0" | "1.1.0"): string {
+  return path.join(firstPartyFixturesRoot(), version === "1.0.0" ? "marketplace-first-party" : "marketplace-first-party-v110", "manifest.json");
+}
+
+async function loadManifestFromApprovedSource(manifestPath: string): Promise<{ manifest: PackageManifest; directory: string }> {
+  const approvedPath = ensureContained(firstPartyFixturesRoot(), manifestPath);
+  const raw = await fs.readFile(approvedPath, "utf8");
+  const parsed: unknown = JSON.parse(raw);
+  const validation = manifestSchema.safeParse(parsed);
+  if (!validation.success) throw new Error(`Manifest validation failed: ${validation.error.issues.map((issue) => `${issue.path.join(".")}:${issue.message}`).join("; ")}`);
+  normalizedManifestPermissions(validation.data);
+  if (validation.data.integrity && validation.data.integrity.expectedHash !== validation.data.sha256) throw new Error("Manifest integrity.expectedHash does not match sha256.");
+  return { manifest: validation.data, directory: path.dirname(approvedPath) };
+}
+
+async function verifyManifestCompatibility(manifest: PackageManifest, registry: LocalRegistryFile): Promise<void> {
+  if (manifest.runtimeRequirements?.os?.length && !manifest.runtimeRequirements.os.includes(process.platform as "linux" | "darwin" | "win32")) throw new Error(`Package is incompatible with operating system '${process.platform}'.`);
+  for (const command of manifest.runtimeRequirements?.commands || []) {
+    if (command !== "node") throw new Error(`Runtime command '${command}' is not verified by the first-party lifecycle adapter.`);
+  }
+  for (const dependency of manifest.dependencies || []) {
+    const installed = findRegistryItem(registry, dependency.id);
+    if (!installed || installed.installed !== true) throw new Error(`Dependency '${dependency.id}' is not installed.`);
+    if (dependency.version && typeof installed.version === "string" && installed.version !== dependency.version) throw new Error(`Dependency '${dependency.id}' requires version '${dependency.version}', but '${installed.version}' is installed.`);
+  }
+}
+
+async function verifyArtifact(manifest: PackageManifest, directory: string): Promise<{ artifactPath: string; bytes: Buffer }> {
+  const artifactPath = ensureContained(directory, path.join(directory, "index.js"));
+  const bytes = await fs.readFile(artifactPath);
+  if (bytes.byteLength !== manifest.size) throw new Error(`Size mismatch: expected ${manifest.size}, got ${bytes.byteLength}.`);
+  const actualHash = createHash("sha256").update(bytes).digest("hex");
+  if (actualHash !== manifest.sha256) throw new Error(`Integrity verification failed: expected ${manifest.sha256}, got ${actualHash}.`);
+  return { artifactPath, bytes };
+}
+
+function manifestRegistryEntry(manifest: PackageManifest, updatedAt: string): RegistryItem {
+  const permissions = (manifest.permissions || []).map((permission) => ({ ...permission, id: permission.id === "process" ? "process-execution" : permission.id }));
+  return {
+    id: manifest.id,
+    category: "plugins",
+    taxonomy: ["extensions", "tools"],
+    name: manifest.name,
+    description: manifest.description || "First-party KForge package.",
+    overview: manifest.description || "First-party KForge package.",
+    source: "KForge bundled first-party registry",
+    version: manifest.version,
+    license: manifest.license,
+    capabilities: manifest.capabilities || [],
+    requirements: manifest.requirements || [],
+    compatibility: manifest.compatibility || "UNKNOWN",
+    permissions,
+    security: evidence("VERIFIED", "Local package verification", "Manifest validation, permission validation, size verification, and SHA-256 verification passed."),
+    publisher: evidence("VERIFIED", "Bundled first-party manifest", manifest.publisher),
+    repository: manifest.repository ? evidence("VERIFIED", "Bundled first-party manifest", manifest.repository) : evidence("NOT_AVAILABLE", "No repository was declared by the bundled manifest."),
+    releaseHistory: evidenceList("VERIFIED", "Bundled first-party fixtures", ["1.0.0", "1.1.0"]),
+    changelog: evidence("NOT_AVAILABLE", "No independent changelog artifact is bundled for this package."),
+    installationState: evidence("VERIFIED", "Canonical local registry presence", "INSTALLED"),
+    updateState: evidence("NOT_CONFIGURED", "Update state is recalculated from bundled first-party manifests when Marketplace is read."),
+    dependencies: evidenceList("VERIFIED", "Validated package manifest", (manifest.dependencies || []).map((dependency) => dependency.version ? `${dependency.id}@${dependency.version}` : dependency.id)),
+    provenance: evidence("VERIFIED", "KForge bundled first-party registry", `Bundled fixture manifest ${manifest.version}`),
+    integrity: evidence("VERIFIED", "Installed package checksum", `sha256:${manifest.sha256}`),
+    sha256: manifest.sha256,
+    size: manifest.size,
+    storageKey: packageStorageKey(manifest.id),
+    trust: "TRUSTED",
+    installed: true,
+    enabled: true,
+    local: true,
+    installAction: "MANAGE_LOCAL",
+    dataState: "AVAILABLE",
+    updatedAt,
+  };
+}
+
+async function firstPartyCatalogItem(workspaceRoot: string, registry: LocalRegistryFile): Promise<MarketplaceItem | null> {
+  try {
+    const [{ manifest: baseManifest }, { manifest: latestManifest }] = await Promise.all([
+      loadManifestFromApprovedSource(firstPartyManifestPath("1.0.0")),
+      loadManifestFromApprovedSource(firstPartyManifestPath("1.1.0")),
+    ]);
+    const persisted = findRegistryItem(registry, baseManifest.id);
+    const installed = persisted?.installed === true && persisted.local === true;
+    const installedVersion = installed && typeof persisted?.version === "string" ? persisted.version : undefined;
+    const rawHash = installed && typeof persisted?.sha256 === "string" ? persisted.sha256 : undefined;
+    const updateAvailable = installedVersion ? compareSemver(installedVersion, latestManifest.version) < 0 : false;
+    const permissions = installed ? permissionsForRegistryRow(persisted || {}) : normalizedManifestPermissions(baseManifest);
+    const item: MarketplaceItem = {
+      id: baseManifest.id,
+      category: "plugins",
+      taxonomy: ["extensions", "tools"],
+      name: baseManifest.name,
+      description: baseManifest.description || "First-party KForge package.",
+      overview: baseManifest.description || "First-party KForge package.",
+      features: baseManifest.capabilities || [],
+      source: "KForge bundled first-party registry",
+      version: installedVersion || baseManifest.version,
+      license: baseManifest.license,
+      capabilities: baseManifest.capabilities || [],
+      requirements: baseManifest.requirements || [],
+      compatibility: baseManifest.compatibility || "UNKNOWN",
+      permissions,
+      security: installed ? normalizedEvidenceField(persisted?.security, evidence("VERIFIED", "Local package verification", "Installed package passed integrity verification.")) : evidence("VERIFIED", "Bundled manifest validation", "Package metadata and permissions are valid; artifact verification is repeated at install time."),
+      publisher: evidence("VERIFIED", "Bundled first-party manifest", baseManifest.publisher),
+      repository: baseManifest.repository ? evidence("VERIFIED", "Bundled first-party manifest", baseManifest.repository) : evidence("NOT_AVAILABLE", "No repository is declared."),
+      releaseHistory: evidenceList("VERIFIED", "Bundled first-party fixtures", [baseManifest.version, latestManifest.version]),
+      changelog: evidence("NOT_AVAILABLE", "No independent changelog artifact is bundled for this package."),
+      installationState: evidence("VERIFIED", "Canonical local registry presence", installed ? "INSTALLED" : "NOT_INSTALLED"),
+      updateState: installed ? evidence("VERIFIED", "Bundled first-party version comparison", updateAvailable ? `UPDATE_AVAILABLE:${latestManifest.version}` : `UP_TO_DATE:${installedVersion}`) : evidence("NOT_AVAILABLE", "The package is not installed."),
+      dependencies: evidenceList("VERIFIED", "Validated package manifest", (baseManifest.dependencies || []).map((dependency) => dependency.version ? `${dependency.id}@${dependency.version}` : dependency.id)),
+      provenance: evidence("VERIFIED", "KForge bundled first-party registry", "Bundled first-party fixture; no network source is contacted."),
+      integrity: installed && rawHash ? evidence("VERIFIED", "Persisted installed package checksum", `sha256:${rawHash}`) : evidence("UNKNOWN", "Artifact SHA-256 is declared by the bundled manifest and is verified again before installation.", `sha256:${baseManifest.sha256}`),
+      trust: installed && persisted?.trust === "TRUSTED" && rawHash ? "TRUSTED" : "UNTRUSTED",
+      installed,
+      enabled: installed && persisted?.enabled === true,
+      local: true,
+      installAction: installed ? "MANAGE_LOCAL" : "INSTALL_REQUIRES_CONFIRMATION",
+      dataState: "AVAILABLE",
+      ...(typeof persisted?.updatedAt === "string" ? { updatedAt: persisted.updatedAt } : {}),
+    };
+    return item;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMarketplace(workspaceRoot: string, onlineOptional: boolean) {
   const [modelCenter, registeredRows] = await Promise.all([getModelCenter(workspaceRoot), readLocalRegistry(workspaceRoot)]);
+  const registry: LocalRegistryFile = { schemaVersion: 1, items: registeredRows };
   const installedIds = new Set(modelCenter.ollama.models.map((model) => model.id));
   const installed: MarketplaceItem[] = modelCenter.ollama.models.map((model) => ({
     id: `ollama:${model.id}`, category: "models", taxonomy: ["models"], name: model.name,
@@ -449,9 +737,11 @@ export async function getMarketplace(workspaceRoot: string, onlineOptional: bool
   const adapters = listMarketplaceRegistryAdapters(onlineOptional);
   const providers: MarketplaceProviderStatus[] = adapters.map((adapter) => ({ id: adapter.id, label: adapter.label, sourceUrl: adapter.sourceUrl, state: adapter.state, detail: adapter.detail, lastChecked: adapter.lastChecked, adapterKind: adapter.kind, configured: adapter.configured, capabilities: adapter.capabilities }));
   const localExtensions = localEngineItems();
-  const registered = registeredRows.map(registeredItem).filter((item): item is MarketplaceItem => Boolean(item));
-  const knownItems = new Set([...installed, ...localExtensions].map((item) => item.id));
-  const items = [...installed, ...localExtensions, ...recommendations.filter((item) => !knownItems.has(item.id)), ...registered].map((item) => ({ ...item, lifecycle: itemLifecycle(item, onlineOptional) }));
+  const firstParty = await firstPartyCatalogItem(workspaceRoot, registry);
+  const firstPartyId = firstParty?.id;
+  const registered = registeredRows.map(registeredItem).filter((item): item is MarketplaceItem => Boolean(item)).filter((item) => item.id !== firstPartyId);
+  const knownItems = new Set([...installed, ...localExtensions, ...(firstParty ? [firstParty] : [])].map((item) => item.id));
+  const items = [...installed, ...localExtensions, ...(firstParty ? [firstParty] : []), ...recommendations.filter((item) => !knownItems.has(item.id)), ...registered].map((item) => ({ ...item, lifecycle: itemLifecycle(item, onlineOptional) }));
   return { adapters, providers, categories: marketplaceTaxonomy(items), items };
 }
 
@@ -485,5 +775,206 @@ export async function previewMarketplaceInstall(workspaceRoot: string, onlineOpt
   if (!item) throw new Error("Marketplace item was not found in the configured local or official registry.");
   if (item.installed) return { item, allowed: false, reason: "Item is already installed locally; use the local management action instead." };
   if (item.installAction !== "INSTALL_REQUIRES_CONFIRMATION") return { item, allowed: false, reason: onlineOptional ? "This item has no verified install adapter." : "Offline Mode blocks remote downloads until Online Optional is enabled." };
-  return { item, allowed: true, reason: "Review source, license, permissions, compatibility, and resource requirements. Confirm before starting a download." };
+  if (!item.local && !onlineOptional) return { item, allowed: false, reason: "Offline Mode blocks remote downloads until Online Optional is enabled." };
+  return { item, allowed: true, reason: item.local ? "Review publisher, permissions, compatibility, and integrity evidence. This bundled first-party install requires confirmation but no network download." : "Review source, license, permissions, compatibility, and resource requirements. Confirm before starting a download." };
+}
+
+function generateOperationId(): string {
+  return `op-${randomUUID()}`;
+}
+
+function failedResult(opId: string, itemId: string, error: unknown, rollback = false, installed = false, integrityVerified = false, sizeVerified = false): InstallResult {
+  return { operationId: opId, itemId, stage: "FAILED", installed, rollback, integrityVerified, sizeVerified, error: error instanceof Error ? error.message : String(error) };
+}
+
+async function validatedPackageSource(workspaceRoot: string, itemId: string, manifestPath: string) {
+  const safeId = safePackageId(itemId);
+  const registry = await readRegistry(workspaceRoot);
+  const { manifest, directory } = await loadManifestFromApprovedSource(manifestPath);
+  if (manifest.id !== safeId) throw new Error("Item ID mismatch with first-party manifest.");
+  await verifyManifestCompatibility(manifest, registry);
+  const artifact = await verifyArtifact(manifest, directory);
+  return { registry, manifest, directory, artifact };
+}
+
+export async function installPackage(workspaceRoot: string, itemId: string, sourceManifestPath?: string): Promise<InstallResult> {
+  const opId = generateOperationId();
+  let safeId = itemId;
+  try {
+    safeId = safePackageId(itemId);
+    const sourcePath = sourceManifestPath ? ensureContained(firstPartyFixturesRoot(), sourceManifestPath) : firstPartyManifestPath("1.0.0");
+    const { registry, manifest, artifact } = await validatedPackageSource(workspaceRoot, safeId, sourcePath);
+    const existing = findRegistryItem(registry, safeId);
+    if (existing?.installed === true) return failedResult(opId, safeId, "Package is already installed.", false, true, true, true);
+
+    const root = marketplaceRoot(workspaceRoot);
+    const stagingDir = path.join(root, "staging", opId);
+    const installedDir = installedPackageDir(workspaceRoot, safeId);
+    await fs.mkdir(path.dirname(stagingDir), { recursive: true });
+    await fs.rm(stagingDir, { recursive: true, force: true });
+    await fs.mkdir(stagingDir, { recursive: true });
+
+    try {
+      await fs.copyFile(artifact.artifactPath, path.join(stagingDir, "index.js"));
+      await writeJsonAtomic(path.join(stagingDir, "manifest.json"), manifest);
+      await verifyArtifact(manifest, stagingDir);
+      try {
+        await fs.access(installedDir);
+        throw new Error("Installed package path already exists without a matching registry entry; installation is blocked to avoid overwriting unknown data.");
+      } catch (error: unknown) {
+        if (error instanceof Error && error.message.includes("blocked")) throw error;
+      }
+      await fs.mkdir(path.dirname(installedDir), { recursive: true });
+      await fs.rename(stagingDir, installedDir);
+      const nextRegistry: LocalRegistryFile = { schemaVersion: 1, items: registry.items.filter((item) => registryItemId(item) !== safeId) };
+      nextRegistry.items.push(manifestRegistryEntry(manifest, new Date().toISOString()));
+      try {
+        await writeJsonAtomic(registryPath(workspaceRoot), nextRegistry);
+      } catch (error) {
+        await fs.rm(installedDir, { recursive: true, force: true }).catch(() => undefined);
+        return failedResult(opId, safeId, error, true, false, true, true);
+      }
+      const health = await healthCheckPackage(workspaceRoot, safeId);
+      if (!health.ok) {
+        await writeJsonAtomic(registryPath(workspaceRoot), registry).catch(() => undefined);
+        await fs.rm(installedDir, { recursive: true, force: true }).catch(() => undefined);
+        return failedResult(opId, safeId, `Post-install health check failed: ${health.message}`, true, false, true, true);
+      }
+      return { operationId: opId, itemId: safeId, stage: "INSTALLED", installed: true, rollback: false, integrityVerified: true, sizeVerified: true };
+    } finally {
+      await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  } catch (error) {
+    return failedResult(opId, safeId, error);
+  }
+}
+
+export async function healthCheckPackage(workspaceRoot: string, itemId: string): Promise<{ ok: boolean; message: string; version?: string; installed: boolean }> {
+  let safeId = itemId;
+  try {
+    safeId = safePackageId(itemId);
+    const registry = await readRegistry(workspaceRoot);
+    const item = findRegistryItem(registry, safeId);
+    if (!item || item.installed !== true || item.local !== true) return { ok: false, message: "Package not installed.", installed: false };
+    if (item.trust !== "TRUSTED") return { ok: false, message: "Installed package is not in TRUSTED state.", installed: true, ...(typeof item.version === "string" ? { version: item.version } : {}) };
+    const installedDir = installedPackageDir(workspaceRoot, safeId);
+    const manifestPath = path.join(installedDir, "manifest.json");
+    const raw: unknown = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+    const validation = manifestSchema.safeParse(raw);
+    if (!validation.success) return { ok: false, message: "Installed manifest failed schema validation.", installed: true, ...(typeof item.version === "string" ? { version: item.version } : {}) };
+    const manifest = validation.data;
+    normalizedManifestPermissions(manifest);
+    if (manifest.id !== safeId) return { ok: false, message: "Installed manifest package ID does not match registry identity.", installed: true, version: manifest.version };
+    const persistedHash = typeof item.sha256 === "string" ? item.sha256 : "";
+    if (!persistedHash || persistedHash !== manifest.sha256) return { ok: false, message: "Installed manifest checksum does not match durable registry evidence.", installed: true, version: manifest.version };
+    await verifyArtifact(manifest, installedDir);
+    return { ok: true, message: "Health check passed: manifest, size and SHA-256 evidence are consistent.", installed: true, version: manifest.version };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error), installed: false };
+  }
+}
+
+export async function updatePackage(workspaceRoot: string, itemId: string, newVersionManifestPath?: string): Promise<InstallResult> {
+  const opId = generateOperationId();
+  let safeId = itemId;
+  let mutationStarted = false;
+  try {
+    safeId = safePackageId(itemId);
+    const currentHealth = await healthCheckPackage(workspaceRoot, safeId);
+    if (!currentHealth.ok || !currentHealth.installed) return failedResult(opId, safeId, `Package cannot be updated because current health verification failed: ${currentHealth.message}`);
+    const sourcePath = newVersionManifestPath ? ensureContained(firstPartyFixturesRoot(), newVersionManifestPath) : firstPartyManifestPath("1.1.0");
+    const { registry, manifest, artifact } = await validatedPackageSource(workspaceRoot, safeId, sourcePath);
+    const installedItem = findRegistryItem(registry, safeId);
+    if (!installedItem || installedItem.installed !== true) return failedResult(opId, safeId, "Package not installed; cannot update.");
+    const currentVersion = typeof installedItem.version === "string" ? installedItem.version : currentHealth.version || "0.0.0";
+    if (compareSemver(manifest.version, currentVersion) <= 0) return failedResult(opId, safeId, `Update version ${manifest.version} must be greater than installed version ${currentVersion}.`, false, true, true, true);
+
+    const root = marketplaceRoot(workspaceRoot);
+    const stagingDir = path.join(root, "staging", opId);
+    const currentDir = installedPackageDir(workspaceRoot, safeId);
+    const backupDir = path.join(root, "rollback", `${packageStorageKey(safeId)}-${opId}`);
+    await fs.rm(stagingDir, { recursive: true, force: true });
+    await fs.rm(backupDir, { recursive: true, force: true });
+    await fs.mkdir(stagingDir, { recursive: true });
+    await fs.copyFile(artifact.artifactPath, path.join(stagingDir, "index.js"));
+    await writeJsonAtomic(path.join(stagingDir, "manifest.json"), manifest);
+    await verifyArtifact(manifest, stagingDir);
+
+    const previousRegistry: LocalRegistryFile = { schemaVersion: 1, items: registry.items.map((entry) => ({ ...entry })) };
+    const nextRegistry: LocalRegistryFile = { schemaVersion: 1, items: registry.items.filter((entry) => registryItemId(entry) !== safeId) };
+    nextRegistry.items.push(manifestRegistryEntry(manifest, new Date().toISOString()));
+
+    await fs.mkdir(path.dirname(backupDir), { recursive: true });
+    await fs.rename(currentDir, backupDir);
+    mutationStarted = true;
+    try {
+      await fs.rename(stagingDir, currentDir);
+      await writeJsonAtomic(registryPath(workspaceRoot), nextRegistry);
+      const health = await healthCheckPackage(workspaceRoot, safeId);
+      if (!health.ok || health.version !== manifest.version) throw new Error(`Post-update health verification failed: ${health.message}`);
+      await fs.rm(backupDir, { recursive: true, force: true });
+      return { operationId: opId, itemId: safeId, stage: "UPDATED", installed: true, rollback: false, integrityVerified: true, sizeVerified: true };
+    } catch (error) {
+      await writeJsonAtomic(registryPath(workspaceRoot), previousRegistry).catch(() => undefined);
+      await fs.rm(currentDir, { recursive: true, force: true }).catch(() => undefined);
+      await fs.rename(backupDir, currentDir).catch(() => undefined);
+      return failedResult(opId, safeId, error, true, true, true, true);
+    } finally {
+      await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+      if (!mutationStarted) await fs.rm(backupDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  } catch (error) {
+    return failedResult(opId, safeId, error, mutationStarted, mutationStarted, false, false);
+  }
+}
+
+export async function uninstallPackage(workspaceRoot: string, itemId: string): Promise<InstallResult> {
+  const opId = `op-uninstall-${randomUUID()}`;
+  let safeId = itemId;
+  try {
+    safeId = safePackageId(itemId);
+    const registry = await readRegistry(workspaceRoot);
+    const installedItem = findRegistryItem(registry, safeId);
+    if (!installedItem || installedItem.installed !== true || installedItem.local !== true) return { operationId: opId, itemId: safeId, stage: "UNINSTALLED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "Package not registered; nothing removed." };
+    const currentDir = installedPackageDir(workspaceRoot, safeId);
+    const trashDir = path.join(marketplaceRoot(workspaceRoot), "uninstall", `${packageStorageKey(safeId)}-${opId}`);
+    await fs.mkdir(path.dirname(trashDir), { recursive: true });
+    let moved = false;
+    try {
+      await fs.rename(currentDir, trashDir);
+      moved = true;
+    } catch (error) {
+      return failedResult(opId, safeId, `Cannot stage uninstall safely: ${error instanceof Error ? error.message : String(error)}`, false, true);
+    }
+    const nextRegistry: LocalRegistryFile = { schemaVersion: 1, items: registry.items.filter((entry) => registryItemId(entry) !== safeId) };
+    try {
+      await writeJsonAtomic(registryPath(workspaceRoot), nextRegistry);
+    } catch (error) {
+      if (moved) await fs.rename(trashDir, currentDir).catch(() => undefined);
+      return failedResult(opId, safeId, error, true, true);
+    }
+    await fs.rm(trashDir, { recursive: true, force: true }).catch(() => undefined);
+    return { operationId: opId, itemId: safeId, stage: "UNINSTALLED", installed: false, rollback: false, integrityVerified: true, sizeVerified: true };
+  } catch (error) {
+    return failedResult(opId, safeId, error);
+  }
+}
+
+export async function runInstalledPackage(workspaceRoot: string, itemId: string): Promise<{ ok: boolean; result: unknown; error?: string }> {
+  const health = await healthCheckPackage(workspaceRoot, itemId);
+  if (!health.ok) return { ok: false, result: null, error: health.message };
+  try {
+    const safeId = safePackageId(itemId);
+    const registry = await readRegistry(workspaceRoot);
+    const item = findRegistryItem(registry, safeId);
+    if (!item || item.trust !== "TRUSTED") return { ok: false, result: null, error: "Execution is blocked because durable package trust is not VERIFIED/TRUSTED." };
+    const installedDir = installedPackageDir(workspaceRoot, safeId);
+    const result = await execFileAsync(process.execPath, [path.join(installedDir, "index.js")], { encoding: "utf8", timeout: 15_000, maxBuffer: 1024 * 1024, windowsHide: true });
+    const stdout = String(result.stdout || "").trim();
+    let parsed: unknown = stdout;
+    try { parsed = JSON.parse(stdout); } catch { /* plain text output remains plain text */ }
+    return { ok: true, result: parsed };
+  } catch (error) {
+    return { ok: false, result: null, error: error instanceof Error ? error.message : String(error) };
+  }
 }

@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
 import workspaceRouter from "./routes/workspace";
 
 export function createServer() {
@@ -13,6 +14,10 @@ export function createServer() {
     res.json({ message: "KForge server is online." });
   });
 
+  // Marketplace lifecycle mutations reuse the canonical Marketplace service.
+  // The router intentionally defines no root GET route, so the existing
+  // /api/workspace/marketplace catalog remains owned by workspaceRouter.
+  app.use("/api/workspace/marketplace", marketplaceLifecycleRouter);
   app.use("/api/workspace", workspaceRouter);
 
   return app;
