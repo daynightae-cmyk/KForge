@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   verify:
-    name: install · typecheck · lint · test · build · e2e
+    name: install · typecheck · lint · marketplace · test · build · e2e
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -42,6 +42,9 @@ jobs:
 
       - name: Lint / formatting gate
         run: npm run lint
+
+      - name: Marketplace lifecycle acceptance
+        run: npx vitest --run server/services/marketplace.spec.ts
 
       - name: Unit and service tests
         run: npm run test
