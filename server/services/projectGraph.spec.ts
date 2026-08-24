@@ -18,6 +18,8 @@ describe("language-aware project graph", () => {
       await fs.writeFile(path.join(root, "src", "unsupported.py"), "class PythonOnly:\n    pass\n", "utf8");
       const graph = await buildProjectGraph(root);
       expect(graph.summary).toMatchObject({ files: 6, imports: 5, symbols: 5, exports: 5, dependencies: 1, tests: 1, cycles: 1, duplicatedResponsibilities: 1 });
+      expect(graph.coverage).toMatchObject({ state: "COMPLETE", scannedCount: 6, totalOrUnknown: 6, limit: 2_000 });
+      expect(graph.cache).toMatchObject({ state: "LIVE", fingerprint: expect.any(String), generatedAt: graph.generatedAt });
       expect(graph.nodes).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: "symbol:src/a.ts#A", type: "symbol", symbolKind: "variable", exported: true, path: "src/a.ts" }),
         expect.objectContaining({ id: "dependency:zod", type: "dependency" }),

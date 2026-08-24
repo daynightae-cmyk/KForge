@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { builtinModules } from "module";
 import ts from "typescript";
 import { readCache, writeCache } from "./projectPerformance";
+import type { BoundedEvidenceCoverage } from "../../shared/workspace";
 
 export type GraphNodeType = "file" | "route" | "api" | "test" | "config" | "symbol" | "dependency";
 
@@ -34,6 +35,8 @@ export interface GraphLanguageAdapter {
 
 export interface ProjectGraph {
   generatedAt: string;
+  coverage: BoundedEvidenceCoverage;
+  cache: { state: "LIVE" | "CACHED" | "IN_FLIGHT_REUSED"; fingerprint: string; generatedAt: string; servedAt: string };
   nodes: GraphNode[];
   edges: GraphEdge[];
   summary: { files: number; imports: number; exports: number; symbols: number; dependencies: number; routes: number; apis: number; tests: number; cycles: number; duplicatedResponsibilities: number };
@@ -70,20 +73,32 @@ const typeScriptExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cj
 
 async function sourceFiles(root: string, limit = 2_000) {
   const files: string[] = [];
+  let limitReached = false;
   async function visit(directory: string): Promise<void> {
-    if (files.length >= limit) return;
+    if (limitReached) return;
     const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => [] as Dirent[]);
     for (const entry of entries) {
-      if (files.length >= limit) return;
+      if (limitReached) return;
       if (entry.isDirectory() && ignored.has(entry.name)) continue;
       const absolute = path.join(directory, entry.name);
       const relative = path.relative(root, absolute).split(path.sep).join("/");
       if (entry.isDirectory()) await visit(absolute);
-      else if (extensions.has(path.extname(relative).toLowerCase())) files.push(relative);
+      else if (extensions.has(path.extname(relative).toLowerCase())) {
+        if (files.length < limit) files.push(relative);
+        else limitReached = true;
+      }
     }
   }
   await visit(root);
-  return files;
+  const coverage: BoundedEvidenceCoverage = {
+    state: limitReached ? "LIMIT_REACHED" : "COMPLETE",
+    scannedCount: files.length,
+    totalOrUnknown: limitReached ? null : files.length,
+    limit,
+    reason: limitReached ? `The ${limit.toLocaleString()}-source-file graph limit was reached; the graph excludes additional source files.` : "All detected source files were indexed within the graph safety limit.",
+    source: "Local project graph source traversal",
+  };
+  return { files, coverage };
 }
 
 async function declaredDependencies(root: string) {
@@ -246,13 +261,14 @@ function languageAdapters(files: string[]): GraphLanguageAdapter[] {
   });
 }
 
-export async function buildProjectGraph(projectPath: string): Promise<ProjectGraph> {
-  const files = await sourceFiles(projectPath);
+async function buildProjectGraphEvidence(projectPath: string): Promise<ProjectGraph> {
+  const discovery = await sourceFiles(projectPath);
+  const files = discovery.files;
   const dependencies = await declaredDependencies(projectPath);
-  const fingerprint = await sourceFingerprint(projectPath, files, dependencies);
+  const fingerprint = `${await sourceFingerprint(projectPath, files, dependencies)}:${discovery.coverage.state}:${discovery.coverage.scannedCount}`;
   const cacheKey = `${projectPath}:graph`;
   const cached = readCache<ProjectGraph>(cacheKey, fingerprint);
-  if (cached) return { ...cached, generatedAt: cached.generatedAt };
+  if (cached) return { ...cached, cache: { ...cached.cache, state: "CACHED", servedAt: new Date().toISOString() } };
   const known = new Set(files);
   const nodes: GraphNode[] = files.map((file) => ({ id: `file:${file}`, type: /(?:\.test|\.spec)\./.test(file) ? "test" : /(?:config|\.config\.)/.test(file) ? "config" : "file", label: path.posix.basename(file), path: file }));
   const edges: GraphEdge[] = [];
@@ -308,9 +324,27 @@ export async function buildProjectGraph(projectPath: string): Promise<ProjectGra
   nodes.filter((node) => node.type === "symbol" && node.exported && node.label !== "default").forEach((node) => { const key = `${node.symbolKind || "symbol"}:${node.label}`; symbolGroups.set(key, [...(symbolGroups.get(key) || []), node]); });
   const duplicatedResponsibilities = [...symbolGroups.values()].filter((group) => new Set(group.map((node) => node.path)).size > 1).map((group) => ({ symbol: group[0].label, kind: group[0].symbolKind || "symbol", files: [...new Set(group.map((node) => node.path!).filter(Boolean))].sort(), evidence: `The same exported ${group[0].symbolKind || "symbol"} name is owned by ${new Set(group.map((node) => node.path)).size} files; semantic responsibility overlap requires human review.` })).sort((left, right) => right.files.length - left.files.length || left.symbol.localeCompare(right.symbol));
   const adapters = languageAdapters(files);
-  const limitations = ["Unresolved relative imports and undeclared path aliases are omitted instead of being guessed as package dependencies.", ...adapters.filter((adapter) => adapter.state === "UNAVAILABLE").map((adapter) => `${adapter.language} symbol analysis is UNAVAILABLE: ${adapter.reason}`)];
+  const limitations = ["Unresolved relative imports and undeclared path aliases are omitted instead of being guessed as package dependencies.", ...(discovery.coverage.state === "LIMIT_REACHED" ? [discovery.coverage.reason] : []), ...adapters.filter((adapter) => adapter.state === "UNAVAILABLE").map((adapter) => `${adapter.language} symbol analysis is UNAVAILABLE: ${adapter.reason}`)];
   const summary = { files: files.length, imports: edges.filter((edge) => edge.type === "imports").length, exports: edges.filter((edge) => edge.type === "exports").length, symbols: nodes.filter((node) => node.type === "symbol").length, dependencies: nodes.filter((node) => node.type === "dependency").length, routes: nodes.filter((node) => node.type === "route").length, apis: nodes.filter((node) => node.type === "api").length, tests: nodes.filter((node) => node.type === "test").length, cycles: cycles.length, duplicatedResponsibilities: duplicatedResponsibilities.length };
-  return writeCache(cacheKey, fingerprint, { generatedAt: new Date().toISOString(), nodes, edges, summary, analysis: { cycles, duplicatedResponsibilities, languageAdapters: adapters, limitations } });
+  const generatedAt = new Date().toISOString();
+  return writeCache(cacheKey, fingerprint, { generatedAt, coverage: discovery.coverage, cache: { state: "LIVE", fingerprint, generatedAt, servedAt: generatedAt }, nodes, edges, summary, analysis: { cycles, duplicatedResponsibilities, languageAdapters: adapters, limitations } });
+}
+
+const activeGraphBuilds = new Map<string, Promise<ProjectGraph>>();
+
+export async function buildProjectGraph(projectPath: string): Promise<ProjectGraph> {
+  const active = activeGraphBuilds.get(projectPath);
+  if (active) {
+    const graph = await active;
+    return { ...graph, cache: { ...graph.cache, state: "IN_FLIGHT_REUSED", servedAt: new Date().toISOString() } };
+  }
+  const build = buildProjectGraphEvidence(projectPath);
+  activeGraphBuilds.set(projectPath, build);
+  try {
+    return await build;
+  } finally {
+    activeGraphBuilds.delete(projectPath);
+  }
 }
 
 function reverseReachable(graph: ProjectGraph, start: string, edgeTypes: Set<GraphEdge["type"]>) {

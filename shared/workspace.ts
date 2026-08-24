@@ -70,6 +70,15 @@ export interface ProjectPerformanceStrategy {
   rationale: string;
 }
 
+export interface BoundedEvidenceCoverage {
+  state: "COMPLETE" | "LIMIT_REACHED";
+  scannedCount: number;
+  totalOrUnknown: number | null;
+  limit: number;
+  reason: string;
+  source: string;
+}
+
 export interface ProjectProfile {
   projectId: string;
   rootPath: string;
@@ -94,6 +103,7 @@ export interface ProjectProfile {
   totalFileCount: number;
   projectSizeBytes: number;
   sourceRoots: string[];
+  fileDiscovery: BoundedEvidenceCoverage;
   detectedAt: string;
 }
 
@@ -218,6 +228,11 @@ export interface ProjectScan {
     tests: WorkspaceStatus;
     build: WorkspaceStatus;
     typecheck: WorkspaceStatus;
+  };
+  coverage: {
+    secretLiterals: BoundedEvidenceCoverage;
+    completeness: BoundedEvidenceCoverage;
+    advancedCompletion: BoundedEvidenceCoverage;
   };
   tools: ToolAvailability[];
 }

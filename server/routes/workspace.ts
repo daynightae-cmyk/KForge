@@ -5,6 +5,7 @@ import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
 import type {
+  BoundedEvidenceCoverage,
   CommandResult,
   DiagnosticCategory,
   DiagnosticSeverity,
@@ -188,10 +189,11 @@ function asString(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
-async function findFiles(root: string, predicate: (relativePath: string, entry: Dirent) => boolean, limit = 5_000) {
+async function findFilesWithEvidence(root: string, predicate: (relativePath: string, entry: Dirent) => boolean, limit = 5_000, source = "Local bounded filesystem traversal") {
   const found: string[] = [];
+  let limitReached = false;
   async function visit(current: string) {
-    if (found.length >= limit) return;
+    if (limitReached) return;
     let entries: Dirent[] = [];
     try {
       entries = await fs.readdir(current, { withFileTypes: true });
@@ -199,19 +201,32 @@ async function findFiles(root: string, predicate: (relativePath: string, entry: 
       return;
     }
     for (const entry of entries) {
-      if (found.length >= limit) break;
+      if (limitReached) break;
       if (entry.isDirectory() && ignoredDirectories.has(entry.name)) continue;
       const absolute = path.join(current, entry.name);
       const relative = path.relative(root, absolute).split(path.sep).join("/");
       if (entry.isDirectory()) {
         await visit(absolute);
       } else if (predicate(relative, entry)) {
-        found.push(relative);
+        if (found.length < limit) found.push(relative);
+        else limitReached = true;
       }
     }
   }
   await visit(root);
-  return found;
+  const coverage: BoundedEvidenceCoverage = {
+    state: limitReached ? "LIMIT_REACHED" : "COMPLETE",
+    scannedCount: found.length,
+    totalOrUnknown: limitReached ? null : found.length,
+    limit,
+    reason: limitReached ? `The ${limit.toLocaleString()}-file safety limit was reached; additional matching files were not scanned.` : "Traversal completed within the configured safety limit.",
+    source,
+  };
+  return { files: found, coverage };
+}
+
+async function findFiles(root: string, predicate: (relativePath: string, entry: Dirent) => boolean, limit = 5_000) {
+  return (await findFilesWithEvidence(root, predicate, limit)).files;
 }
 
 async function fileContains(target: string, expression: RegExp) {
@@ -331,7 +346,8 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
   if (has("typescript") || rootNames.has("tsconfig.json")) languages.push("TypeScript");
   if (packageJson) languages.push("JavaScript");
 
-  const allFiles = await findFiles(root, () => true, 20_000);
+  const discovery = await findFilesWithEvidence(root, () => true, 20_000, "Project profile file discovery");
+  const allFiles = discovery.files;
   const sourceFiles = allFiles.filter((relative) => sourceExtensions.has(path.extname(relative).toLowerCase()));
   const sourceRoots = [...new Set(sourceFiles.map((relative) => relative.split("/")[0]).filter((name) => ["src", "app", "client", "server", "api", "lib", "cmd"].includes(name)))];
   const envFiles = allFiles.filter((relative) => !relative.startsWith("fixtures/") && /(^|\/)\.env(?:\.[^/]+)?$/.test(relative));
@@ -411,6 +427,7 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
     totalFileCount: allFiles.length,
     projectSizeBytes,
     sourceRoots,
+    fileDiscovery: discovery.coverage,
     detectedAt: new Date().toISOString(),
   };
 }
@@ -526,7 +543,8 @@ async function trackedSensitiveFiles(project: ProjectSummary) {
 }
 
 async function completenessIssues(project: ProjectSummary, profile: ProjectProfile) {
-  const markers = await findFiles(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()) && !relative.startsWith("fixtures/") && !/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(relative), 5_000);
+  const traversal = await findFilesWithEvidence(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()) && !relative.startsWith("fixtures/") && !/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(relative), 5_000, "Project completeness source scan");
+  const markers = traversal.files;
   const issues: ScanIssue[] = [];
   for (const relative of markers) {
     try {
@@ -538,11 +556,12 @@ async function completenessIssues(project: ProjectSummary, profile: ProjectProfi
   }
   if (!(await pathExists(path.join(project.path, "README.md")))) issues.push(issue(project.id, "missing-readme", "low", "completeness", "README is missing", "The project root has no README.md.", { source: "KForge completeness", fixability: "guided", suggestion: "Add concise local-development, test, build, and production instructions." }));
   if (profile.envFiles.length > 0 && !(await pathExists(path.join(project.path, ".env.example")))) issues.push(issue(project.id, "missing-env-example", "low", "completeness", "Environment example is missing", "Environment files were detected without a .env.example template.", { source: "KForge completeness", fixability: "guided", suggestion: "Provide non-secret variable names and safe example values in .env.example." }));
-  return issues;
+  return { issues, coverage: traversal.coverage };
 }
 
 async function advancedCompletionIssues(project: ProjectSummary) {
-  const files = await findFiles(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()) && !relative.startsWith("fixtures/") && !/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(relative) && relative !== "server/routes/workspace.ts", 5_000);
+  const traversal = await findFilesWithEvidence(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()) && !relative.startsWith("fixtures/") && !/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(relative) && relative !== "server/routes/workspace.ts", 5_000, "Advanced completion source scan");
+  const files = traversal.files;
   const findings: ScanIssue[] = [];
   for (const relative of files) {
     try {
@@ -565,7 +584,7 @@ async function advancedCompletionIssues(project: ProjectSummary) {
       });
     } catch { /* unreadable source file is omitted from advanced completion evidence */ }
   }
-  return findings;
+  return { issues: findings, coverage: traversal.coverage };
 }
 
 async function lintIssues(project: ProjectSummary, profile: ProjectProfile, tools: ToolAvailability[]) {
@@ -588,7 +607,8 @@ async function externalScannerIssues(_project: ProjectSummary, _tools: ToolAvail
 }
 
 async function secretLiteralIssues(project: ProjectSummary) {
-  const candidates = await findFiles(project.path, (relative) => /(?:\.(?:[cm]?[jt]sx?|py|java|go|rs|cs|php|env)|(?:^|\/)\.env(?:\.|$))$/i.test(relative) && !relative.startsWith("node_modules/") && !relative.startsWith(".git/"), 5_000);
+  const traversal = await findFilesWithEvidence(project.path, (relative) => /(?:\.(?:[cm]?[jt]sx?|py|java|go|rs|cs|php|env)|(?:^|\/)\.env(?:\.|$))$/i.test(relative) && !relative.startsWith("node_modules/") && !relative.startsWith(".git/"), 5_000, "Local secret-literal source scan");
+  const candidates = traversal.files;
   const patterns: Array<{ rule: string; expression: RegExp; title: string; severity: DiagnosticSeverity }> = [
     { rule: "kforge/private-key", expression: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, title: "Private key material detected", severity: "critical" },
     { rule: "kforge/github-token", expression: /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/, title: "GitHub token pattern detected", severity: "high" },
@@ -606,7 +626,7 @@ async function secretLiteralIssues(project: ProjectSummary) {
       }
     });
   }
-  return findings;
+  return { issues: findings, coverage: traversal.coverage };
 }
 
 function statusForIssues(issues: ScanIssue[], categories: DiagnosticCategory[]) {
@@ -704,7 +724,7 @@ export function projectHealthEvidenceSources(project: ProjectSummary, profile: P
   };
 }
 
-async function calculateHealth(project: ProjectSummary, profile: ProjectProfile, diagnostics: ScanIssue[], actionState: Partial<Record<WorkspaceAction, CommandResult>>, typecheckStatus: WorkspaceStatus, onlineOptional: boolean): Promise<ProjectHealth> {
+async function calculateHealth(project: ProjectSummary, profile: ProjectProfile, diagnostics: ScanIssue[], actionState: Partial<Record<WorkspaceAction, CommandResult>>, typecheckStatus: WorkspaceStatus, onlineOptional: boolean, coverage: ProjectScan["coverage"]): Promise<ProjectHealth> {
   const has = (category: DiagnosticCategory) => diagnostics.filter((entry) => entry.category === category);
   const security = has("security");
   const dependencies = has("dependency");
@@ -714,9 +734,12 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
   const checks = (result: CommandResult | undefined) => result ? (result.ok ? 100 : 0) : null;
   const deduction = (entries: ScanIssue[]) => entries.reduce((total, entry) => total + ({ critical: 45, high: 25, medium: 12, low: 5, info: 0 }[entry.severity]), 0);
   const statusFromScore = (score: number | null): WorkspaceStatus => score === null ? "unknown" : score >= 85 ? "pass" : score >= 60 ? "warning" : "fail";
+  const securityScore = coverage.secretLiterals.state === "LIMIT_REACHED" ? null : Math.max(0, 100 - deduction(security));
+  const completenessLimited = coverage.completeness.state === "LIMIT_REACHED" || coverage.advancedCompletion.state === "LIMIT_REACHED";
+  const completenessScore = completenessLimited ? null : Math.max(0, 100 - deduction(completeness));
   const metrics = [
     metric("codeQuality", "Code quality", 12, statusFromScore(typecheckStatus === "unknown" ? null : Math.max(0, 100 - deduction(typecheck))), typecheckStatus === "unknown" ? null : Math.max(0, 100 - deduction(typecheck)), [typecheckStatus === "unknown" ? "No TypeScript check was detected." : "TypeScript compiler result was collected."], typecheck.map((entry) => entry.title)),
-    metric("security", "Security", 14, statusFromScore(Math.max(0, 100 - deduction(security))), Math.max(0, 100 - deduction(security)), ["Tracked secret-file check and available package security scan."], security.map((entry) => entry.title)),
+    metric("security", "Security", 14, statusFromScore(securityScore), securityScore, [coverage.secretLiterals.reason, "Tracked secret-file check and available package security scan."], security.map((entry) => entry.title)),
     metric("dependencies", "Dependencies", 10, statusFromScore(Math.max(0, 100 - deduction(dependencies))), Math.max(0, 100 - deduction(dependencies)), [`${profile.dependencies.length} declared dependencies detected.`], dependencies.map((entry) => entry.title)),
     metric("tests", "Tests", 12, actionState.test ? (actionState.test.ok ? "pass" : "fail") : "unknown", checks(actionState.test), [actionState.test ? actionState.test.message : "Tests have not been run by KForge."], actionState.test?.ok ? [] : actionState.test ? [actionState.test.message] : [], taskEvidenceDetails(actionState.test)),
     metric("build", "Build", 12, actionState.build ? (actionState.build.ok ? "pass" : "fail") : "unknown", checks(actionState.build), [actionState.build ? actionState.build.message : "Build has not been run by KForge."], actionState.build?.ok ? [] : actionState.build ? [actionState.build.message] : [], taskEvidenceDetails(actionState.build)),
@@ -724,7 +747,7 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
     metric("git", "Git", 8, statusFromScore(gitScore), gitScore, [`Branch ${project.branch}; ${project.modifiedFiles} modified, ${project.untrackedFiles} untracked, ${project.behind} behind.`], project.behind ? ["Remote commits are available."] : []),
     metric("documentation", "Documentation", 6, statusFromScore((awaitableScore(profile.totalFileCount > 0 && profile.sourceFileCount > 0, 100))), awaitableScore(profile.totalFileCount > 0 && profile.sourceFileCount > 0, 100), [await pathExists(path.join(project.path, "README.md")) ? "README.md detected." : "README.md not detected."], diagnostics.filter((entry) => entry.id.includes("missing-readme")).map((entry) => entry.title)),
     metric("architecture", "Architecture", 8, statusFromScore(profile.sourceRoots.length ? 90 : profile.sourceFileCount ? 65 : 0), profile.sourceRoots.length ? 90 : profile.sourceFileCount ? 65 : 0, [profile.sourceRoots.length ? `Source roots: ${profile.sourceRoots.join(", ")}.` : "No conventional source root detected."], []),
-    metric("completeness", "Project completeness", 8, statusFromScore(Math.max(0, 100 - deduction(completeness))), Math.max(0, 100 - deduction(completeness)), ["TODO/FIXME markers, README, and environment-template evidence were inspected."], completeness.map((entry) => entry.title)),
+    metric("completeness", "Project completeness", 8, statusFromScore(completenessScore), completenessScore, [coverage.completeness.reason, coverage.advancedCompletion.reason, "TODO/FIXME markers, README, and environment-template evidence were inspected."], completeness.map((entry) => entry.title)),
   ];
   const measured = metrics.filter((entry) => entry.score !== null);
   const totalWeight = measured.reduce((total, entry) => total + entry.weight, 0);
@@ -734,8 +757,9 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
   const failedMetrics = metrics.filter((entry) => entry.status === "fail");
   const unknownVerification = metrics.filter((entry) => ["tests", "build", "runtime"].includes(entry.key) && entry.status === "unknown");
   const staleVerification = metrics.filter((entry) => ["tests", "build", "runtime"].includes(entry.key) && entry.freshness === "stale-task");
+  const incompleteScans = metrics.filter((entry) => ["security", "completeness"].includes(entry.key) && entry.status === "unknown");
   const blockers = [...blockingIssues.map(toDecisionEntry), ...failedMetrics.map((entry) => ({ title: `${entry.label} failed`, source: "KForge health" }))];
-  const warnings = [...warningIssues.map(toDecisionEntry), ...unknownVerification.map((entry) => ({ title: `${entry.label} has not been verified`, source: "KForge health" })), ...staleVerification.map((entry) => ({ title: `${entry.label} evidence is stale`, source: "KForge health" }))];
+  const warnings = [...warningIssues.map(toDecisionEntry), ...unknownVerification.map((entry) => ({ title: `${entry.label} has not been verified`, source: "KForge health" })), ...staleVerification.map((entry) => ({ title: `${entry.label} evidence is stale`, source: "KForge health" })), ...incompleteScans.map((entry) => ({ title: `${entry.label} scan reached its safety limit`, source: "KForge bounded scanner" }))];
   const localState: ProjectHealth["release"]["state"] = blockers.length ? "BLOCKED" : warnings.length ? "READY WITH WARNINGS" : "READY";
   const calculatedAt = new Date().toISOString();
   const sources = projectHealthEvidenceSources(project, profile, localState, onlineOptional, calculatedAt);
@@ -866,17 +890,19 @@ export async function scanProject(project: ProjectSummary): Promise<ProjectScan>
   const safeReadOnly = project.trust !== "trusted";
   const [sensitiveFiles, secretLiterals, dependencyIssues, completeness, advancedCompletion, eslintFindings, externalFindings] = await Promise.all([trackedSensitiveFiles(project), secretLiteralIssues(project), Promise.resolve([] as ScanIssue[]), completenessIssues(project, profile), advancedCompletionIssues(project), safeReadOnly ? Promise.resolve([] as ScanIssue[]) : lintIssues(project, profile, tools), externalScannerIssues(project, tools)]);
   sensitiveFiles.forEach((file) => diagnostics.push(issue(project.id, `tracked-sensitive-${file}`, "high", "security", "Potentially sensitive file is tracked by Git", `${file} is version-controlled and requires review.`, { file, source: "Git", rule: "git/tracked-sensitive-file", fixability: "guided", risk: "approval", suggestion: "Move secrets to an ignored local file and rotate any exposed credentials." })));
-  diagnostics.push(...secretLiterals, ...dependencyIssues, ...completeness, ...advancedCompletion, ...eslintFindings, ...externalFindings);
+  diagnostics.push(...secretLiterals.issues, ...dependencyIssues, ...completeness.issues, ...advancedCompletion.issues, ...eslintFindings, ...externalFindings);
   if (project.modifiedFiles + project.untrackedFiles > 0) diagnostics.push(issue(project.id, "working-tree-changed", "info", "git", "Local changes are present", `${project.modifiedFiles} modified and ${project.untrackedFiles} untracked file(s) are present.`, { source: "Git", fixability: "manual", suggestion: "Review the diff before pulling, pushing, or creating a release." }));
   if (project.behind > 0) diagnostics.push(issue(project.id, "remote-behind", "medium", "git", "Remote updates are available", `The current branch is ${project.behind} commit(s) behind its upstream branch.`, { source: "Git", fixability: "guided", suggestion: "Pull and resolve conflicts before dependent work." }));
-  const health = await calculateHealth(project, profile, diagnostics, actionState, typecheckStatus, onlineOptional);
+  const coverage = { secretLiterals: secretLiterals.coverage, completeness: completeness.coverage, advancedCompletion: advancedCompletion.coverage };
+  const health = await calculateHealth(project, profile, diagnostics, actionState, typecheckStatus, onlineOptional, coverage);
   const scannedAt = new Date().toISOString();
   await recordProjectScanned(getWorkspaceRoot(), project.path);
   return {
     projectId: project.id, scannedAt, profile, health, technology: [...profile.framework, ...profile.languages],
     git: { branch: project.branch, remoteUrl: project.remoteUrl, modifiedFiles: project.modifiedFiles, untrackedFiles: project.untrackedFiles, ahead: project.ahead, behind: project.behind },
     issues: diagnostics,
-    summaries: { security: statusForIssues(diagnostics, ["security"]), dependencies: statusForIssues(diagnostics, ["dependency"]), tests: actionState.test ? (actionState.test.ok ? "pass" : "fail") : "unknown", build: actionState.build ? (actionState.build.ok ? "pass" : "fail") : "unknown", typecheck: typecheckStatus },
+    summaries: { security: coverage.secretLiterals.state === "LIMIT_REACHED" ? "unknown" : statusForIssues(diagnostics, ["security"]), dependencies: statusForIssues(diagnostics, ["dependency"]), tests: actionState.test ? (actionState.test.ok ? "pass" : "fail") : "unknown", build: actionState.build ? (actionState.build.ok ? "pass" : "fail") : "unknown", typecheck: typecheckStatus },
+    coverage,
     tools,
   };
 }
@@ -1631,15 +1657,15 @@ async function executeMissionStrategyStep(project: ProjectSummary, mission: Miss
   const ensureScan = async () => context.scan ||= await scanProject(project);
   const command = async (action: WorkspaceAction) => { const result = await executeProjectAction(project, action); return { ok: result.ok, output: result, message: result.ok ? `${action} completed with local evidence.` : `${action} failed; evidence was recorded.` }; };
   switch (step.tool) {
-    case "scan": { const scan = await ensureScan(); return { ok: true, output: { scannedAt: scan.scannedAt, issues: scan.issues.length, profile: scan.profile }, message: "Project scan completed." }; }
+    case "scan": { const scan = await ensureScan(); return { ok: true, output: { scannedAt: scan.scannedAt, issues: scan.issues.length, profile: scan.profile, coverage: scan.coverage }, message: "Project scan completed with explicit bounded coverage evidence." }; }
     case "prioritize_findings": { const scan = await ensureScan(); const findings = scan.issues.filter((issue) => ["critical", "high"].includes(issue.severity)); return { ok: true, output: { count: findings.length, findings }, message: `${findings.length} critical or high finding(s) prioritized from current scan evidence.` }; }
     case "build_context": { const scan = await ensureScan(); const bounded = await buildAgentContext(project, scan); return { ok: true, output: { files: bounded.files.map((file) => file.path), totalCharacters: bounded.totalCharacters }, message: "Bounded local context recorded without claiming an AI analysis." }; }
     case "analyze": { const scan = await ensureScan(); const finding = scan.issues.find((issue) => ["critical", "high"].includes(issue.severity)); return { ok: true, output: finding || { state: "NO_CRITICAL_OR_HIGH_FINDING" }, message: finding ? "Target finding analysis recorded from current scan evidence." : "No critical or high finding exists to analyze." }; }
-    case "discovery_timing": { const started = performance.now(); const files = await findFiles(project.path, () => true, 5_000); const durationMs = Number((performance.now() - started).toFixed(2)); return { ok: true, output: { filesDiscovered: files.length, durationMs, limit: 5_000 }, message: `Local file discovery measured in ${durationMs}ms.` }; }
-    case "search_timing": { const started = performance.now(); const candidates = await findFiles(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()), 5_000); const matches: string[] = []; for (const relative of candidates) { if (await fileContains(path.join(project.path, relative), /TODO|FIXME/i)) matches.push(relative); } const durationMs = Number((performance.now() - started).toFixed(2)); return { ok: true, output: { filesSearched: candidates.length, todoOrFixmeMatches: matches.length, durationMs, limit: 5_000 }, message: `Local source search measured in ${durationMs}ms.` }; }
-    case "graph": { const graph = context.graph ||= await buildProjectGraph(project.path); return { ok: true, output: graph.summary, message: "Dependency graph completed." }; }
+    case "discovery_timing": { const started = performance.now(); const traversal = await findFilesWithEvidence(project.path, () => true, 5_000, "Agent discovery timing traversal"); const durationMs = Number((performance.now() - started).toFixed(2)); return { ok: true, output: { filesDiscovered: traversal.files.length, durationMs, coverage: traversal.coverage }, message: `Local file discovery measured in ${durationMs}ms with ${traversal.coverage.state} coverage.` }; }
+    case "search_timing": { const started = performance.now(); const traversal = await findFilesWithEvidence(project.path, (relative) => sourceExtensions.has(path.extname(relative).toLowerCase()), 5_000, "Agent search timing source traversal"); const matches: string[] = []; for (const relative of traversal.files) { if (await fileContains(path.join(project.path, relative), /TODO|FIXME/i)) matches.push(relative); } const durationMs = Number((performance.now() - started).toFixed(2)); return { ok: true, output: { filesSearched: traversal.files.length, todoOrFixmeMatches: matches.length, durationMs, coverage: traversal.coverage }, message: `Local source search measured in ${durationMs}ms with ${traversal.coverage.state} coverage.` }; }
+    case "graph": { const graph = context.graph ||= await buildProjectGraph(project.path); return { ok: true, output: { summary: graph.summary, coverage: graph.coverage, cache: graph.cache }, message: `Dependency graph completed with ${graph.coverage.state} coverage.` }; }
     case "sonar": { const result = await executeAgentTool(project.path, projectToolHandlers(project), "sonar"); return { ok: result.ok, output: result.output, message: result.ok ? "KForge Sonar evidence completed." : result.message }; }
-    case "health": { const scan = await ensureScan(); return { ok: true, output: scan.health, message: "Project health evidence recorded." }; }
+    case "health": { const scan = await ensureScan(); return { ok: true, output: { health: scan.health, coverage: scan.coverage }, message: "Project health evidence recorded with bounded scan coverage." }; }
     case "dependency_audit": { const result = await executeAgentTool(project.path, projectToolHandlers(project), "dependency_audit"); return { ok: result.ok, output: result.output, message: result.ok ? "Dependency audit completed." : result.message }; }
     case "documentation_audit": { const scan = await ensureScan(); const documentation = context.documentation ||= await auditDocumentation(project.path, scan.profile); return { ok: true, output: documentation, message: "Documentation evidence completed." }; }
     case "git_status": { const git = await gitCenter(project); return { ok: true, output: git, message: "Local Git evidence completed." }; }
@@ -2094,7 +2120,7 @@ router.get("/projects/:id/health", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   const scan = await scanProject(project);
-  return res.json({ projectId: project.id, health: scan.health, scannedAt: scan.scannedAt, issueCount: scan.issues.length, tools: scan.tools });
+  return res.json({ projectId: project.id, health: scan.health, scannedAt: scan.scannedAt, issueCount: scan.issues.length, coverage: scan.coverage, tools: scan.tools });
 });
 
 router.get("/projects/:id/documentation", async (req, res) => {
@@ -2194,14 +2220,14 @@ router.get("/projects/:id/architecture", async (req, res) => {
   const highCoupling = [...incoming.entries()].filter(([, count]) => count >= 5).map(([id, dependents]) => ({ file: id.replace(/^file:/, ""), dependents })).sort((left, right) => right.dependents - left.dependents);
   const apiBoundaries = graph.nodes.filter((node) => node.type === "api").map((node) => ({ path: node.label, owner: node.path }));
   const routeBoundaries = graph.nodes.filter((node) => node.type === "route").map((node) => ({ path: node.label, owner: node.path }));
-  return res.json({ projectId: project.id, generatedAt: graph.generatedAt, modules, apiBoundaries, routeBoundaries, directCycles, dependencyCycles: graph.analysis.cycles, duplicatedResponsibilities: graph.analysis.duplicatedResponsibilities, languageAdapters: graph.analysis.languageAdapters, highCoupling, limitations: ["Architecture and symbol evidence is static; runtime dispatch and dynamic imports are not inferred.", ...graph.analysis.limitations] });
+  return res.json({ projectId: project.id, generatedAt: graph.generatedAt, coverage: graph.coverage, cache: graph.cache, modules, apiBoundaries, routeBoundaries, directCycles, dependencyCycles: graph.analysis.cycles, duplicatedResponsibilities: graph.analysis.duplicatedResponsibilities, languageAdapters: graph.analysis.languageAdapters, highCoupling, limitations: ["Architecture and symbol evidence is static; runtime dispatch and dynamic imports are not inferred.", ...graph.analysis.limitations] });
 });
 
 router.get("/projects/:id/problems", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   const scan = await scanProject(project);
-  res.json({ projectId: project.id, scannedAt: scan.scannedAt, problems: scan.issues, health: scan.health });
+  res.json({ projectId: project.id, scannedAt: scan.scannedAt, problems: scan.issues, health: scan.health, coverage: scan.coverage });
 });
 
 router.post("/projects/:id/tasks", async (req, res) => {
