@@ -1,6 +1,17 @@
+import { existsSync } from "fs";
 import path from "path";
 import express from "express";
 import { createServer } from "./index";
+
+const applicationRoot = path.resolve(process.env.KFORGE_APP_ROOT || path.resolve(import.meta.dirname, "../.."));
+const firstPartyManifest = path.join(applicationRoot, "fixtures", "marketplace-first-party", "manifest.json");
+const firstPartyUpdateManifest = path.join(applicationRoot, "fixtures", "marketplace-first-party-v110", "manifest.json");
+
+if (!existsSync(firstPartyManifest) || !existsSync(firstPartyUpdateManifest)) {
+  throw new Error(`KForge first-party Marketplace fixtures are missing from the application root: ${applicationRoot}`);
+}
+
+process.chdir(applicationRoot);
 
 const app = createServer();
 const port = Number(process.env.PORT || 3000);
