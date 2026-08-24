@@ -9,6 +9,7 @@ import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } fr
 import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executePreviewFixVerify, executeProjectAction, githubReadState, makeProjectSummary, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
 import { startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import type { KForgeTask } from "../services/tasks";
+import { selectProjectRuntime } from "../services/projectExecution";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 const fixture = (name: string) => path.join(fixturesRoot, name);
@@ -139,14 +140,14 @@ describe("KForge Workspace engines", () => {
     const expectations = [
       { name: "workspace-clean", frameworks: ["React", "Vite", "Node.js"], languages: ["TypeScript", "JavaScript"], commands: { test: true, build: true } },
       { name: "workspace-node", frameworks: ["Node.js", "Express"], languages: ["JavaScript"], commands: { test: true, build: true, runtime: true } },
-      { name: "workspace-python", frameworks: ["FastAPI", "pytest"], languages: ["Python"], commands: { test: true, build: false } },
-      { name: "workspace-django", frameworks: ["Django", "pytest"], languages: ["Python"], commands: { test: true, build: false } },
-      { name: "workspace-go", frameworks: ["Go"], languages: ["Go"], commands: { test: true, build: true } },
-      { name: "workspace-rust", frameworks: ["Rust"], languages: ["Rust"], commands: { test: true, build: true } },
-      { name: "workspace-java-maven", frameworks: ["Maven", "Spring Boot"], languages: ["Java"], commands: { test: true, build: true } },
-      { name: "workspace-java-gradle", frameworks: ["Gradle"], languages: ["Java"], commands: { test: false, build: false } },
-      { name: "workspace-dotnet", frameworks: [".NET"], languages: ["C#"], commands: { test: true, build: true } },
-      { name: "workspace-php", frameworks: ["PHP", "Composer", "Laravel"], languages: ["PHP"], commands: { test: true, build: false } },
+      { name: "workspace-python", frameworks: ["FastAPI", "pytest"], languages: ["Python"], commands: { test: true, build: false, runtime: true }, preview: true },
+      { name: "workspace-django", frameworks: ["Django", "pytest"], languages: ["Python"], commands: { test: true, build: false, runtime: false }, preview: false },
+      { name: "workspace-go", frameworks: ["Go"], languages: ["Go"], commands: { test: true, build: true, runtime: true }, preview: false },
+      { name: "workspace-rust", frameworks: ["Rust"], languages: ["Rust"], commands: { test: true, build: true, runtime: true }, preview: false },
+      { name: "workspace-java-maven", frameworks: ["Maven", "Spring Boot"], languages: ["Java"], commands: { test: true, build: true, runtime: false }, preview: false },
+      { name: "workspace-java-gradle", frameworks: ["Gradle"], languages: ["Java"], commands: { test: false, build: false, runtime: false }, preview: false },
+      { name: "workspace-dotnet", frameworks: [".NET"], languages: ["C#"], commands: { test: true, build: true, runtime: true }, preview: false },
+      { name: "workspace-php", frameworks: ["PHP", "Composer", "Laravel"], languages: ["PHP"], commands: { test: true, build: false, runtime: false }, preview: false },
     ] as const;
     for (const expectation of expectations) {
       const profile = await detectProjectProfile(await makeProjectSummary(fixture(expectation.name)));
@@ -154,8 +155,15 @@ describe("KForge Workspace engines", () => {
       expect(profile.languages, expectation.name).toEqual(expect.arrayContaining([...expectation.languages]));
       expect(profile.manifests.length, expectation.name).toBeGreaterThan(0);
       for (const [kind, known] of Object.entries(expectation.commands)) {
-        expect(profile.commandEvidence.find((entry) => entry.kind === kind)?.known, `${expectation.name}:${kind}`).toBe(known);
+        const evidence = profile.commandEvidence.find((entry) => entry.kind === kind);
+        expect(evidence?.known, `${expectation.name}:${kind}`).toBe(known);
+        if (kind === "runtime") {
+          const selected = selectProjectRuntime(profile, 43123);
+          expect(selected.available, `${expectation.name}:Preview/runtime selector`).toBe(known);
+          if (!known) expect(evidence?.detail, `${expectation.name}:unavailable reason`).toContain("UNAVAILABLE:");
+        }
       }
+      if ("preview" in expectation) expect(selectProjectRuntime(profile, 43123, "preview").available, `${expectation.name}:Preview`).toBe(expectation.preview);
     }
   }, 30_000);
 
@@ -209,6 +217,29 @@ describe("KForge Workspace engines", () => {
       await recordProjectOpened(workspaceRoot, removedProject);
       await fs.rm(removedProject, { recursive: true, force: true });
       await expect(candidateProjectPaths(workspaceRoot)).resolves.not.toContain(removedProject);
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("discovers supported non-Node projects from their canonical root metadata", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-non-node-discovery-"));
+    const dotnetProject = path.join(workspaceRoot, "dotnet-app");
+    const gradleProject = path.join(workspaceRoot, "gradle-app");
+    const requirementsProject = path.join(workspaceRoot, "python-app");
+    try {
+      await Promise.all([
+        fs.mkdir(dotnetProject),
+        fs.mkdir(gradleProject),
+        fs.mkdir(requirementsProject),
+      ]);
+      await Promise.all([
+        fs.writeFile(path.join(dotnetProject, "App.csproj"), '<Project Sdk="Microsoft.NET.Sdk" />'),
+        fs.writeFile(path.join(gradleProject, "build.gradle.kts"), "plugins { application }"),
+        fs.writeFile(path.join(requirementsProject, "requirements.txt"), "pytest\n"),
+      ]);
+      await expect(candidateProjectPaths(workspaceRoot)).resolves.toEqual(expect.arrayContaining([dotnetProject, gradleProject, requirementsProject]));
+      await expect(candidateProjectPaths(dotnetProject)).resolves.toContain(dotnetProject);
     } finally {
       await fs.rm(workspaceRoot, { recursive: true, force: true });
     }

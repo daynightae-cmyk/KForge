@@ -44,6 +44,7 @@ import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from 
 import { detectSecurityTools, isSecurityToolId, runSecurityTool } from "../services/securityTools";
 import { getMarketplace, getProjectMarketplace, listMarketplaceRegistryAdapters, previewMarketplaceInstall } from "../services/marketplace";
 import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
+import { selectProjectRuntime } from "../services/projectExecution";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
 import { createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "../services/onlineControlCenter";
@@ -135,6 +136,12 @@ function commandResultFromTask(task: KForgeTask): CommandResult | undefined {
       reason: task.error,
     }),
   };
+}
+
+function missingExecutable(command: string, execution: CommandExecution) {
+  return !execution.ok && /(enoent|not recognized|executable file not found|could not be found|no such file or directory)/i.test(execution.output)
+    ? `UNAVAILABLE: required executable ${command} was not found on PATH.`
+    : undefined;
 }
 
 export function actionEvidenceFromTasks(tasks: KForgeTask[], inMemory: Partial<Record<WorkspaceAction, CommandResult>> = {}): Partial<Record<WorkspaceAction, CommandResult>> {
@@ -358,16 +365,24 @@ export async function detectProjectProfile(project: ProjectSummary): Promise<Pro
   register("production", scriptCommand("start"), "package.json", scripts.start ? "Explicit package production script." : "UNKNOWN: no explicit package production script.");
   register("runtime", scriptCommand("start"), "package.json", scripts.start ? "Runtime entrypoint is the explicit start script." : "UNKNOWN: no explicit runtime entrypoint.");
   const hasCommand = (kind: string) => Boolean(commands[kind]);
-  if (rootNames.has("go.mod")) { if (!hasCommand("test")) register("test", "go test ./...", "go.mod", "Go module convention."); if (!hasCommand("build")) register("build", "go build ./...", "go.mod", "Go module convention."); }
-  if (rootNames.has("Cargo.toml")) { if (!hasCommand("test")) register("test", "cargo test", "Cargo.toml", "Cargo manifest convention."); if (!hasCommand("build")) register("build", "cargo build --release", "Cargo.toml", "Cargo manifest convention."); }
-  if (rootNames.has("pom.xml")) { if (!hasCommand("test")) register("test", "mvn test", "pom.xml", "Maven lifecycle metadata."); if (!hasCommand("build")) register("build", "mvn package -DskipTests", "pom.xml", "Maven lifecycle metadata."); }
-  if (rootNames.has("build.gradle") || rootNames.has("build.gradle.kts")) { const wrapper = rootNames.has(process.platform === "win32" ? "gradlew.bat" : "gradlew") ? (process.platform === "win32" ? "gradlew.bat" : "./gradlew") : undefined; if (!hasCommand("test")) register("test", wrapper ? `${wrapper} test` : undefined, "Gradle wrapper", wrapper ? "Explicit project wrapper." : "UNKNOWN: Gradle wrapper not present."); if (!hasCommand("build")) register("build", wrapper ? `${wrapper} build -x test` : undefined, "Gradle wrapper", wrapper ? "Explicit project wrapper." : "UNKNOWN: Gradle wrapper not present."); }
-  if ([...rootNames].some((name) => name.endsWith(".csproj") || name.endsWith(".sln"))) { if (!hasCommand("test")) register("test", "dotnet test", "*.csproj", ".NET project metadata."); if (!hasCommand("build")) register("build", "dotnet build --configuration Release", "*.csproj", ".NET project metadata."); }
+  if (rootNames.has("go.mod")) { if (!hasCommand("test")) register("test", "go test ./...", "go.mod", "Go module convention."); if (!hasCommand("build")) register("build", "go build ./...", "go.mod", "Go module convention."); if (!hasCommand("runtime")) register("runtime", rootNames.has("main.go") ? "go run ." : undefined, "main.go", rootNames.has("main.go") ? "Explicit Go main package entrypoint." : "UNAVAILABLE: main.go was not found at the module root."); }
+  if (rootNames.has("Cargo.toml")) { if (!hasCommand("test")) register("test", "cargo test", "Cargo.toml", "Cargo manifest convention."); if (!hasCommand("build")) register("build", "cargo build --release", "Cargo.toml", "Cargo manifest convention."); if (!hasCommand("runtime")) register("runtime", allFiles.includes("src/main.rs") ? "cargo run --release" : undefined, "src/main.rs", allFiles.includes("src/main.rs") ? "Explicit Rust binary entrypoint." : "UNAVAILABLE: src/main.rs and an explicit binary target were not detected."); }
+  const mavenText = rootNames.has("pom.xml") ? await fs.readFile(path.join(root, "pom.xml"), "utf8").catch(() => "") : "";
+  if (rootNames.has("pom.xml")) { if (!hasCommand("test")) register("test", "mvn test", "pom.xml", "Maven lifecycle metadata."); if (!hasCommand("build")) register("build", "mvn package -DskipTests", "pom.xml", "Maven lifecycle metadata."); if (!hasCommand("runtime")) register("runtime", /spring-boot-maven-plugin/.test(mavenText) ? "mvn spring-boot:run" : undefined, "pom.xml#build.plugins", /spring-boot-maven-plugin/.test(mavenText) ? "Explicit Spring Boot Maven plugin." : "UNAVAILABLE: no Spring Boot or exec runtime plugin is declared in pom.xml."); }
+  const gradleName = rootNames.has("build.gradle") ? "build.gradle" : rootNames.has("build.gradle.kts") ? "build.gradle.kts" : undefined;
+  const gradleText = gradleName ? await fs.readFile(path.join(root, gradleName), "utf8").catch(() => "") : "";
+  if (gradleName) { const wrapper = rootNames.has(process.platform === "win32" ? "gradlew.bat" : "gradlew") ? (process.platform === "win32" ? "gradlew.bat" : "./gradlew") : undefined; if (!hasCommand("test")) register("test", wrapper ? `${wrapper} test` : undefined, "Gradle wrapper", wrapper ? "Explicit project wrapper." : "UNAVAILABLE: Gradle wrapper not present."); if (!hasCommand("build")) register("build", wrapper ? `${wrapper} build -x test` : undefined, "Gradle wrapper", wrapper ? "Explicit project wrapper." : "UNAVAILABLE: Gradle wrapper not present."); const task = /org\.springframework\.boot|spring-boot/i.test(gradleText) ? "bootRun" : /(?:id\s*\(?[\"']application|apply\s+plugin:\s*[\"']application)/.test(gradleText) ? "run" : undefined; if (!hasCommand("runtime")) register("runtime", wrapper && task ? `${wrapper} ${task}` : undefined, "Gradle wrapper/application plugin", !wrapper ? "UNAVAILABLE: Gradle wrapper not present." : !task ? "UNAVAILABLE: no application or Spring Boot runtime task is declared." : "Explicit wrapper and runnable application plugin."); }
+  const dotnetProject = [...rootNames].find((name) => name.endsWith(".csproj"));
+  const dotnetText = dotnetProject ? await fs.readFile(path.join(root, dotnetProject), "utf8").catch(() => "") : "";
+  if (dotnetProject || [...rootNames].some((name) => name.endsWith(".sln"))) { if (!hasCommand("test")) register("test", "dotnet test", "*.csproj", ".NET project metadata."); if (!hasCommand("build")) register("build", "dotnet build --configuration Release", "*.csproj", ".NET project metadata."); const web = /Microsoft\.NET\.Sdk\.Web/i.test(dotnetText); const executable = /<OutputType>\s*Exe\s*<\/OutputType>/i.test(dotnetText); const runnable = web || executable; if (!hasCommand("runtime")) register("runtime", runnable ? "dotnet run" : undefined, dotnetProject || "*.sln", web ? "Explicit .NET Web SDK." : executable ? "Explicit .NET executable OutputType." : "UNAVAILABLE: no executable .csproj OutputType or Web SDK was detected."); }
   const pythonMetadata = ["pyproject.toml", "requirements.txt", "pytest.ini"].map((name) => path.join(root, name));
   const pythonText = (await Promise.all(pythonMetadata.map((file) => fs.readFile(file, "utf8").catch(() => "")))).join("\n");
   if (/(?:pytest|\[tool\.pytest)/i.test(pythonText) && !hasCommand("test")) register("test", "python -m pytest", "pyproject.toml/pytest.ini", "pytest metadata detected.");
-  if (rootNames.has("composer.json")) { const composer = await readJson(path.join(root, "composer.json")); const composerScripts = stringRecord(composer?.scripts); if (composerScripts.test && !hasCommand("test")) register("test", "composer test", "composer.json", "Explicit Composer test script."); if (composerScripts.build && !hasCommand("build")) register("build", "composer build", "composer.json", "Explicit Composer build script."); }
-  const runtimeEntrypoint = scripts.start ? "package.json#scripts.start" : rootNames.has("main.go") ? "main.go" : rootNames.has("Cargo.toml") ? "src/main.rs" : rootNames.has("artisan") ? "artisan" : undefined;
+  if (!hasCommand("runtime") && frameworks.includes("FastAPI")) { const fastApiFile = sourceFiles.find((file) => file.endsWith(".py") && /(?:^|\/)main\.py$/.test(file) && !file.startsWith("tests/")); const source = fastApiFile ? await fs.readFile(path.join(root, fastApiFile), "utf8").catch(() => "") : ""; const moduleName = fastApiFile?.replace(/\.py$/, "").replace(/\//g, "."); const runnable = Boolean(moduleName && /\bapp\s*=\s*FastAPI\s*\(/.test(source) && /\buvicorn\b/i.test(pythonText)); register("runtime", runnable ? `python -m uvicorn ${moduleName}:app` : undefined, fastApiFile || "Python metadata", runnable ? "Explicit FastAPI app plus declared uvicorn runner." : "UNAVAILABLE: FastAPI runtime requires a detected app symbol and a declared uvicorn dependency."); }
+  if (!hasCommand("runtime") && frameworks.includes("Django")) register("runtime", rootNames.has("manage.py") ? "python manage.py runserver" : undefined, "manage.py", rootNames.has("manage.py") ? "Explicit Django management entrypoint." : "UNAVAILABLE: Django manage.py was not found at the project root.");
+  if (rootNames.has("composer.json")) { const composer = await readJson(path.join(root, "composer.json")); const composerScripts = stringRecord(composer?.scripts); if (composerScripts.test && !hasCommand("test")) register("test", "composer test", "composer.json", "Explicit Composer test script."); if (composerScripts.build && !hasCommand("build")) register("build", "composer build", "composer.json", "Explicit Composer build script."); const laravelRuntime = rootNames.has("artisan") && allFiles.includes("bootstrap/app.php"); if (!hasCommand("runtime")) register("runtime", laravelRuntime ? "php artisan serve" : composerScripts.serve ? "composer run serve" : composerScripts.start ? "composer run start" : undefined, laravelRuntime ? "artisan + bootstrap/app.php" : "composer.json#scripts", laravelRuntime ? "Explicit Laravel Artisan HTTP entrypoint and application bootstrap." : composerScripts.serve ? "Explicit Composer serve script." : composerScripts.start ? "Explicit Composer runtime script." : "UNAVAILABLE: Laravel bootstrap/app.php or a Composer start/serve script was not detected."); }
+  const runtimeEvidence = commandEvidence.find((entry) => entry.kind === "runtime" && entry.known);
+  const runtimeEntrypoint = runtimeEvidence?.source;
   const performance = chooseProjectPerformance(allFiles.length, projectSizeBytes);
   return {
     projectId: project.id,
@@ -421,17 +436,22 @@ export async function makeProjectSummary(projectPath: string): Promise<ProjectSu
 
 export async function candidateProjectPaths(root = getWorkspaceRoot()) {
   const candidates = new Set<string>();
+  const hasProjectMarker = async (candidate: string) => {
+    const entries = await fs.readdir(candidate, { withFileTypes: true }).catch(() => [] as Dirent[]);
+    const names = new Set(entries.map((entry) => entry.name));
+    const markers = [".git", "package.json", "pyproject.toml", "requirements.txt", "setup.py", "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "build.gradle.kts", "composer.json"];
+    return markers.some((marker) => names.has(marker)) || entries.some((entry) => entry.isFile() && (entry.name.endsWith(".csproj") || entry.name.endsWith(".sln")));
+  };
   const knownPaths = [...openedPaths, ...(await listProjectCollectionEntries(root)).map((entry) => entry.path)];
   for (const candidate of knownPaths) {
     const stat = await fs.stat(candidate).catch(() => undefined);
     if (stat?.isDirectory()) candidates.add(candidate);
   }
-  if (await pathExists(path.join(root, "package.json"))) candidates.add(root);
+  if (await hasProjectMarker(root)) candidates.add(root);
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => [] as Dirent[]);
   for (const entry of entries.filter((item) => item.isDirectory() && !item.name.startsWith(".")).slice(0, 100)) {
     const candidate = path.join(root, entry.name);
-    const markers = [".git", "package.json", "pyproject.toml", "Cargo.toml", "go.mod", "pom.xml", "composer.json"];
-    if ((await Promise.all(markers.map((marker) => pathExists(path.join(candidate, marker))))).some(Boolean)) candidates.add(candidate);
+    if (await hasProjectMarker(candidate)) candidates.add(candidate);
   }
   return [...candidates];
 }
@@ -886,23 +906,30 @@ function projectActionTransparency(project: ProjectSummary, action: WorkspaceAct
 
 async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): Promise<CommandResult> {
   const startedAt = new Date().toISOString();
-  if (!profile.scripts.start) {
+  const port = 32100 + Math.floor(Math.random() * 500);
+  const selection = selectProjectRuntime(profile, port);
+  if (selection.available === false) {
     const completedAt = new Date().toISOString();
-    const message = "No production start script was detected.";
+    const message = selection.reason;
     return { action: "runtime", projectId: project.id, ok: false, startedAt, completedAt, output: "", message, transparency: projectActionTransparency(project, "runtime", startedAt, completedAt, "BLOCKED", message) };
   }
-  const port = 32100 + Math.floor(Math.random() * 500);
-  const selected = commandFor(profile.packageManager, "start");
-  const executable = process.platform === "win32" && ["npm", "pnpm", "yarn"].includes(selected.command) ? `${selected.command}.cmd` : selected.command;
-  const child = spawn(executable, selected.args, { cwd: project.path, shell: process.platform === "win32" && executable.endsWith(".cmd"), windowsHide: true, env: { ...process.env, PORT: String(port) } });
+  const selected = selection.selected;
+  if (selected.mode === "process") {
+    const execution = await run(selected.command, selected.args, project.path, commandTimeoutMs);
+    const completedAt = new Date().toISOString();
+    const message = execution.ok ? `Runtime process completed successfully with ${selected.source}.` : missingExecutable(selected.command, execution) || `Runtime process ${selected.display} failed.`;
+    return { action: "runtime", projectId: project.id, ok: execution.ok, startedAt, completedAt, exitCode: execution.code, output: execution.output, message, transparency: projectActionTransparency(project, "runtime", startedAt, completedAt, execution.ok ? "SUCCEEDED" : "FAILED", execution.ok ? undefined : message) };
+  }
+  const child = spawn(selected.command, selected.args, { cwd: project.path, shell: process.platform === "win32" && selected.command.endsWith(".cmd"), windowsHide: true, env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${port}` } });
   let output = "";
   child.stdout.on("data", (data: Buffer) => { output += data.toString(); });
   child.stderr.on("data", (data: Buffer) => { output += data.toString(); });
+  child.on("error", (error) => { output += `\nUNAVAILABLE: ${selected.command} could not start: ${error.message}`; });
   const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
   await wait(3_500);
   let ok = false;
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(4_000) });
+    const response = await fetch(`http://127.0.0.1:${port}${selected.urlPath || "/"}`, { signal: AbortSignal.timeout(4_000) });
     ok = response.ok;
     output += `\nHTTP ${response.status} ${response.statusText}`;
   } catch (error: unknown) {
@@ -910,7 +937,8 @@ async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): P
   }
   child.kill();
   const completedAt = new Date().toISOString();
-  const message = ok ? "Runtime start and main-route HTTP check completed successfully." : "Runtime verification could not obtain a successful main-route response.";
+  const unavailable = missingExecutable(selected.command, { ok: false, code: 1, output });
+  const message = ok ? `Runtime start and HTTP probe completed successfully with ${selected.source}.` : unavailable || `Runtime verification using ${selected.display} could not obtain a successful HTTP probe response.`;
   return { action: "runtime", projectId: project.id, ok, startedAt, completedAt, exitCode: ok ? 0 : 1, output: output.trim(), message, transparency: projectActionTransparency(project, "runtime", startedAt, completedAt, ok ? "SUCCEEDED" : "FAILED", ok ? undefined : message) };
 }
 
@@ -956,7 +984,7 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
   }
   const execution = await run(command.command, command.args, project.path, commandTimeoutMs);
   const completedAt = new Date().toISOString();
-  const message = execution.ok ? `${action[0].toUpperCase()}${action.slice(1)} completed successfully.` : `${action[0].toUpperCase()}${action.slice(1)} failed.`;
+  const message = execution.ok ? `${action[0].toUpperCase()}${action.slice(1)} completed successfully.` : missingExecutable(command.command, execution) || `${action[0].toUpperCase()}${action.slice(1)} failed.`;
   const result: CommandResult = { action, projectId: project.id, ok: execution.ok, startedAt, completedAt, exitCode: execution.code, output: execution.output, message, transparency: projectActionTransparency(project, action, startedAt, completedAt, execution.ok ? "SUCCEEDED" : "FAILED", execution.ok ? undefined : message, confirmedRemoteWrite) };
   if (action === "pull" || action === "push") await recordRemoteContact(getWorkspaceRoot(), "remote-repository", { attemptedAt: completedAt, succeeded: execution.ok, destination: project.remoteUrl, error: execution.ok ? null : execution.output || message });
   latestActions.set(project.id, { ...(latestActions.get(project.id) || {}), [action]: result });

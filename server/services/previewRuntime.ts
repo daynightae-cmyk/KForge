@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
 import net from "net";
 import type { ProjectProfile } from "../../shared/workspace";
+import { selectProjectRuntime } from "./projectExecution";
 
 export type PreviewState = "idle" | "starting" | "running" | "failed" | "stopped" | "blocked" | "unavailable";
 
@@ -75,20 +76,6 @@ function appendLog(status: PreviewStatus, value: string) {
   status.logs = [...status.logs, ...lines.map((line) => line.slice(0, MAX_LOG_LINE_LENGTH))].slice(-MAX_LOG_LINES);
 }
 
-function commandFor(packageManager: string | null, script: string, port: number) {
-  const command = packageManager === "pnpm" ? "pnpm" : packageManager === "yarn" ? "yarn" : "npm";
-  const executable = process.platform === "win32" ? `${command}.cmd` : command;
-  const args = command === "npm" ? ["run", script, "--", "--port", String(port)] : ["run", script, "--port", String(port)];
-  return { command: executable, args, display: `${command} run ${script} -- --port ${port}` };
-}
-
-function selectedPreviewScript(profile: ProjectProfile) {
-  if (profile.scripts.preview) return "preview";
-  if (profile.scripts.dev) return "dev";
-  if (profile.scripts.start) return "start";
-  return undefined;
-}
-
 function reserveLocalPort() {
   return new Promise<number>((resolve, reject) => {
     const server = net.createServer();
@@ -144,18 +131,18 @@ export function getPreviewStatus(projectId: string): PreviewStatus {
 export async function startPreview(projectId: string, projectPath: string, profile: ProjectProfile): Promise<PreviewStatus> {
   const existing = activePreviews.get(projectId);
   if (existing && ["starting", "running"].includes(existing.status.state)) return cloneStatus(existing.status);
-  const script = selectedPreviewScript(profile);
-  if (!script) {
-    const unavailable = { ...baseStatus(projectId), state: "unavailable" as const, health: { ok: false, detail: "No preview, dev, or start script was detected from local project manifests." }, error: "PREVIEW_COMMAND_UNAVAILABLE" };
+  const port = await reserveLocalPort();
+  const selection = selectProjectRuntime(profile, port, "preview");
+  if (selection.available === false) {
+    const unavailable = { ...baseStatus(projectId), state: "unavailable" as const, health: { ok: false, detail: selection.reason }, error: "PREVIEW_COMMAND_UNAVAILABLE" };
     previewRecords.set(projectId, unavailable);
     return cloneStatus(unavailable);
   }
-  const port = await reserveLocalPort();
-  const selected = commandFor(profile.packageManager, script, port);
+  const selected = selection.selected;
   const previous = previewRecords.get(projectId);
-  const status: PreviewStatus = { ...baseStatus(projectId), sessionId: randomUUID(), state: "starting", command: selected.display, port, url: `http://127.0.0.1:${port}/`, startedAt: new Date().toISOString(), logs: [`Starting detected ${script} script on local port ${port}.`], history: previous?.history || [], healthHistory: previous?.healthHistory || [] };
-  recordEvent(status, "start", `Detected ${script} started on local port ${port}.`);
-  const child = spawn(selected.command, selected.args, { cwd: projectPath, shell: process.platform === "win32" && selected.command.endsWith(".cmd"), windowsHide: true, detached: process.platform !== "win32", env: { ...process.env, PORT: String(port), HOST: "127.0.0.1" } });
+  const status: PreviewStatus = { ...baseStatus(projectId), sessionId: randomUUID(), state: "starting", command: selected.display, port, url: `http://127.0.0.1:${port}${selected.urlPath || "/"}`, startedAt: new Date().toISOString(), logs: [`Starting detected runtime from ${selected.source} on local port ${port}.`], history: previous?.history || [], healthHistory: previous?.healthHistory || [] };
+  recordEvent(status, "start", `Detected runtime from ${selected.source} started on local port ${port}.`);
+  const child = spawn(selected.command, selected.args, { cwd: projectPath, shell: process.platform === "win32" && selected.command.endsWith(".cmd"), windowsHide: true, detached: process.platform !== "win32", env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${port}` } });
   status.pid = child.pid;
   const active: ActivePreview = { child, status };
   activePreviews.set(projectId, active);

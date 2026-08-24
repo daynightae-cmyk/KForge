@@ -8,6 +8,11 @@ dist-ssr/
 .next/
 out/
 coverage/
+target/
+bin/
+obj/
+__pycache__/
+*.py[cod]
 
 # Logs and local state
 logs/

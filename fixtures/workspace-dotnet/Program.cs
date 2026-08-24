@@ -1,1 +1,1 @@
-Console.WriteLine("kforge-dotnet-fixture");
+System.Console.WriteLine("kforge-dotnet-fixture");
