@@ -32,14 +32,25 @@ async function findOperationDirectories(root: string, operationId: string): Prom
   return matches;
 }
 
+async function assertRemoved(candidate: string, operationId: string): Promise<void> {
+  try {
+    await fs.access(candidate);
+    throw new Error(`Marketplace operation cleanup failed for ${operationId}: ${candidate} still exists.`);
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return;
+    throw error;
+  }
+}
+
 async function cleanupOperationState(workspaceRoot: string, operationId: string): Promise<void> {
   const safeOperationId = validateOperationId(operationId);
   const stateRoot = path.resolve(workspaceRoot, ".kforge");
   const candidates = await findOperationDirectories(stateRoot, safeOperationId);
-  await Promise.all(candidates.map((candidate) => fs.rm(candidate, { recursive: true, force: true })));
 
-  const remaining = await findOperationDirectories(stateRoot, safeOperationId);
-  if (remaining.length > 0) throw new Error(`Marketplace operation cleanup failed for ${safeOperationId}: ${remaining.join(", ")}`);
+  await Promise.all(candidates.map(async (candidate) => {
+    await fs.rm(candidate, { recursive: true, force: true });
+    await assertRemoved(candidate, safeOperationId);
+  }));
 }
 
 /**
@@ -50,7 +61,8 @@ async function cleanupOperationState(workspaceRoot: string, operationId: string)
  * is removed even when validation fails before the transaction's inner
  * rollback/finally block is reached. Cleanup discovers the operation directory
  * beneath the bounded workspace state root instead of duplicating the internal
- * marketplace/staging layout.
+ * marketplace/staging layout. Discovery scans once; removal verification is a
+ * targeted existence check on each discovered operation directory.
  */
 export async function updatePackageSafely(workspaceRoot: string, itemId: string, newVersionManifestPath?: string): Promise<InstallResult> {
   const result = await updatePackageTransaction(workspaceRoot, itemId, newVersionManifestPath);
