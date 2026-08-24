@@ -3,7 +3,7 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type { ProjectScan, ProjectSummary, ScanIssue } from "../../shared/workspace";
-import { generateWithLocalAI } from "./aiCenter";
+import { generateWithCloudAI, generateWithLocalAI, type CloudAIProviderId } from "./aiCenter";
 import { redactProjectText } from "./redaction";
 
 const execFileAsync = promisify(execFile);
@@ -128,6 +128,25 @@ export async function buildLocalAIPlan(workspaceRoot: string, context: AgentCont
   const system = "You are KForge Engineer. You may plan only. Never claim edits, tests, builds, commits, pushes, deployment, or secrets that did not occur. Return a concise ordered plan with affected files, risk, and exact verification commands.";
   const result = await generateWithLocalAI(workspaceRoot, system, `Mission: ${mission}\n\nRedacted selected project context:\n${JSON.stringify(context)}`);
   return { mode: "local-ai" as const, provider: result.provider.id, model: result.model, plan: result.content };
+}
+
+export function buildRedactedCloudPlanInput(context: AgentContext, mission: string) {
+  const redactedMission = redactProjectText("agent-mission.txt", mission);
+  const serializedContext = redactProjectText("agent-context.json", JSON.stringify(context));
+  const sourceCodeIncluded = context.files.some((file) => file.reason !== "configuration" || /\.(?:[cm]?[jt]sx?|py|go|rs|java|cs|php|vue)$/i.test(file.path));
+  return {
+    prompt: `Mission: ${redactedMission.content}\n\nRedacted selected project context:\n${serializedContext.content}`,
+    redactionApplied: redactedMission.redacted || serializedContext.redacted || context.files.some((file) => file.redacted),
+    sourceCodeIncluded,
+    dataClasses: ["METADATA", "PROJECT_CONTEXT", ...(sourceCodeIncluded ? ["SOURCE_CODE"] : [])] as Array<"METADATA" | "PROJECT_CONTEXT" | "SOURCE_CODE">,
+  };
+}
+
+export async function buildCloudAIPlan(provider: CloudAIProviderId, context: AgentContext, mission: string) {
+  const system = "You are KForge Engineer. You may plan only. Never claim edits, tests, builds, commits, pushes, deployment, or secrets that did not occur. Return a concise ordered plan with affected files, risk, and exact verification commands.";
+  const outbound = buildRedactedCloudPlanInput(context, mission);
+  const result = await generateWithCloudAI(provider, system, outbound.prompt);
+  return { mode: "cloud-ai" as const, provider: result.provider.id, model: result.provider.model!, plan: result.content, outbound };
 }
 
 export async function generateVerifiedPatch(project: ProjectSummary, issue: ScanIssue): Promise<AgentPatch | null> {

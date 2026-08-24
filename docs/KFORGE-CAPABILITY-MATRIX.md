@@ -1,6 +1,6 @@
 # KNOuX Forge capability matrix
 
-Evidence reviewed on 2026-08-24 against source at `001cdf3464309aa8b9b5bb7328d6d16d2d6b8bcd` plus the documentation-only identity changes in progress. Git history remains the authority for later changes.
+Evidence reviewed on 2026-08-24 against source at `86965fd43aa3230671d66d86630e4269977b0be6` plus the cloud-provider changes in progress. Git history remains the authority for later changes.
 
 `COMPLETE` means the locally implementable product path and its current verification are present. It does not convert absent provider evidence into success. `PARTIAL` means a real path exists with a known local or acceptance gap. `BLOCKED` identifies an external prerequisite that the repository cannot safely invent.
 
@@ -15,6 +15,7 @@ Evidence reviewed on 2026-08-24 against source at `001cdf3464309aa8b9b5bb7328d6d
 | Marketplace | Normalizes local/provider evidence, full taxonomy, details, permissions, provenance, lifecycle eligibility, and project compatibility | Six adapter tests and UI contract tests | COMPLETE local; remote catalogs BLOCKED |
 | Extension lifecycle | Refuses to claim install/update/enable/remove without a trustworthy package adapter and verification | Truthful lifecycle states | BLOCKED — no configured remote package adapter |
 | Local models | Detects local runtimes, lists installed/catalog evidence, compatibility, tasks, activation, health, and removal | Model Center tests | PARTIAL — provider-dependent live lifecycle |
+| Optional cloud AI | Keeps local AI independent; supports explicit OpenAI, Anthropic, Gemini, and OpenRouter server-side configuration with exact preflight disclosure, redaction, confirmation, and contact evidence | Adapter, route, Online Control, and built API tests | COMPLETE locally; live execution provider-dependent |
 | Agents and tasks | Runs registered mission DAGs with persistent evidence, permissions, confirmation, retry, recovery, and rollback | Task, mission, tool, and route tests | COMPLETE local |
 | Graph and impact | Bounded language-aware files, imports, exports, symbols, routes, APIs, dependencies, cycles, responsibility, and transitive impact | Graph and large-project tests | COMPLETE within visible bounds |
 | Preview | One process manager with start/health/stop/restart, bounded logs, routes, history, and contextual references | Preview service and fix/verify route tests | COMPLETE local core; browser telemetry UNAVAILABLE |
@@ -32,7 +33,7 @@ Evidence reviewed on 2026-08-24 against source at `001cdf3464309aa8b9b5bb7328d6d
 
 - The current environment has no browser automation bridge that can navigate the loopback product, so the required visual, responsive, keyboard, console, and backend-404 acceptance walkthrough is not claimed as passed.
 - No configured official extension registry/package adapter and integrity source exists for a real remote extension lifecycle.
-- Remote model/update registries, cloud AI, remote documentation, remote CI, remote Preview, and product updates require configured providers and policy.
+- Remote model/update registries, remote documentation, remote CI, remote Preview, and product updates require configured providers and policy. Optional cloud AI has server-side adapters for OpenAI, Anthropic, Gemini, and OpenRouter, but remains `NOT_CONFIGURED` without both credential and explicit model; every request requires Online mode, project trust, an allowing privacy policy, exact disclosure, and separate confirmation.
 - GitHub evidence requires a non-Offline mode, GitHub CLI availability, authentication, repository access, and network access. Remote transfers require Online Optional or Online; remote writes additionally require explicit confirmation.
 
 The repository must continue showing these as `BLOCKED`, `NOT_CONFIGURED`, `OFFLINE`, `UNKNOWN`, or `UNAVAILABLE` until current evidence changes.

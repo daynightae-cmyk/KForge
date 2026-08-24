@@ -16,6 +16,7 @@ import type {
 } from "../../shared/workspace";
 import type { PreviewStatus } from "./previewRuntime";
 import { listMarketplaceRegistryAdapters } from "./marketplace";
+import { listCloudAIProviders } from "./aiCenter";
 
 interface ContactRecord {
   lastAttemptedContact: string;
@@ -201,6 +202,8 @@ export async function getOnlineControlCenter(input: {
   const adapters = listMarketplaceRegistryAdapters(online);
   const marketplaceConfigured = adapters.some((adapter) => adapter.kind === "remote" && adapter.configured);
   const modelRegistryConfigured = adapters.some((adapter) => adapter.id === "ollama-official" && adapter.configured);
+  const cloudProviders = listCloudAIProviders();
+  const configuredCloudProviders = cloudProviders.filter((provider) => provider.configured);
   const contactValues = Object.values(contacts).filter((record): record is ContactRecord => Boolean(record));
   const latestContact = [...contactValues].sort((left, right) => right.lastAttemptedContact.localeCompare(left.lastAttemptedContact))[0];
   const lastSuccessfulContact = [...contactValues].filter((record) => record.lastSuccessfulContact).sort((left, right) => (right.lastSuccessfulContact || "").localeCompare(left.lastSuccessfulContact || ""))[0];
@@ -213,7 +216,19 @@ export async function getOnlineControlCenter(input: {
     status("remote-repository", "Remote Repository", remoteState(online, repositoryConfigured, contacts["remote-repository"]), "Git origin and explicit fetch/pull/push/clone evidence", input.project.remoteUrl || null, "REQUIRED", repositoryConfigured ? "Configured Git remote; opening the control center does not fetch it." : "No Git remote is configured for the selected project.", contacts["remote-repository"], now),
     status("marketplace-registry", "Marketplace Registry", remoteState(online, marketplaceConfigured, contacts["marketplace-registry"]), "Marketplace registry adapters", adapters.find((adapter) => adapter.kind === "remote" && adapter.configured)?.sourceUrl || null, "REQUIRED", marketplaceConfigured ? "A configured adapter may be refreshed only by an explicit action." : "No remote Marketplace registry adapter is configured; local registry evidence remains available.", contacts["marketplace-registry"], now),
     status("model-registry", "Model Registry", remoteState(online, modelRegistryConfigured, contacts["model-registry"]), "Ollama registry adapter and confirmed model tasks", "https://ollama.com/library", "REQUIRED", modelRegistryConfigured ? "The configured model registry is contacted only by confirmed downloads or update checks." : "The official source is identified, but no live catalog adapter is configured.", contacts["model-registry"], now),
-    status("cloud-ai", "Cloud AI", "NOT_CONFIGURED", "AI provider registry", null, "REQUIRED", "Cloud AI is not configured and is never selected automatically; local providers remain separate.", contacts["cloud-ai"], now),
+    status(
+      "cloud-ai",
+      "Cloud AI",
+      remoteState(input.platform.policy.providerRefresh, configuredCloudProviders.length > 0, contacts["cloud-ai"]),
+      "AI Center server-side provider registry",
+      configuredCloudProviders.length === 1 ? configuredCloudProviders[0].destination : null,
+      "REQUIRED",
+      configuredCloudProviders.length > 0
+        ? `${configuredCloudProviders.map((provider) => provider.name).join(", ")} configured server-side. No provider is selected automatically; every project-context request requires an exact disclosure and confirmation.`
+        : "No cloud provider has both a server-side credential and explicit model configured; local providers remain independent.",
+      contacts["cloud-ai"],
+      now,
+    ),
     status("remote-documentation", "Remote Documentation", "NOT_CONFIGURED", "Documentation capability registry", null, "REQUIRED", "No remote documentation provider or adapter is configured.", contacts["remote-documentation"], now),
     status("remote-ci", "Remote CI", remoteState(online, input.hasCiConfiguration, contacts["remote-ci"]), "Project CI configuration and explicit provider evidence", githubConfigured ? "https://api.github.com" : null, "REQUIRED", input.hasCiConfiguration ? "Local CI configuration exists, but no remote CI request is made from this screen." : "No supported CI configuration was detected for the selected project.", contacts["remote-ci"], now),
     status("remote-preview", "Remote Preview", "UNAVAILABLE", `Existing Preview engine is ${input.preview.state} and local-only`, null, "REQUIRED", "The existing Preview engine is local. No remote Preview adapter exists.", contacts["remote-preview"], now),

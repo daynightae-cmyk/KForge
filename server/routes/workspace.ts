@@ -37,15 +37,15 @@ import type {
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
 import { detectLocalAIProvider, requestLocalPlan } from "../services/localAI";
-import { checkForModelUpdates, deleteOllamaModel, generateWithLocalAI, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, listAIProviders, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
+import { checkForModelUpdates, deleteOllamaModel, generateWithLocalAI, getCloudAIConfiguration, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, isCloudAIProviderId, listAIProviders, listCloudAIProviders, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
-import { buildAgentContext, buildLocalAIPlan, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
+import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
 import { appendTaskLog, attachMission, cancelTask, completeMission, getTask, initializeTaskStore, listTasks, retryTask, startTask, updateMissionStep, type KForgeMission, type KForgeTask, type TaskKind, type MissionType } from "../services/tasks";
 import { createMissionFromStrategy, missionStrategies, supportedMissionTypes } from "../services/missionStrategies";
 import { executeMissionDag, type MissionStepExecution } from "../services/missionOrchestrator";
-import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, isRemoteTransferEnabled, setLocalPlatformMode } from "../services/localPlatform";
+import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, isProviderRefreshEnabled, isRemoteTransferEnabled, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
@@ -55,7 +55,7 @@ import { checkPreviewHealth, getPreviewStatus, restartPreview, startPreview, sto
 import { selectProjectRuntime } from "../services/projectExecution";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
-import { createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "../services/onlineControlCenter";
+import { completeOperationTransparency, createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "../services/onlineControlCenter";
 import { redactProjectText } from "../services/redaction";
 import { createSelfAuditRecord, inspectKForgeIdentity, markSelfAuditWaitingForRestart, persistSelfAuditRecord, readSelfAuditRecord, recordSelfAuditStage } from "../services/selfAudit";
 
@@ -1263,8 +1263,8 @@ router.post("/settings/reset", async (req, res) => {
   res.json({ settings: await resetPlatformSettings(getWorkspaceRoot()) });
 });
 
-router.get("/ai/providers", async (_req, res) => {
-  res.json({ providers: await listAIProviders() });
+router.get("/ai/providers", async (req, res) => {
+  res.json({ providers: req.query.kind === "cloud" ? listCloudAIProviders() : await listAIProviders() });
 });
 
 router.get("/ai/models", async (_req, res) => {
@@ -2132,9 +2132,68 @@ router.post("/projects/:id/agent/plan", async (req, res) => {
   const project = await resolveProject(req.params.id);
   const mission = typeof req.body?.mission === "string" ? req.body.mission.trim() : "Review project diagnostics and propose a safe fix plan.";
   const issueId = typeof req.body?.issueId === "string" ? req.body.issueId : undefined;
+  const requestedCloudProvider = req.body?.cloudProvider;
+  const confirmedCloud = req.body?.confirmedCloud === true;
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (requestedCloudProvider !== undefined && !isCloudAIProviderId(requestedCloudProvider)) return res.status(400).json({ error: "Choose a supported cloud provider explicitly. KForge never auto-selects one." });
   const scan = await scanProject(project);
   const context = await buildAgentContext(project, scan, issueId);
+  if (isCloudAIProviderId(requestedCloudProvider)) {
+    const provider = getCloudAIConfiguration(requestedCloudProvider);
+    const outbound = buildRedactedCloudPlanInput(context, mission);
+    const startedAt = new Date().toISOString();
+    const disclosure = (result: OperationResultState, reason?: string, completedAt: string | null = null) => createOperationTransparency({
+      execution: "REMOTE",
+      network: "REQUIRED",
+      dataClasses: outbound.dataClasses,
+      projectSourceSent: outbound.sourceCodeIncluded,
+      provider: provider.name,
+      destination: provider.destination,
+      purpose: `Generate a planning-only KForge Engineer response for the explicit mission using model ${provider.model || "NOT_CONFIGURED"}.`,
+      confirmation: confirmedCloud ? "CONFIRMED" : "REQUIRED",
+      startedAt,
+      completedAt,
+      result,
+      reason,
+    });
+    if (!provider.configured) return res.status(409).json({ error: provider.reason, state: "NOT_CONFIGURED", provider, disclosure: disclosure("BLOCKED", provider.reason, startedAt) });
+    if (project.trust !== "trusted") {
+      const reason = "Project trust is required before any project context can be sent to a cloud provider.";
+      return res.status(428).json({ error: reason, state: "PROJECT_TRUST_REQUIRED", provider, disclosure: disclosure("BLOCKED", reason, startedAt) });
+    }
+    const platformAllowsCloud = await isProviderRefreshEnabled(getWorkspaceRoot());
+    if (!platformAllowsCloud) {
+      const reason = "Cloud AI requests require Online mode. Offline, Local-First, and Online-Optional modes block provider requests.";
+      return res.status(409).json({ error: reason, state: "BLOCKED", provider, disclosure: disclosure("BLOCKED", reason, startedAt) });
+    }
+    const settings = await readPlatformSettings(getWorkspaceRoot());
+    if (settings.privacy.remoteContextPolicy === "blocked") {
+      const reason = "Privacy settings block sending project context to remote providers.";
+      return res.status(409).json({ error: reason, state: "BLOCKED", provider, disclosure: disclosure("BLOCKED", reason, startedAt) });
+    }
+    if (!confirmedCloud) {
+      return res.status(428).json({
+        error: "Review the exact cloud disclosure and confirm before project context leaves this machine.",
+        state: "CONFIRMATION_REQUIRED",
+        provider,
+        redactionApplied: outbound.redactionApplied,
+        disclosure: disclosure("NOT_STARTED"),
+      });
+    }
+    const pending = disclosure("PENDING");
+    try {
+      const aiPlan = await buildCloudAIPlan(requestedCloudProvider, context, mission);
+      const completed = completeOperationTransparency(pending, "SUCCEEDED");
+      await recordRemoteContact(getWorkspaceRoot(), "cloud-ai", { attemptedAt: startedAt, succeeded: true, destination: provider.destination });
+      addActivity(project.id, { kind: "system", title: "KForge Engineer generated explicitly confirmed cloud-AI plan", detail: `Provider: ${provider.name}; model: ${aiPlan.model}; source included: ${outbound.sourceCodeIncluded ? "yes" : "no"}.` });
+      return res.json({ mission, plan: aiPlan.plan, mode: aiPlan.mode, provider: aiPlan.provider, model: aiPlan.model, permissions: agentPermissions, disclosure: completed });
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : "Cloud AI request failed.";
+      const completed = completeOperationTransparency(pending, "FAILED", new Date().toISOString(), reason);
+      await recordRemoteContact(getWorkspaceRoot(), "cloud-ai", { attemptedAt: startedAt, succeeded: false, destination: provider.destination, error: reason });
+      return res.status(502).json({ error: reason, state: "ERROR", provider, disclosure: completed });
+    }
+  }
   try {
     const aiPlan = await buildLocalAIPlan(getWorkspaceRoot(), context, mission);
     addActivity(project.id, { kind: "system", title: "KForge Engineer generated local-AI plan", detail: `Model: ${aiPlan.model}.` });

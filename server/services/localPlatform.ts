@@ -4,6 +4,7 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type { LocalCapability, LocalPlatformMode, LocalPlatformNetworkPolicy, LocalPlatformStatus } from "../../shared/workspace";
+import { listCloudAIProviders } from "./aiCenter";
 
 const execFileAsync = promisify(execFile);
 
@@ -71,6 +72,7 @@ export async function getLocalPlatformStatus(workspaceRoot: string): Promise<Loc
   ]);
   const mode: LocalPlatformMode = settings.mode && modes.has(settings.mode) ? settings.mode : "offline";
   const policy = localPlatformPolicy(mode);
+  const configuredCloudProviders = listCloudAIProviders().filter((provider) => provider.configured);
   const capabilities: LocalCapability[] = [
     capability("projects", "Projects & repositories", "ready", "Open and inspect local folders without an external service."),
     capability("git", "Git status, branches & diffs", gitAvailable ? "ready" : "unavailable", gitAvailable ? "Uses the locally installed Git executable; remote sync is separate." : "Git was not found on PATH; local file features remain available."),
@@ -97,7 +99,16 @@ export async function getLocalPlatformStatus(workspaceRoot: string): Promise<Loc
       { id: "clone", label: "Clone remote repository", enabled: policy.remoteTransfers, detail: policy.remoteTransfers ? "Enabled only as an explicit confirmed remote transfer." : `${mode} mode blocks remote transfers; opening an existing local repository remains available.` },
       { id: "git-sync", label: "Git pull & push", enabled: policy.remoteTransfers, detail: policy.remoteTransfers ? "Available only when the user explicitly requests remote sync; writes still require confirmation." : `${mode} mode keeps remote transfer operations blocked; status, branches, diffs and commits remain local.` },
       { id: "model-download", label: "Download a local model", enabled: policy.remoteTransfers, detail: policy.remoteTransfers ? "Requires an explicit user confirmation before any model download." : `${mode} mode blocks downloads; existing local models remain usable.` },
-      { id: "cloud-ai", label: "Cloud AI provider", enabled: false, detail: "Never selected automatically. KForge core functions do not require a cloud provider or API key." },
+      {
+        id: "cloud-ai",
+        label: "Cloud AI provider",
+        enabled: policy.providerRefresh && configuredCloudProviders.length > 0,
+        detail: configuredCloudProviders.length === 0
+          ? "NOT_CONFIGURED. KForge core functions do not require a cloud provider or API key."
+          : policy.providerRefresh
+            ? `${configuredCloudProviders.map((provider) => provider.name).join(", ")} configured server-side; never selected automatically and every request requires disclosure confirmation.`
+            : `${configuredCloudProviders.map((provider) => provider.name).join(", ")} configured server-side, but ${mode} mode blocks provider requests.`,
+      },
     ],
   };
 }

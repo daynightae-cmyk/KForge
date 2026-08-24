@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LocalPlatformStatus, ProjectSummary } from "../../shared/workspace";
 import type { PreviewStatus } from "./previewRuntime";
 import { localPlatformPolicy } from "./localPlatform";
@@ -26,6 +26,7 @@ function preview(): PreviewStatus {
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -61,5 +62,16 @@ describe("Online Control Center", () => {
   it("builds a complete transparency envelope with measured duration", () => {
     const evidence = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub", destination: "https://token@api.github.com/repos/knoux/forge", purpose: "Read repository metadata", confirmation: "CONFIRMED", startedAt: "2026-08-24T00:00:00.000Z", completedAt: "2026-08-24T00:00:01.250Z", result: "SUCCEEDED" });
     expect(evidence).toMatchObject({ secretRedaction: true, projectSourceSent: false, durationMs: 1250, destination: "https://api.github.com/repos/knoux/forge", result: "SUCCEEDED" });
+  });
+
+  it("reports configured cloud providers without contacting them when the control center opens", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "online-control-secret");
+    vi.stubEnv("KFORGE_OPENAI_MODEL", "configured-model");
+    const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-online-control-"));
+    roots.push(root);
+    const result = await getOnlineControlCenter({ workspaceRoot: root, platform: platform("online"), project: project(), hasCiConfiguration: false, preview: preview() });
+    expect(result.services.find((service) => service.id === "cloud-ai")).toMatchObject({ state: "DISCONNECTED", lastAttemptedContact: null, cachedEvidenceAvailable: false });
+    expect(JSON.stringify(result)).not.toContain("online-control-secret");
+    expect(result.remoteContactPerformed).toBe(false);
   });
 });
