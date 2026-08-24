@@ -2,23 +2,18 @@ name: KForge Verification Gate
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
       - main
-      - 'traycer/**'
-      - 'feat/**'
-      - 'fix/**'
-    paths-ignore:
-      - 'docs/verification-evidence/**'
-  pull_request:
+  push:
     branches:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: kforge-verification-${{ github.ref }}
+  group: kforge-verification-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -84,8 +79,8 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e
 
-      - name: Persist verification evidence
-        if: always() && github.event_name == 'push' && github.actor != 'github-actions[bot]'
+      - name: Create verification evidence
+        if: always()
         env:
           NPM_CI: ${{ steps.npm_ci.outcome }}
           TYPECHECK: ${{ steps.typecheck.outcome }}
@@ -96,17 +91,16 @@ jobs:
           PLAYWRIGHT_BROWSER: ${{ steps.playwright_browser.outcome }}
           E2E: ${{ steps.e2e.outcome }}
         run: |
-          mkdir -p docs/verification-evidence
           node --input-type=module <<'NODE'
           import { writeFileSync } from 'node:fs';
           const required = ['NPM_CI', 'TYPECHECK', 'LINT', 'MARKETPLACE', 'TESTS', 'BUILD', 'PLAYWRIGHT_BROWSER', 'E2E'];
           const steps = Object.fromEntries(required.map((name) => [name.toLowerCase(), process.env[name] || 'skipped']));
           const pass = required.every((name) => process.env[name] === 'success');
           const evidence = {
-            schemaVersion: 1,
+            schemaVersion: 2,
             workflow: 'KForge Verification Gate',
             testedSha: process.env.GITHUB_SHA,
-            branch: process.env.GITHUB_REF_NAME,
+            ref: process.env.GITHUB_REF,
             event: process.env.GITHUB_EVENT_NAME,
             runner: process.env.RUNNER_OS,
             runId: process.env.GITHUB_RUN_ID,
@@ -115,13 +109,17 @@ jobs:
             steps,
             gate: pass ? 'PASS' : 'FAIL',
           };
-          writeFileSync(`docs/verification-evidence/${process.env.GITHUB_SHA}.json`, `${JSON.stringify(evidence, null, 2)}\n`);
+          writeFileSync('verification-evidence.json', `${JSON.stringify(evidence, null, 2)}\n`);
           NODE
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "docs/verification-evidence/${GITHUB_SHA}.json"
-          git commit -m "ci: record verification evidence for ${GITHUB_SHA} [skip ci]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kforge-verification-${{ github.sha }}
+          path: verification-evidence.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Enforce verification gate
         if: always()
