@@ -8,12 +8,14 @@ on:
       - 'traycer/**'
       - 'feat/**'
       - 'fix/**'
+    paths-ignore:
+      - 'docs/verification-evidence/**'
   pull_request:
     branches:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: kforge-verification-${{ github.ref }}
@@ -36,25 +38,117 @@ jobs:
           cache: npm
 
       - name: Clean install
+        id: npm_ci
+        continue-on-error: true
         run: npm ci
 
       - name: Typecheck
+        id: typecheck
+        if: steps.npm_ci.outcome == 'success'
+        continue-on-error: true
         run: npm run typecheck
 
-      - name: Lint / formatting gate
+      - name: Lint
+        id: lint
+        if: steps.npm_ci.outcome == 'success'
+        continue-on-error: true
         run: npm run lint
 
       - name: Marketplace lifecycle acceptance
+        id: marketplace
+        if: steps.npm_ci.outcome == 'success'
+        continue-on-error: true
         run: npx vitest --run server/services/marketplace.spec.ts server/routes/marketplaceLifecycle.spec.ts
 
       - name: Unit and service tests
+        id: tests
+        if: steps.npm_ci.outcome == 'success'
+        continue-on-error: true
         run: npm run test
 
       - name: Production build
+        id: build
+        if: steps.npm_ci.outcome == 'success'
+        continue-on-error: true
         run: npm run build
 
       - name: Install Playwright browser
+        id: playwright_browser
+        if: steps.npm_ci.outcome == 'success' && steps.build.outcome == 'success'
+        continue-on-error: true
         run: npx playwright install --with-deps chromium
 
       - name: Production E2E
+        id: e2e
+        if: steps.npm_ci.outcome == 'success' && steps.build.outcome == 'success' && steps.playwright_browser.outcome == 'success'
+        continue-on-error: true
         run: npm run test:e2e
+
+      - name: Persist verification evidence
+        if: always() && github.event_name == 'push' && github.actor != 'github-actions[bot]'
+        env:
+          NPM_CI: ${{ steps.npm_ci.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          LINT: ${{ steps.lint.outcome }}
+          MARKETPLACE: ${{ steps.marketplace.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          PLAYWRIGHT_BROWSER: ${{ steps.playwright_browser.outcome }}
+          E2E: ${{ steps.e2e.outcome }}
+        run: |
+          mkdir -p docs/verification-evidence
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          const required = ['NPM_CI', 'TYPECHECK', 'LINT', 'MARKETPLACE', 'TESTS', 'BUILD', 'PLAYWRIGHT_BROWSER', 'E2E'];
+          const steps = Object.fromEntries(required.map((name) => [name.toLowerCase(), process.env[name] || 'skipped']));
+          const pass = required.every((name) => process.env[name] === 'success');
+          const evidence = {
+            schemaVersion: 1,
+            workflow: 'KForge Verification Gate',
+            testedSha: process.env.GITHUB_SHA,
+            branch: process.env.GITHUB_REF_NAME,
+            event: process.env.GITHUB_EVENT_NAME,
+            runner: process.env.RUNNER_OS,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            recordedAt: new Date().toISOString(),
+            steps,
+            gate: pass ? 'PASS' : 'FAIL',
+          };
+          writeFileSync(`docs/verification-evidence/${process.env.GITHUB_SHA}.json`, `${JSON.stringify(evidence, null, 2)}\n`);
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "docs/verification-evidence/${GITHUB_SHA}.json"
+          git commit -m "ci: record verification evidence for ${GITHUB_SHA} [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Enforce verification gate
+        if: always()
+        env:
+          NPM_CI: ${{ steps.npm_ci.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          LINT: ${{ steps.lint.outcome }}
+          MARKETPLACE: ${{ steps.marketplace.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          PLAYWRIGHT_BROWSER: ${{ steps.playwright_browser.outcome }}
+          E2E: ${{ steps.e2e.outcome }}
+        run: |
+          printf '%s\n' \
+            "npm_ci=${NPM_CI}" \
+            "typecheck=${TYPECHECK}" \
+            "lint=${LINT}" \
+            "marketplace=${MARKETPLACE}" \
+            "tests=${TESTS}" \
+            "build=${BUILD}" \
+            "playwright_browser=${PLAYWRIGHT_BROWSER}" \
+            "e2e=${E2E}"
+          test "${NPM_CI}" = success
+          test "${TYPECHECK}" = success
+          test "${LINT}" = success
+          test "${MARKETPLACE}" = success
+          test "${TESTS}" = success
+          test "${BUILD}" = success
+          test "${PLAYWRIGHT_BROWSER}" = success
+          test "${E2E}" = success
