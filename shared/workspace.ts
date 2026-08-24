@@ -232,6 +232,56 @@ export interface ReleaseGateResult {
   scan: ProjectScan;
 }
 
+export const KFORGE_SELF_AUDIT_STAGES = [
+  ["discover", "Discover KForge"],
+  ["open", "Open KForge"],
+  ["project-health", "Project Health"],
+  ["project-graph", "Project Graph"],
+  ["architecture", "Architecture"],
+  ["sonar", "KForge Sonar"],
+  ["problems", "Problems"],
+  ["agent", "KForge Agent"],
+  ["tests", "Tests"],
+  ["build", "Build"],
+  ["runtime", "Runtime"],
+  ["preview", "Preview"],
+  ["release-gate", "Release Gate"],
+  ["persist-evidence", "Persist Evidence"],
+  ["restart", "Restart"],
+  ["reload-evidence", "Reload Evidence"],
+] as const;
+
+export type SelfAuditStageId = (typeof KFORGE_SELF_AUDIT_STAGES)[number][0];
+export type SelfAuditStageState = "QUEUED" | "PASSED" | "FAILED" | "BLOCKED" | "UNAVAILABLE" | "WAITING_RESTART";
+
+export interface SelfAuditStage {
+  id: SelfAuditStageId;
+  label: string;
+  state: SelfAuditStageState;
+  startedAt: string | null;
+  completedAt: string | null;
+  evidence: unknown;
+}
+
+export interface SelfAuditRecord {
+  schemaVersion: 1;
+  id: string;
+  projectId: string;
+  projectName: string;
+  projectPath: string;
+  startedAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  status: "RUNNING" | "WAITING_RESTART" | "COMPLETE";
+  outcome: "PENDING" | "PASSED" | "FAILED";
+  observational: true;
+  sourceMutationDetected: boolean;
+  evidenceFile: string;
+  originInstanceId: string;
+  reloadedByInstanceId: string | null;
+  stages: SelfAuditStage[];
+}
+
 export interface ToolAvailability {
   name: "typescript" | "eslint" | "npm-audit" | "gitleaks" | "semgrep" | "sonar";
   available: boolean;

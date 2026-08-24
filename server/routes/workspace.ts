@@ -31,6 +31,9 @@ import type {
   GlobalSearchEntity,
   GlobalSearchResponse,
   GlobalSearchResult,
+  SelfAuditRecord,
+  SelfAuditStageId,
+  SelfAuditStageState,
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
 import { detectLocalAIProvider, requestLocalPlan } from "../services/localAI";
@@ -54,6 +57,7 @@ import { collectionCategories, getProjectCollectionEntry, listProjectCollectionE
 import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
 import { createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "../services/onlineControlCenter";
 import { redactProjectText } from "../services/redaction";
+import { createSelfAuditRecord, inspectKForgeIdentity, markSelfAuditWaitingForRestart, persistSelfAuditRecord, readSelfAuditRecord, recordSelfAuditStage } from "../services/selfAudit";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -61,6 +65,7 @@ const activities = new Map<string, WorkspaceActivity[]>();
 const openedPaths = new Set<string>();
 const latestActions = new Map<string, Partial<Record<WorkspaceAction, CommandResult>>>();
 const commandTimeoutMs = 120_000;
+const kforgeServerInstanceId = randomUUID();
 const ignoredDirectories = new Set([".git", ".kforge", "node_modules", "dist", "build", "coverage", ".next", ".venv", "venv", "target", "vendor", "bin", "obj"]);
 const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".java", ".go", ".rs", ".cs", ".php", ".vue", ".html", ".css", ".scss"]);
 
@@ -543,7 +548,12 @@ function parseTypecheckDiagnostics(projectId: string, output: string) {
 async function trackedSensitiveFiles(project: ProjectSummary) {
   const result = await run("git", ["ls-files", ".env", ".env.*", "*.pem", "*.key", "id_rsa"], project.path);
   if (!result.ok) return [] as string[];
-  return result.output.split(/\r?\n/).filter(Boolean);
+  return result.output.split(/\r?\n/).filter((file) => Boolean(file) && !/(?:^|\/)\.env\.(?:example|sample|template)$/i.test(file));
+}
+
+export function nonProductionSecurityEvidence(relative: string) {
+  const normalized = relative.split(path.sep).join("/");
+  return /(?:^|\/)(?:fixtures?|tests?|__tests__)(?:\/|$)|\.(?:spec|test)\.[cm]?[jt]sx?$/i.test(normalized);
 }
 
 async function completenessIssues(project: ProjectSummary, profile: ProjectProfile) {
@@ -625,7 +635,10 @@ async function secretLiteralIssues(project: ProjectSummary) {
     content.split(/\r?\n/).forEach((line, index) => {
       for (const pattern of patterns) {
         if (!pattern.expression.test(line)) continue;
-        findings.push(issue(project.id, `secret-${pattern.rule}-${relative}-${index + 1}`, pattern.severity, "security", pattern.title, `${pattern.title} at ${relative}:${index + 1}. Sensitive value content is not retained in KForge diagnostics.`, { file: relative, line: index + 1, source: "KForge secret scanner", rule: pattern.rule, confidence: "medium", fixability: "guided", risk: "approval", suggestion: "Remove the secret from source control, rotate it if real, and keep only a safe environment-variable reference." }));
+        const nonProduction = nonProductionSecurityEvidence(relative);
+        const severity: DiagnosticSeverity = nonProduction ? "info" : pattern.severity;
+        const title = nonProduction ? `${pattern.title} in test or fixture evidence` : pattern.title;
+        findings.push(issue(project.id, `secret-${pattern.rule}-${relative}-${index + 1}`, severity, "security", title, `${title} at ${relative}:${index + 1}. Sensitive value content is not retained in KForge diagnostics.`, { file: relative, line: index + 1, source: "KForge secret scanner", rule: pattern.rule, confidence: nonProduction ? "low" : "medium", fixability: "guided", risk: nonProduction ? "review" : "approval", suggestion: nonProduction ? "Confirm that this is synthetic test evidence; replace it if it contains a real credential." : "Remove the secret from source control, rotate it if real, and keep only a safe environment-variable reference." }));
         break;
       }
     });
@@ -796,6 +809,127 @@ export function releaseGateSourceVerdicts(scan: ProjectScan): { readiness: Relea
       ? "READY"
       : "READY WITH WARNINGS";
   return { readiness, verdicts };
+}
+
+function boundedSelfAuditCommandEvidence(result: CommandResult) {
+  return {
+    action: result.action,
+    ok: result.ok,
+    exitCode: result.exitCode ?? null,
+    startedAt: result.startedAt,
+    completedAt: result.completedAt,
+    message: result.message,
+    outputTail: result.output.slice(-4_000),
+    transparency: result.transparency,
+  };
+}
+
+function selfAuditCommandState(result: CommandResult): SelfAuditStageState {
+  if (result.ok) return "PASSED";
+  return /^(?:UNAVAILABLE:|No verified )/i.test(result.message) ? "UNAVAILABLE" : "FAILED";
+}
+
+function normalizedGitStatus(value: string) {
+  return value.split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean).sort();
+}
+
+export async function executeKForgeSelfAudit(project: ProjectSummary): Promise<SelfAuditRecord> {
+  const workspaceRoot = getWorkspaceRoot();
+  const identity = await inspectKForgeIdentity(project.path);
+  if (!identity.matched) throw new Error(`SELF_AUDIT_PROJECT_MISMATCH: ${identity.missingFiles.join(", ")}`);
+  if (project.trust !== "trusted") throw new Error("SELF_AUDIT_REQUIRES_TRUST: local verification commands are blocked until KForge is explicitly trusted.");
+
+  const record = createSelfAuditRecord(project, workspaceRoot, kforgeServerInstanceId);
+  let scan: ProjectScan | undefined;
+  let graph: Awaited<ReturnType<typeof buildProjectGraph>> | undefined;
+  let profile: ProjectProfile | undefined;
+  const commandResults: CommandResult[] = [];
+  const initialStatus = await run("git", ["status", "--porcelain=v1", "--untracked-files=all"], project.path);
+  const beforeStatus = normalizedGitStatus(initialStatus.output);
+
+  const capture = async (id: SelfAuditStageId, work: () => Promise<{ state?: SelfAuditStageState; evidence: unknown }>) => {
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await work();
+      recordSelfAuditStage(record, id, result.state || "PASSED", result.evidence, startedAt);
+    } catch (error: unknown) {
+      recordSelfAuditStage(record, id, "FAILED", { error: error instanceof Error ? error.message : String(error) }, startedAt);
+    }
+  };
+
+  await capture("discover", async () => ({ evidence: { identity, projectId: project.id, projectPath: project.path, provider: project.provider, source: "Configured local workspace discovery" } }));
+  await capture("open", async () => ({ evidence: { name: project.name, path: project.path, branch: project.branch, trust: project.trust, source: "Resolved selected local project; no project file was written" } }));
+  await capture("project-health", async () => {
+    scan = await scanProject(project);
+    profile = scan.profile;
+    return { evidence: { calculatedAt: scan.health.calculatedAt, score: scan.health.score, recommendation: scan.health.release.state, sources: scan.health.sources, coverage: scan.coverage, embeddedTypecheck: scan.summaries.typecheck } };
+  });
+  await capture("project-graph", async () => {
+    graph = await buildProjectGraph(project.path);
+    return { state: graph.coverage.state === "LIMIT_REACHED" ? "BLOCKED" : "PASSED", evidence: { summary: graph.summary, coverage: graph.coverage, cache: graph.cache } };
+  });
+  await capture("architecture", async () => {
+    profile ||= await detectProjectProfile(project);
+    graph ||= await buildProjectGraph(project.path);
+    return { evidence: { sourceRoots: profile.sourceRoots, testRoots: profile.testRoots, frameworks: profile.framework, graphAnalysis: graph.analysis, coverage: graph.coverage } };
+  });
+  await capture("sonar", async () => {
+    scan ||= await scanProject(project);
+    return { evidence: { scannedAt: scan.scannedAt, issueCount: scan.issues.length, summaries: scan.summaries, tools: scan.tools, note: "Automatic Self Audit reports local scanner and tool availability only; it never starts a remote Sonar or registry operation." } };
+  });
+  await capture("problems", async () => {
+    scan ||= await scanProject(project);
+    profile ||= scan.profile;
+    const documentation = await auditDocumentation(project.path, profile);
+    return { evidence: { scannedAt: scan.scannedAt, problems: scan.issues.map((issue) => ({ id: issue.id, title: issue.title, severity: issue.severity, category: issue.category, source: issue.source, file: issue.file })), documentation: { auditedAt: documentation.auditedAt, documents: documentation.documents, findings: documentation.findings } } };
+  });
+  await capture("agent", async () => {
+    scan ||= await scanProject(project);
+    const context = await buildAgentContext(project, scan);
+    const plan = buildRulePlan(context);
+    return { evidence: { mode: plan.mode, summary: plan.summary, steps: plan.steps, risks: plan.risks, contextFiles: context.files.map((file) => file.path), totalCharacters: context.totalCharacters, mutationPermission: "NONE — observational plan only" } };
+  });
+
+  for (const [id, action] of [["tests", "test"], ["build", "build"], ["runtime", "runtime"]] as const) {
+    await capture(id, async () => {
+      const result = await executeProjectAction(project, action);
+      commandResults.push(result);
+      return { state: selfAuditCommandState(result), evidence: boundedSelfAuditCommandEvidence(result) };
+    });
+  }
+
+  await capture("preview", async () => {
+    const preview = await checkPreviewHealth(project.id);
+    const state: SelfAuditStageState = preview.state === "running" && preview.health?.ok ? "PASSED" : preview.state === "failed" || preview.state === "blocked" ? "FAILED" : "UNAVAILABLE";
+    return { state, evidence: { state: preview.state, sessionId: preview.sessionId || null, checkedAt: preview.checkedAt || null, health: preview.health, routes: preview.routes, error: preview.error || null, action: "OBSERVE_ONLY", note: "Self Audit does not start, stop, or restart Preview." } };
+  });
+  await capture("release-gate", async () => {
+    const freshProject = await makeProjectSummary(project.path);
+    const releaseScan = await scanProject(freshProject);
+    scan = releaseScan;
+    const separated = releaseGateSourceVerdicts(releaseScan);
+    const localFailures = commandResults.filter((result) => !result.ok);
+    const blockingIssues = releaseScan.issues.filter((issue) => (issue.severity === "critical" || issue.severity === "high") && issue.status !== "ignored");
+    const state: SelfAuditStageState = separated.readiness === "BLOCKED" || localFailures.length > 0 || blockingIssues.length > 0 ? "FAILED" : "PASSED";
+    return { state, evidence: { readiness: state === "FAILED" ? "BLOCKED" : separated.readiness, verdicts: separated.verdicts, checks: commandResults.map((result) => ({ action: result.action, ok: result.ok, message: result.message })), blockers: blockingIssues.map((issue) => ({ id: issue.id, title: issue.title, source: issue.source })), note: "Remote evidence remains independently UNKNOWN, OFFLINE, NOT_CONFIGURED, or UNAVAILABLE when it was not explicitly fetched." } };
+  });
+
+  const finalStatus = await run("git", ["status", "--porcelain=v1", "--untracked-files=all"], project.path);
+  const afterStatus = normalizedGitStatus(finalStatus.output);
+  const added = afterStatus.filter((line) => !beforeStatus.includes(line));
+  const removed = beforeStatus.filter((line) => !afterStatus.includes(line));
+  record.sourceMutationDetected = added.length > 0 || removed.length > 0;
+  recordSelfAuditStage(record, "persist-evidence", record.sourceMutationDetected ? "FAILED" : "PASSED", {
+    state: record.sourceMutationDetected ? "SOURCE_MUTATION_DETECTED" : "SOURCE_UNCHANGED",
+    evidenceFile: record.evidenceFile,
+    persistence: "Atomic temporary-file write followed by rename",
+    sourceStatusBefore: beforeStatus,
+    sourceStatusAfter: afterStatus,
+    added,
+    removed,
+  });
+  await persistSelfAuditRecord(record);
+  return markSelfAuditWaitingForRestart(record);
 }
 
 type PreviewFixStageState = "PASSED" | "FAILED" | "BLOCKED" | "SKIPPED";
@@ -1526,6 +1660,28 @@ async function releasePreparation(project: ProjectSummary) {
   const artifacts = (await Promise.all(artifactNames.map(async (name) => { const absolute = path.join(project.path, name); try { const stat = await fs.stat(absolute); return stat.isDirectory() ? name : undefined; } catch { return undefined; } }))).filter((entry): entry is string => Boolean(entry));
   return { generatedAt: new Date().toISOString(), baselineTag: baseline || null, version: version || null, commits, artifacts, notes: commits.length ? commits.map((commit) => `- ${commit.subject} (${commit.shortSha})`).join("\n") : "No commits are available for a release note proposal.", notice: "This is a local preparation preview. It does not create a tag, commit, GitHub release, or remote request." };
 }
+
+router.get("/projects/:id/self-audit", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const record = await readSelfAuditRecord(getWorkspaceRoot(), project.id, kforgeServerInstanceId);
+  if (!record) return res.status(404).json({ state: "NOT_AVAILABLE", error: "No valid persisted Self Audit evidence exists for this KForge project." });
+  return res.json({ selfAudit: record });
+});
+
+router.post("/projects/:id/self-audit", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const identity = await inspectKForgeIdentity(project.path);
+  if (!identity.matched) return res.status(409).json({ error: "Self Audit is intentionally scoped to the KForge repository itself.", identity });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("KForge Self Audit local verification"));
+  try {
+    const selfAudit = await executeKForgeSelfAudit(project);
+    return res.status(202).json({ selfAudit });
+  } catch (error: unknown) {
+    return res.status(500).json({ error: error instanceof Error ? error.message : "KForge Self Audit could not complete its observational evidence run." });
+  }
+});
 
 router.post("/projects/:id/release-gate", async (req, res) => {
   const project = await resolveProject(req.params.id);

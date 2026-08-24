@@ -45,6 +45,7 @@ import type {
   ProjectHealthEvidenceSourceKind,
   ReleaseGateResult,
   ReleaseGateSourceKind,
+  SelfAuditRecord,
   ScanIssue,
   KForgePlatformSettings,
   GlobalSearchCoverage,
@@ -68,7 +69,7 @@ const NAVIGATION = [
   { group: "Release", items: [["Release Gate", Rocket], ["Release preparation", Rocket], ["Artifacts", Box], ["Versioning", GitBranch]] },
   { group: "Developer tools", items: [["Terminal", Terminal], ["Tests", TestTube2], ["Build", Play], ["Runtime", Play], ["Logs", History], ["Diagnostics", ShieldAlert], ["Preview", Play]] },
   { group: "Remote", items: [["Git", GitBranch], ["Branches", GitBranch], ["Commits", History], ["GitHub", Github], ["Pull requests", Github], ["Issues", ShieldAlert], ["Actions", Activity], ["Releases", Rocket]] },
-  { group: "System", items: [["Settings", Settings2], ["Trust", ShieldAlert], ["Permissions", ShieldAlert], ["Storage", Box], ["Offline / Online", Network], ["System diagnostics", Activity]] },
+  { group: "System", items: [["Settings", Settings2], ["Trust", ShieldAlert], ["Permissions", ShieldAlert], ["Storage", Box], ["Offline / Online", Network], ["Self Audit", Activity], ["System diagnostics", Activity]] },
 ] as const;
 
 const NAV_SERVICE_INFO: Record<string, { description: string; capability: string }> = {
@@ -95,6 +96,7 @@ const NAV_SERVICE_INFO: Record<string, { description: string; capability: string
   "Preview": { description: "Starts a detected local project command only after trust, then reports HTTP health and process logs.", capability: "Trusted local runtime" },
   "GitHub": { description: "Shows configured GitHub metadata only when optional online access is enabled.", capability: "Optional remote metadata" },
   "Models": { description: "Reports local model runtime state and configured source metadata without claiming remote availability.", capability: "Local model state" },
+  "Self Audit": { description: "Runs the exact observational KForge-on-KForge evidence sequence and proves persistence only after a real server restart.", capability: "Persistent product self-verification" },
 };
 
 export function navHoverInfo(label: string, group: string) {
@@ -631,7 +633,7 @@ export const CAPABILITY_RENDERER_IDS: Record<string, string> = {
   "Release Gate": "ReleaseGatePanel", "Release preparation": "ReleasePreparationPanel", "Artifacts": "ReleasePreparationPanel", "Versioning": "ReleasePreparationPanel",
   "Terminal": "TerminalOperationsPanel", "Tests": "DeveloperActionPanel", "Build": "DeveloperActionPanel", "Runtime": "DeveloperActionPanel", "Logs": "TaskCenterPanel", "Diagnostics": "QualityPanel", "Preview": "PreviewPanel",
   "Git": "GitCenterPanel", "Branches": "GitCenterPanel", "Commits": "GitCenterPanel", "GitHub": "GitHubCenterPanel", "Pull requests": "GitHubCenterPanel", "Issues": "GitHubCenterPanel", "Actions": "GitHubCenterPanel", "Releases": "GitHubCenterPanel",
-  "Settings": "SettingsCenter", "Trust": "TrustPanel", "Permissions": "PermissionsPanel", "Storage": "StoragePanel", "Offline / Online": "LocalPlatformPanel", "System diagnostics": "SystemDiagnosticsPanel",
+  "Settings": "SettingsCenter", "Trust": "TrustPanel", "Permissions": "PermissionsPanel", "Storage": "StoragePanel", "Offline / Online": "LocalPlatformPanel", "Self Audit": "SelfAuditPanel", "System diagnostics": "SystemDiagnosticsPanel",
 };
 
 export const visibleNavigationLabels = (): string[] => NAVIGATION.flatMap((section) => section.items.map((item) => item[0] as string));
@@ -656,7 +658,7 @@ function CapabilitySurface({ activeNav, project, projects, scan, tasks, results,
     "Release Gate": <ReleaseGatePanel project={project} />, "Release preparation": <ReleasePreparationPanel project={project} view="Release preparation" />, "Artifacts": <ReleasePreparationPanel project={project} view="Artifacts" />, "Versioning": <ReleasePreparationPanel project={project} view="Versioning" />,
     "Terminal": <TerminalOperationsPanel project={project} results={results} tasks={tasks} onRun={onRun} />, "Tests": <DeveloperActionPanel title="Test Lab" description="Runs the detected local test command for the selected project and records actual stdout, stderr, exit state, and duration." action="test" result={results?.test} tasks={tasks} onRun={onRun} />, "Build": <DeveloperActionPanel title="Build Center" description="Runs the project’s detected build command. No package manager or build result is assumed when discovery has not found one." action="build" result={results?.build} tasks={tasks} onRun={onRun} />, "Runtime": <DeveloperActionPanel title="Runtime Verification" description="Runs the detected bounded runtime verification and captures its actual output, exit state, and duration." action="runtime" result={results?.runtime} tasks={tasks} onRun={onRun} />, "Logs": <TaskCenterPanel tasks={tasks} onTaskControl={onTaskControl} />, "Diagnostics": <QualityPanel title="Diagnostics" scan={scan} onScan={() => onRun("scan")} />, "Preview": <PreviewPanel project={project} settings={settings?.preview} />,
     "Git": <GitCenterPanel project={project} />, "Branches": <GitCenterPanel project={project} />, "Commits": <GitCenterPanel project={project} />, "GitHub": <GitHubCenterPanel project={project} view="GitHub" onlineOptional={platform?.mode === "online-optional"} />, "Pull requests": <GitHubCenterPanel project={project} view="Pull requests" onlineOptional={platform?.mode === "online-optional"} />, "Issues": <GitHubCenterPanel project={project} view="Issues" onlineOptional={platform?.mode === "online-optional"} />, "Actions": <GitHubCenterPanel project={project} view="Actions" onlineOptional={platform?.mode === "online-optional"} />, "Releases": <GitHubCenterPanel project={project} view="Releases" onlineOptional={platform?.mode === "online-optional"} />,
-    "Settings": <SettingsCenter settings={settings} platform={platform} onSettingsChange={onSettingsChange} onModeChange={onPlatformModeChange} />, "Trust": <TrustPanel project={project} onTrust={onTrust} />, "Permissions": <PermissionsPanel project={project} />, "Storage": <StoragePanel project={project} />, "Offline / Online": <LocalPlatformPanel platform={platform} onModeChange={onPlatformModeChange} />, "System diagnostics": <SystemDiagnosticsPanel platform={platform} />,
+    "Settings": <SettingsCenter settings={settings} platform={platform} onSettingsChange={onSettingsChange} onModeChange={onPlatformModeChange} />, "Trust": <TrustPanel project={project} onTrust={onTrust} />, "Permissions": <PermissionsPanel project={project} />, "Storage": <StoragePanel project={project} />, "Offline / Online": <LocalPlatformPanel platform={platform} onModeChange={onPlatformModeChange} />, "Self Audit": <SelfAuditPanel project={project} />, "System diagnostics": <SystemDiagnosticsPanel platform={platform} />,
   };
   const surface = renderers[activeNav] || <UnavailableCapabilityPanel label={activeNav} />;
   return <>{surface}{previewContextNavigation.has(activeNav) && <PreviewContextCard project={project} source={activeNav} onNavigate={() => onNavigate("Preview")} />}</>;
@@ -715,6 +717,46 @@ function StoragePanel({ project }: { project: ProjectSummary }) {
   useEffect(() => { void refresh(); }, [project.id]);
   const clear = async () => { if (project.trust !== "trusted") { setMessage("UNTRUSTED PROJECT: cache clearing is blocked until explicit trust approval."); return; } if (!window.confirm("Clear only KForge project cache entries? Project source files are not affected.")) return; try { const response = await fetch(`/api/workspace/projects/${project.id}/cache/clear`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Cache clear failed."); setMessage("KForge project cache cleared."); await refresh(); } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Cache clear failed."); } };
   return <section className="kf-capability-panel"><div className="kf-card-heading"><div><Box size={17} /><h3>Local Storage & Cache</h3></div><button onClick={() => void refresh()}>Refresh</button></div><p className="kf-capability-copy">This panel reports KForge-managed cache entries only. It never claims ownership of package-manager, build, or user files outside the configured cache engine.</p>{message && <StatusMessage>{message}</StatusMessage>}<div className="kf-provider-grid">{entries?.map((entry) => <article className="kf-provider-card" key={entry.path}><div><strong>{entry.path}</strong><span>{entry.bytes === undefined ? "size unavailable" : `${Math.round(entry.bytes / 1024)} KB`}</span></div><small>{entry.modifiedAt ? formatDate(entry.modifiedAt) : "timestamp unavailable"}</small></article>)}</div>{entries?.length === 0 && <p className="kf-capability-copy">No KForge cache entry is currently reported for this project.</p>}<button className="kf-button kf-button--ghost" onClick={() => void clear()}>Clear KForge cache</button></section>;
+}
+
+function SelfAuditPanel({ project }: { project: ProjectSummary }) {
+  const [record, setRecord] = useState<SelfAuditRecord | null>(null);
+  const [message, setMessage] = useState("Loading persisted Self Audit evidence…");
+  const [running, setRunning] = useState(false);
+  const load = async () => {
+    try {
+      const response = await fetch(`/api/workspace/projects/${project.id}/self-audit`);
+      const payload = await response.json() as { selfAudit?: SelfAuditRecord; error?: string };
+      if (response.status === 404) { setRecord(null); setMessage(payload.error || "No Self Audit evidence exists yet."); return; }
+      if (!response.ok || !payload.selfAudit) throw new Error(payload.error || "Self Audit evidence is unavailable.");
+      setRecord(payload.selfAudit);
+      setMessage(payload.selfAudit.status === "WAITING_RESTART" ? "Evidence is persisted. Restart the KForge server process, then reload this panel to prove Restart and Reload Evidence." : "");
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Self Audit evidence is unavailable."); }
+  };
+  useEffect(() => { void load(); }, [project.id]);
+  const runAudit = async () => {
+    setRunning(true);
+    setMessage("Running the exact local observational sequence. Tests, build, and runtime may take several minutes…");
+    try {
+      const response = await fetch(`/api/workspace/projects/${project.id}/self-audit`, { method: "POST" });
+      const payload = await response.json() as { selfAudit?: SelfAuditRecord; error?: string };
+      if (!response.ok || !payload.selfAudit) throw new Error(payload.error || "Self Audit failed.");
+      setRecord(payload.selfAudit);
+      setMessage("Evidence was atomically persisted. A real KForge server restart is now required; a renderer refresh does not count.");
+    } catch (cause: unknown) { setMessage(cause instanceof Error ? cause.message : "Self Audit failed."); }
+    finally { setRunning(false); }
+  };
+  return <section className="kf-capability-panel">
+    <div className="kf-card-heading"><div><Activity size={17} /><h3>KForge Self Audit</h3></div><span>{record?.status || "NOT RUN"}</span></div>
+    <p className="kf-capability-copy">This KForge-on-KForge workflow composes the existing Health, Graph, Architecture, Sonar, Problems, Agent, command, Preview, and Release Gate engines. It never applies a fix, starts Preview, or contacts a remote provider implicitly. Tests, build, and bounded runtime verification execute only after this explicit action.</p>
+    <div className="kf-inline-controls"><button className="kf-button kf-button--primary" disabled={running} aria-busy={running} onClick={() => void runAudit()}>{running ? "Running Self Audit…" : "Run KForge Self Audit"}</button><button disabled={running} onClick={() => void load()}>Reload persisted evidence</button></div>
+    {message && <StatusMessage>{message}</StatusMessage>}
+    {record && <>
+      <div className="kf-hardware-grid"><span><strong>Status</strong>{record.status}</span><span><strong>Outcome</strong>{record.outcome}</span><span><strong>Observational</strong>{record.observational ? "YES" : "NO"}</span><span><strong>Source mutation</strong>{record.sourceMutationDetected ? "DETECTED" : "NONE"}</span><span><strong>Started</strong>{formatDate(record.startedAt)}</span><span><strong>Completed</strong>{record.completedAt ? formatDate(record.completedAt) : "WAITING FOR RESTART"}</span></div>
+      <div className="kf-provider-grid">{record.stages.map((stage, index) => <article className="kf-provider-card" key={stage.id}><div><strong>{index + 1}. {stage.label}</strong><span>{stage.state}</span></div><small>{stage.completedAt ? formatDate(stage.completedAt) : stage.startedAt ? `Started ${formatDate(stage.startedAt)}` : "Not started"}</small><details><summary>Stage evidence</summary><pre>{JSON.stringify(stage.evidence, null, 2)}</pre></details></article>)}</div>
+      <article className="kf-command-evidence"><strong>Persistence and restart boundary</strong><small>{record.evidenceFile}</small><pre>{JSON.stringify({ originInstanceId: record.originInstanceId, reloadedByInstanceId: record.reloadedByInstanceId, status: record.status, outcome: record.outcome }, null, 2)}</pre></article>
+    </>}
+  </section>;
 }
 
 function SystemDiagnosticsPanel({ platform }: { platform?: LocalPlatformStatus }) {

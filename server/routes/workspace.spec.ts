@@ -6,7 +6,7 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executePreviewFixVerify, executeProjectAction, githubReadState, makeProjectSummary, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
+import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executePreviewFixVerify, executeProjectAction, githubReadState, makeProjectSummary, nonProductionSecurityEvidence, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
 import { startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import type { KForgeTask } from "../services/tasks";
 import { selectProjectRuntime } from "../services/projectExecution";
@@ -353,6 +353,12 @@ describe("KForge Workspace engines", () => {
     } finally {
       await fs.rm(projectPath, { recursive: true, force: true });
     }
+  });
+
+  it("separates synthetic test credential patterns from production security blockers", () => {
+    expect(nonProductionSecurityEvidence("server/services/redaction.spec.ts")).toBe(true);
+    expect(nonProductionSecurityEvidence("fixtures/security/token.ts")).toBe(true);
+    expect(nonProductionSecurityEvidence("server/services/provider.ts")).toBe(false);
   });
 
   it("creates and restores a file snapshot", async () => {

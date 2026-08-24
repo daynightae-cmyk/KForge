@@ -128,6 +128,17 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('Local · GitHub · CI · Preview');
   });
 
+  it("exposes the exact observational Self Audit with real restart and reload evidence", () => {
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    expect(CAPABILITY_RENDERER_IDS["Self Audit"]).toBe("SelfAuditPanel");
+    expect(source).toContain("KForge Self Audit");
+    expect(source).toContain('/self-audit`');
+    expect(source).toContain("never applies a fix, starts Preview, or contacts a remote provider implicitly");
+    expect(source).toContain("a renderer refresh does not count");
+    expect(source).toContain("Reload persisted evidence");
+    expect(source).toContain("Source mutation");
+  });
+
   it("references the single Preview session from every requested engineering context", () => {
     expect(PREVIEW_CONTEXT_NAVIGATION_LABELS).toEqual([
       "Project health", "Agents", "Tasks", "KForge Sonar", "Problems", "Solutions", "Project graph", "Architecture",
