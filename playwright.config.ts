@@ -21,9 +21,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run build && npm run start',
+    command: 'npm run start',
     url: 'http://localhost:3000/api/ping',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
+    reuseExistingServer: false,
+    timeout: 60000,
   },
 });

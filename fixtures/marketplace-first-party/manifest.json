@@ -1,0 +1,31 @@
+{
+  "name": "kforge-json-inspector",
+  "version": "1.0.0",
+  "description": "KForge JSON Inspector - validates JSON syntax and reports structural evidence.",
+  "publisher": "KForge",
+  "license": "MIT",
+  "category": "tools",
+  "id": "package:kforge:json-inspector",
+  "permissions": [
+    { "id": "project-read", "required": false, "detail": "Reads selected JSON file content only." },
+    { "id": "process", "required": false, "detail": "Runs as local inspection only; no external network." }
+  ],
+  "capabilities": ["json-validation", "structure-inspection"],
+  "compatibility": "KForge 1.0+",
+  "requirements": ["KForge Workspace server"],
+  "homepage": "https://kforge.local/packages/json-inspector",
+  "repository": "https://github.com/daynightae-cmyk/KForge/packages/json-inspector",
+  "downloadUrl": "/api/marketplace/packages/kforge-json-inspector-1.0.0.tar.gz",
+  "size": 2048,
+  "sha256": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3",
+  "dependencies": [],
+  "integrity": {
+    "algorithm": "sha256",
+    "expectedHash": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"
+  },
+  "runtimeRequirements": {
+    "kforgeVersion": ">=1.0.0",
+    "os": ["linux", "darwin", "win32"],
+    "commands": ["node"]
+  }
+}
