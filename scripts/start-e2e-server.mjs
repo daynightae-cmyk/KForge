@@ -5,6 +5,7 @@ const child = spawn(npmExecutable, ["run", "start"], {
   env: { ...process.env, PORT: "4317" },
   stdio: "inherit",
   windowsHide: true,
+  shell: process.platform === "win32",
 });
 
 const forwardSignal = (signal) => {
