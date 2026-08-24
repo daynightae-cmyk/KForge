@@ -4,7 +4,9 @@
   "type": "module",
   "pkg": {
     "assets": [
-      "dist/spa/*"
+      "dist/spa/*",
+      "fixtures/marketplace-first-party/**/*",
+      "fixtures/marketplace-first-party-v110/**/*"
     ],
     "scripts": [
       "dist/server/**/*.js"
