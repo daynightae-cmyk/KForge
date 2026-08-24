@@ -393,8 +393,19 @@ export interface LocalCapability {
   detail: string;
 }
 
+export type LocalPlatformMode = "offline" | "local-first" | "online-optional" | "online";
+
+export interface LocalPlatformNetworkPolicy {
+  externalMetadataReads: boolean;
+  remoteTransfers: boolean;
+  providerRefresh: boolean;
+  remoteWritesRequireConfirmation: true;
+  openingRemoteSurfaceContactsNetwork: false;
+}
+
 export interface LocalPlatformStatus {
-  mode: "offline" | "online-optional";
+  mode: LocalPlatformMode;
+  policy: LocalPlatformNetworkPolicy;
   coreReady: boolean;
   networkRequiredForCore: false;
   storagePath: string;

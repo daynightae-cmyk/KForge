@@ -3,12 +3,13 @@ import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LocalPlatformStatus, ProjectSummary } from "../../shared/workspace";
 import type { PreviewStatus } from "./previewRuntime";
+import { localPlatformPolicy } from "./localPlatform";
 import { createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "./onlineControlCenter";
 
 const roots: string[] = [];
 
 function platform(mode: LocalPlatformStatus["mode"]): LocalPlatformStatus {
-  return { mode, coreReady: true, networkRequiredForCore: false, storagePath: "test", checkedAt: new Date().toISOString(), capabilities: [], optionalOnlineFeatures: [] };
+  return { mode, policy: localPlatformPolicy(mode), coreReady: true, networkRequiredForCore: false, storagePath: "test", checkedAt: new Date().toISOString(), capabilities: [], optionalOnlineFeatures: [] };
 }
 
 function project(remoteUrl?: string): ProjectSummary {

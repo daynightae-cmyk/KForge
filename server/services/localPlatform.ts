@@ -1,16 +1,17 @@
+import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { LocalCapability, LocalPlatformStatus } from "../../shared/workspace";
+import type { LocalCapability, LocalPlatformMode, LocalPlatformNetworkPolicy, LocalPlatformStatus } from "../../shared/workspace";
 
 const execFileAsync = promisify(execFile);
-
-type LocalPlatformMode = LocalPlatformStatus["mode"];
 
 interface LocalPlatformSettings {
   mode?: LocalPlatformMode;
 }
+
+const modes = new Set<LocalPlatformMode>(["offline", "local-first", "online-optional", "online"]);
 
 function settingsPath(workspaceRoot: string) {
   return path.join(workspaceRoot, ".kforge", "local-platform.json");
@@ -22,6 +23,28 @@ async function readSettings(workspaceRoot: string): Promise<LocalPlatformSetting
     return typeof raw === "object" && raw !== null ? raw as LocalPlatformSettings : {};
   } catch {
     return {};
+  }
+}
+
+export function localPlatformPolicy(mode: LocalPlatformMode): LocalPlatformNetworkPolicy {
+  return {
+    externalMetadataReads: mode !== "offline",
+    remoteTransfers: mode === "online-optional" || mode === "online",
+    providerRefresh: mode === "online",
+    remoteWritesRequireConfirmation: true,
+    openingRemoteSurfaceContactsNetwork: false,
+  };
+}
+
+async function writeSettingsAtomic(workspaceRoot: string, settings: LocalPlatformSettings) {
+  const destination = settingsPath(workspaceRoot);
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    await fs.rename(temporary, destination);
+  } finally {
+    await fs.rm(temporary, { force: true }).catch(() => undefined);
   }
 }
 
@@ -46,7 +69,8 @@ export async function getLocalPlatformStatus(workspaceRoot: string): Promise<Loc
     commandAvailable("npm", ["--version"]),
     commandAvailable(process.platform === "win32" ? "ollama.exe" : "ollama", ["--version"]),
   ]);
-  const mode: LocalPlatformMode = settings.mode === "online-optional" ? "online-optional" : "offline";
+  const mode: LocalPlatformMode = settings.mode && modes.has(settings.mode) ? settings.mode : "offline";
+  const policy = localPlatformPolicy(mode);
   const capabilities: LocalCapability[] = [
     capability("projects", "Projects & repositories", "ready", "Open and inspect local folders without an external service."),
     capability("git", "Git status, branches & diffs", gitAvailable ? "ready" : "unavailable", gitAvailable ? "Uses the locally installed Git executable; remote sync is separate." : "Git was not found on PATH; local file features remain available."),
@@ -61,30 +85,43 @@ export async function getLocalPlatformStatus(workspaceRoot: string): Promise<Loc
     capability("artifacts", "Logs, snapshots & caches", "ready", "Stores task evidence and snapshots under the local KForge workspace."),
   ];
   const coreReady = capabilities.filter((entry) => entry.id !== "local-ai").every((entry) => entry.state !== "unavailable");
-  const onlineEnabled = mode === "online-optional";
   return {
     mode,
+    policy,
     coreReady,
     networkRequiredForCore: false,
     storagePath: path.join(workspaceRoot, ".kforge"),
     checkedAt: new Date().toISOString(),
     capabilities,
     optionalOnlineFeatures: [
-      { id: "clone", label: "Clone remote repository", enabled: onlineEnabled, detail: onlineEnabled ? "Enabled only as an explicit remote Git action." : "Disabled in Offline Mode; opening an existing local repository remains available." },
-      { id: "git-sync", label: "Git pull & push", enabled: onlineEnabled, detail: onlineEnabled ? "Available only when the user explicitly requests remote sync." : "Disabled in Offline Mode; status, branches, diffs and commits remain local." },
-      { id: "model-download", label: "Download a local model", enabled: onlineEnabled, detail: onlineEnabled ? "Requires an explicit user confirmation before any model download." : "Disabled in Offline Mode; existing local models can still be used." },
+      { id: "clone", label: "Clone remote repository", enabled: policy.remoteTransfers, detail: policy.remoteTransfers ? "Enabled only as an explicit confirmed remote transfer." : `${mode} mode blocks remote transfers; opening an existing local repository remains available.` },
+      { id: "git-sync", label: "Git pull & push", enabled: policy.remoteTransfers, detail: policy.remoteTransfers ? "Available only when the user explicitly requests remote sync; writes still require confirmation." : `${mode} mode keeps remote transfer operations blocked; status, branches, diffs and commits remain local.` },
+      { id: "model-download", label: "Download a local model", enabled: policy.remoteTransfers, detail: policy.remoteTransfers ? "Requires an explicit user confirmation before any model download." : `${mode} mode blocks downloads; existing local models remain usable.` },
       { id: "cloud-ai", label: "Cloud AI provider", enabled: false, detail: "Never selected automatically. KForge core functions do not require a cloud provider or API key." },
     ],
   };
 }
 
 export async function setLocalPlatformMode(workspaceRoot: string, mode: LocalPlatformMode) {
-  await fs.mkdir(path.dirname(settingsPath(workspaceRoot)), { recursive: true });
-  await fs.writeFile(settingsPath(workspaceRoot), JSON.stringify({ mode }, null, 2), "utf8");
+  if (!modes.has(mode)) throw new Error("Unsupported local platform mode.");
+  await writeSettingsAtomic(workspaceRoot, { mode });
   return getLocalPlatformStatus(workspaceRoot);
 }
 
 export async function isOptionalOnlineFeatureEnabled(workspaceRoot: string) {
   const settings = await readSettings(workspaceRoot);
-  return settings.mode === "online-optional";
+  const mode = settings.mode && modes.has(settings.mode) ? settings.mode : "offline";
+  return localPlatformPolicy(mode).externalMetadataReads;
+}
+
+export async function isRemoteTransferEnabled(workspaceRoot: string) {
+  const settings = await readSettings(workspaceRoot);
+  const mode = settings.mode && modes.has(settings.mode) ? settings.mode : "offline";
+  return localPlatformPolicy(mode).remoteTransfers;
+}
+
+export async function isProviderRefreshEnabled(workspaceRoot: string) {
+  const settings = await readSettings(workspaceRoot);
+  const mode = settings.mode && modes.has(settings.mode) ? settings.mode : "offline";
+  return localPlatformPolicy(mode).providerRefresh;
 }

@@ -4,6 +4,25 @@ import path from "path";
 import { flushTaskStore, initializeTaskStore, listTasks } from "./tasks";
 
 describe("KForge task recovery", () => {
+  it("reloads only the selected workspace store instead of duplicating cached tasks", async () => {
+    const firstRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-task-root-a-"));
+    const secondRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-task-root-b-"));
+    try {
+      await fs.mkdir(path.join(firstRoot, ".kforge"), { recursive: true });
+      await fs.mkdir(path.join(secondRoot, ".kforge"), { recursive: true });
+      const task = (id: string, projectId: string) => ({ id, projectId, kind: "scan", status: "succeeded", progress: 100, logs: [], startedAt: "2026-08-24T00:00:00.000Z", finishedAt: "2026-08-24T00:00:01.000Z" });
+      await fs.writeFile(path.join(firstRoot, ".kforge", "tasks.json"), JSON.stringify({ tasks: [task("first", "project-a")] }), "utf8");
+      await fs.writeFile(path.join(secondRoot, ".kforge", "tasks.json"), JSON.stringify({ tasks: [task("second", "project-b")] }), "utf8");
+      await initializeTaskStore(firstRoot);
+      expect(listTasks().map((entry) => entry.id)).toEqual(["first"]);
+      await initializeTaskStore(secondRoot);
+      expect(listTasks().map((entry) => entry.id)).toEqual(["second"]);
+    } finally {
+      await flushTaskStore();
+      await Promise.all([firstRoot, secondRoot].map((root) => fs.rm(root, { recursive: true, force: true, maxRetries: 4, retryDelay: 75 })));
+    }
+  });
+
   it("marks an interrupted persisted agent mission as blocked and preserves its evidence", async () => {
     const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-recovery-"));
     const stateDir = path.join(root, ".kforge");
@@ -35,34 +54,41 @@ async function waitForTask(taskId: string) {
 
 describe("KForge mission graph execution", () => {
   it("blocks queued dependent mission steps after a failed mission result", async () => {
-    const { attachMission, startTask } = await import("./tasks");
-    const task = startTask("mission-test", "agent", async () => ({ ok: false, output: "failure", message: "Scan failed." }));
-    attachMission(task.id, {
-      id: task.id,
-      projectId: "mission-test",
-      type: "audit",
-      name: "audit",
-      goal: "Test mission.",
-      state: "queued",
-      status: "queued",
-      createdAt: new Date().toISOString(),
-      progress: 0,
-      steps: [
-        { id: "scan", missionId: task.id, index: 0, name: "Scan", kind: "scan", tool: "scan", status: "running", dependencies: [], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
-        { id: "graph", missionId: task.id, index: 1, name: "Graph", kind: "graph", tool: "graph", status: "queued", dependencies: ["scan"], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
-        { id: "health", missionId: task.id, index: 2, name: "Health", kind: "health", tool: "health", status: "queued", dependencies: ["graph"], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
-      ],
-      evidence: [],
-      changedFiles: [],
-      warnings: [],
-      recovery: { resume: false, rollback: false, inspect: true, detail: "Test mission." },
-    });
+    const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-mission-graph-"));
+    try {
+      await initializeTaskStore(root);
+      const { attachMission, startTask } = await import("./tasks");
+      const task = startTask("mission-test", "agent", async () => ({ ok: false, output: "failure", message: "Scan failed." }));
+      attachMission(task.id, {
+        id: task.id,
+        projectId: "mission-test",
+        type: "audit",
+        name: "audit",
+        goal: "Test mission.",
+        state: "queued",
+        status: "queued",
+        createdAt: new Date().toISOString(),
+        progress: 0,
+        steps: [
+          { id: "scan", missionId: task.id, index: 0, name: "Scan", kind: "scan", tool: "scan", status: "running", dependencies: [], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
+          { id: "graph", missionId: task.id, index: 1, name: "Graph", kind: "graph", tool: "graph", status: "queued", dependencies: ["scan"], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
+          { id: "health", missionId: task.id, index: 2, name: "Health", kind: "health", tool: "health", status: "queued", dependencies: ["graph"], logs: [], evidence: [], requiresConfirmation: false, attempts: 0, retryCount: 0 },
+        ],
+        evidence: [],
+        changedFiles: [],
+        warnings: [],
+        recovery: { resume: false, rollback: false, inspect: true, detail: "Test mission." },
+      });
 
-    const completed = await waitForTask(task.id);
-    expect(completed.status).toBe("failed");
-    expect(completed.mission?.state).toBe("failed");
-    expect(completed.mission?.steps.find((step) => step.id === "graph")?.status).toBe("blocked");
-    expect(completed.mission?.steps.find((step) => step.id === "health")?.status).toBe("blocked");
+      const completed = await waitForTask(task.id);
+      expect(completed.status).toBe("failed");
+      expect(completed.mission?.state).toBe("failed");
+      expect(completed.mission?.steps.find((step) => step.id === "graph")?.status).toBe("blocked");
+      expect(completed.mission?.steps.find((step) => step.id === "health")?.status).toBe("blocked");
+    } finally {
+      await flushTaskStore();
+      await fs.rm(root, { recursive: true, force: true, maxRetries: 4, retryDelay: 75 });
+    }
   });
 });
 

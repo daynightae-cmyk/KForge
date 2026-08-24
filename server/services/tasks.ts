@@ -111,6 +111,9 @@ function queuePersist() {
 }
 
 export async function initializeTaskStore(workspaceRoot: string) {
+  await persistenceQueue;
+  tasks.clear();
+  executors.clear();
   storeFile = path.join(workspaceRoot, ".kforge", "tasks.json");
   const saved = await fs.readFile(storeFile, "utf8").then((text) => JSON.parse(text) as { tasks?: KForgeTask[] }).catch(() => ({ tasks: [] }));
   let interrupted = 0;

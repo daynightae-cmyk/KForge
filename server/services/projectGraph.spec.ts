@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import { analyzeImpact, buildProjectGraph } from "./projectGraph";
-import { clearProjectCache } from "./projectPerformance";
+import { clearProjectCache, projectCacheStatus } from "./projectPerformance";
 
 describe("language-aware project graph", () => {
   it("derives exported symbols, ownership, dependency edges, deep cycles, duplicate names, and transitive impact from TypeScript syntax trees", async () => {
@@ -41,6 +41,10 @@ describe("language-aware project graph", () => {
       expect(impact.directDependents).toContain("symbol:src/c.ts#C");
       expect(impact.transitiveDependents).toEqual(expect.arrayContaining(["symbol:src/c.ts#C", "symbol:src/b.ts#B"]));
       expect(impact.relatedTests).toContain("src/a.test.ts");
+      const cached = await buildProjectGraph(root);
+      expect(cached.cache.state).toBe("CACHED");
+      expect(projectCacheStatus(root)).toHaveLength(1);
+      expect(projectCacheStatus(root)[0]).toMatchObject({ key: "graph", hits: 1 });
     } finally {
       clearProjectCache(root);
       await fs.rm(root, { recursive: true, force: true });

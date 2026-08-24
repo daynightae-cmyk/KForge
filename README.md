@@ -81,7 +81,7 @@ KForge-managed settings, tasks, trust decisions, collections, caches, snapshots,
 
 ## Truthful limitations
 
-- KForge starts in Offline Mode. GitHub, registries, remote documentation, remote CI, remote Preview, updates, and cloud AI remain `OFFLINE`, `NOT_CONFIGURED`, `UNKNOWN`, `UNAVAILABLE`, or `BLOCKED` until a real adapter, policy, authentication, and explicit action provide evidence.
+- KForge starts in Offline Mode. Local First permits explicit metadata reads, Online Optional additionally permits confirmed transfers, and Online additionally permits explicit provider refresh. Opening a remote surface never contacts its provider. GitHub, registries, remote documentation, remote CI, remote Preview, updates, and cloud AI remain `OFFLINE`, `NOT_CONFIGURED`, `UNKNOWN`, `UNAVAILABLE`, or `BLOCKED` until a real adapter, policy, authentication, and explicit action provide evidence.
 - No trustworthy remote extension package adapter is currently configured, so remote install/update/uninstall claims remain blocked rather than simulated.
 - Local AI detection supports Ollama and LM Studio endpoints on loopback. No cloud provider is auto-selected and cloud credentials are not accepted through renderer settings.
 - Preview captures the local process output and KForge health probes. It does not claim browser console or full browser-network telemetry without a browser bridge.

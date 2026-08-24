@@ -8,7 +8,7 @@ Evidence reviewed on 2026-08-24 against source at `001cdf3464309aa8b9b5bb7328d6d
 | --- | --- | --- | --- |
 | Workspace and collections | Discovers immediate child repositories and persists recent, favorite, pinned, archived, and label state | Route/service tests and built `/api/workspace/projects` response | COMPLETE |
 | Settings | Validates, migrates, atomically persists, reloads, and applies every locally editable domain; unsupported domains are classified | Settings unit tests and UI contract tests | COMPLETE locally |
-| Operating mode | Offline is the safe default; Online Optional changes real remote-operation eligibility and persists | Local platform service and route tests | COMPLETE locally |
+| Operating mode | Offline, Local First, Online Optional, and Online have distinct metadata-read, remote-transfer, and provider-refresh policies; the safe default is Offline | Transition/restart service tests plus route and UI contract tests | COMPLETE locally |
 | Network transparency | Important local, remote, and hybrid actions expose execution, network, data class, provider, destination, confirmation, time, and result | Service/route tests; live visual review unavailable | PARTIAL acceptance |
 | Project Health | Separates LOCAL, GITHUB, CI, REMOTE_REGISTRY, and PREVIEW evidence before overall recommendation | Route tests and built Self Audit evidence | COMPLETE |
 | Online Control Center | Reports mode and 11 services without contacting them when opened | Service tests and UI contract tests | COMPLETE local truth |
@@ -20,7 +20,7 @@ Evidence reviewed on 2026-08-24 against source at `001cdf3464309aa8b9b5bb7328d6d
 | Preview | One process manager with start/health/stop/restart, bounded logs, routes, history, and contextual references | Preview service and fix/verify route tests | COMPLETE local core; browser telemetry UNAVAILABLE |
 | Preview Fix and Verify | Requires current failing Preview evidence, plans, snapshots, applies only a verified safe patch, verifies, restarts, and rolls back on failure | End-to-end route test | COMPLETE for supported safe rule |
 | Release Gate | Separates LOCAL, GITHUB, CI, and PREVIEW verdicts; absent remote evidence never becomes local success | Route tests and built Self Audit | COMPLETE source separation |
-| Git and GitHub | Uses real local Git; remote reads require Online Optional and GitHub CLI/auth; writes remain separately confirmed | Route tests; configured remote/auth dependent | PARTIAL external operations |
+| Git and GitHub | Uses real local Git; remote reads require a non-Offline mode plus GitHub CLI/auth; transfers require Online Optional or Online; writes remain separately confirmed | Route tests; configured remote/auth dependent | PARTIAL external operations |
 | Universal execution | Metadata-backed test/build/runtime/Preview selection for Node, Python, Go, Rust, Maven, Gradle, .NET, and PHP | Golden Matrix route tests | COMPLETE where metadata exists |
 | Global Search | Searches requested real local entities and exposes COMPLETE, PARTIAL, LIMIT_REACHED, UNAVAILABLE, or NOT_CONFIGURED coverage | API contract test and built API | COMPLETE bounded local coverage |
 | Responsive Online Hub | Desktop three-region, tablet two-region, and contextual mobile browse/detail source contract | UI contract tests | PARTIAL — live width screenshots BLOCKED |
@@ -33,6 +33,6 @@ Evidence reviewed on 2026-08-24 against source at `001cdf3464309aa8b9b5bb7328d6d
 - The current environment has no browser automation bridge that can navigate the loopback product, so the required visual, responsive, keyboard, console, and backend-404 acceptance walkthrough is not claimed as passed.
 - No configured official extension registry/package adapter and integrity source exists for a real remote extension lifecycle.
 - Remote model/update registries, cloud AI, remote documentation, remote CI, remote Preview, and product updates require configured providers and policy.
-- GitHub evidence requires Online Optional, GitHub CLI availability, authentication, repository access, and network access. Remote writes additionally require explicit confirmation.
+- GitHub evidence requires a non-Offline mode, GitHub CLI availability, authentication, repository access, and network access. Remote transfers require Online Optional or Online; remote writes additionally require explicit confirmation.
 
 The repository must continue showing these as `BLOCKED`, `NOT_CONFIGURED`, `OFFLINE`, `UNKNOWN`, or `UNAVAILABLE` until current evidence changes.

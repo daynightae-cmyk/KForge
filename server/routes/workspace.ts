@@ -45,7 +45,7 @@ import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHand
 import { appendTaskLog, attachMission, cancelTask, completeMission, getTask, initializeTaskStore, listTasks, retryTask, startTask, updateMissionStep, type KForgeMission, type KForgeTask, type TaskKind, type MissionType } from "../services/tasks";
 import { createMissionFromStrategy, missionStrategies, supportedMissionTypes } from "../services/missionStrategies";
 import { executeMissionDag, type MissionStepExecution } from "../services/missionOrchestrator";
-import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatformMode } from "../services/localPlatform";
+import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, isRemoteTransferEnabled, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
 import { chooseProjectPerformance, clearProjectCache, projectCacheStatus } from "../services/projectPerformance";
@@ -1125,9 +1125,9 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
     addActivity(project.id, { kind: "runtime", title: result.ok ? "Runtime verification passed" : "Runtime verification failed", detail: result.message });
     return result;
   }
-  if ((action === "pull" || action === "push") && !(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
+  if ((action === "pull" || action === "push") && !(await isRemoteTransferEnabled(getWorkspaceRoot()))) {
     const completedAt = new Date().toISOString();
-    const message = "Remote Git sync is disabled in Offline Mode. Switch KForge to Online Optional only when you explicitly want to contact a remote.";
+    const message = "Remote Git transfers are disabled by the current operating mode. Switch to Online Optional or Online only when you explicitly want to contact a remote.";
     return { action, projectId: project.id, ok: false, startedAt, completedAt, output: "", message, transparency: projectActionTransparency(project, action, startedAt, completedAt, "BLOCKED", message, confirmedRemoteWrite) };
   }
   if (action === "push" && !confirmedRemoteWrite) {
@@ -1241,7 +1241,7 @@ router.get("/projects/:id/online/control-center", async (req, res) => {
 
 router.post("/platform/mode", async (req, res) => {
   const mode = req.body?.mode;
-  if (mode !== "offline" && mode !== "online-optional") return res.status(400).json({ error: "Choose offline or online-optional mode." });
+  if (!(["offline", "local-first", "online-optional", "online"] as const).includes(mode)) return res.status(400).json({ error: "Choose offline, local-first, online-optional, or online mode." });
   res.json(await setLocalPlatformMode(getWorkspaceRoot(), mode));
 });
 
@@ -1323,8 +1323,8 @@ router.post("/ai/models/install", async (req, res) => {
     const error = "KForge currently supports confirmed installation through Ollama model identifiers only.";
     return res.status(400).json({ error, transparency: disclosure("BLOCKED", error) });
   }
-  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
-    const error = "Model downloads are disabled in Offline Mode. Existing local models remain usable; choose Online Optional only after you decide to download.";
+  if (!(await isRemoteTransferEnabled(getWorkspaceRoot()))) {
+    const error = "Model downloads are disabled by the current operating mode. Existing local models remain usable; choose Online Optional or Online only after you decide to download.";
     return res.status(409).json({ error, transparency: disclosure("BLOCKED", error) });
   }
   if (!confirmed) {
@@ -1530,7 +1530,7 @@ router.get("/projects/:id/github", async (req, res) => {
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
     const completedAt = new Date().toISOString();
-    const error = "GitHub metadata is disabled in Offline Mode. Enable Online Optional after reviewing purpose, data, and destination.";
+    const error = "GitHub metadata is disabled in Offline Mode. Switch to Local First, Online Optional, or Online after reviewing purpose, data, and destination.";
     return res.status(428).json({ error, permission: "online-optional", connection: { state: "BLOCKED", reason: error }, transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: "https://api.github.com", purpose: "Read repository, branch, commit, issue, pull request, action, check-run, commit-status, and release metadata.", startedAt, completedAt, result: "BLOCKED", reason: error }) });
   }
   const slug = githubSlug(project.remoteUrl);
@@ -2228,8 +2228,8 @@ router.post("/projects/clone", async (req, res) => {
   const targetName = typeof req.body?.targetName === "string" ? req.body.targetName.trim() : "";
   const confirmed = req.body?.confirmed === true;
   const disclosure = (result: OperationResultState, reason?: string, completedAt: string | null = new Date().toISOString()) => createOperationTransparency({ execution: "HYBRID", network: "REQUIRED", dataClasses: ["METADATA", "ARTIFACT"], provider: "Git", destination: remoteUrl || "Remote repository not provided", purpose: `Clone the selected repository into ${targetName || "a local destination"}.`, confirmation: confirmed ? "CONFIRMED" : "REQUIRED", startedAt, completedAt, result, reason });
-  if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) {
-    const error = "Remote cloning is disabled in Offline Mode. Open an existing local project instead, or explicitly switch to Online Optional.";
+  if (!(await isRemoteTransferEnabled(getWorkspaceRoot()))) {
+    const error = "Remote cloning is disabled by the current operating mode. Open an existing local project instead, or explicitly switch to Online Optional or Online.";
     return res.status(409).json({ error, transparency: disclosure("BLOCKED", error) });
   }
   if (!confirmed) {
