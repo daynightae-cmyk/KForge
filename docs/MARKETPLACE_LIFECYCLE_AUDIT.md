@@ -1,49 +1,71 @@
 # Marketplace Lifecycle Audit
 
-Baseline: 288c2d9e19c98563e5cc11a378d45fc0fd6bf618
+Baseline: `288c2d9e19c98563e5cc11a378d45fc0fd6bf618`
 
-## What already exists
+## Final verified architecture
 
-- `server/services/marketplace.ts` - Registry adapter list (`local-registry`, `ollama-official`, `extension-registries`), `MarketplaceItem`, `MarketplaceProviderStatus`, `MarketplaceRegistryAdapter`.
-- `getMarketplace()` reads `.kforge/marketplace-registry.json` (local) + combines with model center (ollama) + registered extensions + recommendations.
-- `previewMarketplaceInstall()` does basic preview (installed check, install action, allowed/reason) but NO download, verify, stage, install, or rollback.
-- `localEngineItems()` exposes agent `agent:kforge:engineer` and agent tools from `agentTools`.
-- No integrity (SHA-256) verification path.
-- No real download adapter.
-- No package staging directory.
-- No durable installed-state persistence outside `.kforge/marketplace-registry.json` (only read, never written by install).
-- `trusted` and `installed` are set from remote/local manifest; `verified` derived state is not enforced.
+KForge Marketplace now keeps the existing normalized Marketplace model while adding a bounded, first-party lifecycle path for locally bundled packages.
 
-## What is metadata-only (not real lifecycle)
+### Catalog and evidence
 
-- `installAction`: `MANAGE_LOCAL` / `NOT_AVAILABLE` / `INSTALL_REQUIRES_CONFIRMATION` are UI labels, not adapter contracts.
-- `trust`: set directly from source data (TRUSTED for local engine), not verified locally.
-- No `sha256`, `size`, `download`, `changelog`, `version` comparison, `update` detection from remote.
-- `registered` extensions are read from file but never installed/updated/uninstalled.
+- `server/services/marketplace.ts` exposes local-registry, Ollama, and extension-registry status through normalized Marketplace contracts.
+- Built-in agents/tools remain local registry items and do not fabricate remote metadata.
+- Remote registries remain `OFFLINE` or `NOT_CONFIGURED` when no trustworthy adapter exists.
+- First-party package catalog metadata comes from bundled manifests under `fixtures/marketplace-first-party*`.
+- Publisher, permissions, provenance, installation, update, dependency, integrity, and trust evidence are represented explicitly rather than inferred as successful.
 
-## Where install adapters live (current)
+### Real first-party lifecycle
 
-None. There is no `install` adapter function exported by marketplace service. Only `previewMarketplaceInstall` exists.
+The first-party package lifecycle implements:
 
-## Where integrity verification belongs
+- manifest schema validation;
+- bounded package IDs and path-containment checks;
+- permission allowlist validation;
+- OS / command / dependency compatibility checks;
+- artifact byte-size verification;
+- SHA-256 verification before installation;
+- staging before activation;
+- atomic durable registry writes;
+- post-install health verification;
+- trusted-package execution only after health verification;
+- version comparison and update staging;
+- rollback to the previous package and registry state when an update fails;
+- staged uninstall followed by durable registration cleanup;
+- restart/reconnect evidence through fresh Marketplace and health reads.
 
-Not present. Needs to be added near package acquisition, before stage.
+Installed state is persisted under the selected workspace's `.kforge` directory. Package directories use a SHA-256-derived storage key rather than untrusted package IDs as filesystem paths.
 
-## Where local package state belongs
+### Confirmation and concurrency
 
-`.kforge/marketplace-registry.json` exists but is only read (`readLocalRegistry`). No write/update/uninstall function exists. Installed-state must be durable across restarts; this file can serve as state store but is not currently written.
+- Install, update, uninstall, and execution API routes require an explicit `{ "confirmed": true }` body.
+- Canonical Marketplace lifecycle API operations are serialized per workspace so overlapping mutations cannot perform concurrent registry read-modify-write transactions.
+- Acceptance coverage includes an overlapping update/uninstall scenario and verifies final filesystem/registry truth.
 
-## Missing for real lifecycle
+### Runtime packaging
 
-- Integrity (SHA-256, size) verification.
-- Real download/stage adapter (even for first-party package).
-- Compatibility check (version, OS, dependencies).
-- Dependency resolution before install.
-- Rollback on failure.
-- Health check after install.
-- Uninstall with file removal and state cleanup.
-- Durable write of installed/update/uninstalled state.
-- Security tests (bad SHA, wrong size, path traversal, unknown permission, dependency failure, health failure).
-- First-party registry source (immutable, owned).
+- Production startup derives a stable application root from the built server location (or `KFORGE_APP_ROOT`).
+- Startup fails explicitly if required first-party manifests are absent rather than silently dropping the catalog item.
+- Packaging metadata includes both first-party fixture directories.
 
-Next step: implement Playwright E2E first, then extend marketplace using existing architecture only.
+### Offline behavior
+
+- First-party install/update fixtures are local and require no remote download.
+- Offline Marketplace state does not probe remote registries.
+- Production E2E observes requests from the first navigation and rejects any external HTTP/HTTPS contact.
+- External Google Font loading is stripped from generated CSS, so core Offline Mode does not depend on Google Fonts or another CDN.
+
+## Verification gate
+
+The authoritative GitHub workflow is `.github/workflows/kforge-verification.yml` and is observational only:
+
+- `permissions: contents: read`;
+- runs for pull requests to `main`, pushes to `main`, and manual dispatch;
+- never commits or pushes verification results to the source branch;
+- uploads `verification-evidence.json` as an Actions artifact;
+- truthfully enforces `npm ci`, typecheck, lint, Marketplace acceptance, full tests, production build, Playwright browser installation, production E2E, and `npm run verify:gate`.
+
+Generated verification evidence is not part of product source history and `docs/verification-evidence/` is ignored.
+
+## Acceptance rule
+
+A Marketplace lifecycle success is valid only after the corresponding filesystem transaction, durable registry state, and integrity/health checks agree. Tests must exercise the real service/API path; mocked success responses are not sufficient.
