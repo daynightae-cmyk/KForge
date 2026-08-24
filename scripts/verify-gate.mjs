@@ -32,12 +32,13 @@ async function runStep(id, command, args, options = {}) {
   evidence.steps.push(record);
 
   const exitCode = await new Promise((resolve) => {
-    const child = spawn(executable(command), args, {
+    const commandExecutable = executable(command);
+    const child = spawn(commandExecutable, args, {
       cwd: process.cwd(),
       env: { ...process.env, ...(options.env || {}) },
       stdio: "inherit",
       windowsHide: true,
-      shell: false,
+      shell: process.platform === "win32" && commandExecutable.endsWith(".cmd"),
     });
     child.on("error", (error) => {
       console.error(`[verify:gate] ${id} failed to start: ${error.message}`);
