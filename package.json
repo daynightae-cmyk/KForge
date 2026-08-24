@@ -21,6 +21,7 @@
     "typecheck": "tsc",
     "lint": "node scripts/lint.mjs",
     "test:e2e": "playwright test",
+    "verify:gate": "node scripts/verify-gate.mjs",
     "verify:release": "npm run typecheck && npm run lint && npm run test && npm run build && npm run test:e2e"
   },
   "dependencies": {
