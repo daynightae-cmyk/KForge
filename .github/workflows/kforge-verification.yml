@@ -44,7 +44,7 @@ jobs:
         run: npm run lint
 
       - name: Marketplace lifecycle acceptance
-        run: npx vitest --run server/services/marketplace.spec.ts
+        run: npx vitest --run server/services/marketplace.spec.ts server/routes/marketplaceLifecycle.spec.ts
 
       - name: Unit and service tests
         run: npm run test
