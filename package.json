@@ -19,7 +19,7 @@
     "test": "vitest --run",
     "format.fix": "prettier --write .",
     "typecheck": "tsc",
-    "lint": "prettier --check .",
+    "lint": "node scripts/lint.mjs",
     "test:e2e": "playwright test",
     "verify:release": "npm run typecheck && npm run lint && npm run test && npm run build && npm run test:e2e"
   },
