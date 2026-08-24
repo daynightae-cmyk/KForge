@@ -44,6 +44,9 @@ pnpm-debug.log*
 _Knoux_Audit/
 _Knoux_Extracted/
 
+# Generated verification evidence (CI artifacts / local gate output)
+docs/verification-evidence/
+
 # Agent configuration directories (not part of KForge source)
 .claude/
 .ctrlnode/
