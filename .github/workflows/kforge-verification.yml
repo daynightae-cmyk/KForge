@@ -23,8 +23,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout exact tested ref
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -88,6 +90,7 @@ jobs:
       - name: Create verification evidence
         if: always()
         env:
+          TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           NPM_CI: ${{ steps.npm_ci.outcome }}
           TYPECHECK: ${{ steps.typecheck.outcome }}
           LINT: ${{ steps.lint.outcome }}
@@ -104,9 +107,10 @@ jobs:
           const steps = Object.fromEntries(required.map((name) => [name.toLowerCase(), process.env[name] || 'skipped']));
           const pass = required.every((name) => process.env[name] === 'success');
           const evidence = {
-            schemaVersion: 2,
+            schemaVersion: 3,
             workflow: 'KForge Verification Gate',
-            testedSha: process.env.GITHUB_SHA,
+            testedSha: process.env.TESTED_SHA,
+            githubSha: process.env.GITHUB_SHA,
             ref: process.env.GITHUB_REF,
             event: process.env.GITHUB_EVENT_NAME,
             runner: process.env.RUNNER_OS,
@@ -123,7 +127,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kforge-verification-${{ github.sha }}
+          name: kforge-verification-${{ github.event.pull_request.head.sha || github.sha }}
           path: verification-evidence.json
           if-no-files-found: error
           retention-days: 30
