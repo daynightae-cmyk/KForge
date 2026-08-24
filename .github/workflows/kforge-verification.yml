@@ -1,6 +1,7 @@
 name: KForge Verification Gate
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
