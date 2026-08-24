@@ -33,6 +33,13 @@ async function exists(file: string) {
   try { await fs.access(file); return true; } catch { return false; }
 }
 
+function isMarkdownCommandContext(text: string, index: number) {
+  const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+  const prefix = text.slice(lineStart, index);
+  const inlineCode = (prefix.match(/`/g) || []).length % 2 === 1;
+  return inlineCode || /^\s*$/.test(prefix);
+}
+
 function commandForScript(profile: ProjectProfile, script: string) {
   const manager = profile.packageManager || "npm";
   if (manager === "yarn") return `yarn ${script}`;
@@ -48,9 +55,10 @@ export async function auditDocumentation(projectPath: string, profile: ProjectPr
     const absolute = path.join(projectPath, document);
     const text = await fs.readFile(absolute, "utf8").catch(() => "");
     for (const match of text.matchAll(commandPattern)) {
+      if (!isMarkdownCommandContext(text, match.index || 0)) continue;
       const whole = match[0];
       const script = match[1];
-      if (script === "install" || profile.scripts[script]) continue;
+      if (script === "install" || script === "ci" || profile.scripts[script]) continue;
       const suggested = profile.commands.dev || profile.commands.test || profile.commands.build;
       findings.push({
         id: idFor(document, "missing-script", whole),

@@ -6,13 +6,24 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
-import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executeProjectAction, makeProjectSummary, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
+import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executePreviewFixVerify, executeProjectAction, githubReadState, makeProjectSummary, nonProductionSecurityEvidence, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
+import { startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import type { KForgeTask } from "../services/tasks";
+import { selectProjectRuntime } from "../services/projectExecution";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 const fixture = (name: string) => path.join(fixturesRoot, name);
 
 describe("KForge Workspace engines", () => {
+  it("classifies missing GitHub Checks evidence with explicit source states", () => {
+    expect(githubReadState({ ok: true, output: "{}" })).toBe("AVAILABLE");
+    expect(githubReadState({ ok: false, output: "gh: command not recognized" })).toBe("UNAVAILABLE");
+    expect(githubReadState({ ok: false, output: "not logged into github.com; run gh auth login" })).toBe("NOT_CONNECTED");
+    expect(githubReadState({ ok: false, output: "HTTP 403: Resource not accessible by integration" })).toBe("BLOCKED");
+    expect(githubReadState({ ok: false, output: "HTTP 404: No commit found" })).toBe("UNAVAILABLE");
+    expect(githubReadState({ ok: false, output: "temporary upstream failure" })).toBe("UNKNOWN");
+  });
+
   it("detects a React and Vite project with source and script evidence", async () => {
     const project = await makeProjectSummary(fixture("workspace-clean"));
     const scan = await scanProject(project);
@@ -20,6 +31,23 @@ describe("KForge Workspace engines", () => {
     expect(scan.profile.languages).toEqual(expect.arrayContaining(["TypeScript", "JavaScript"]));
     expect(scan.profile.scripts).toHaveProperty("build");
     expect(scan.profile.sourceFileCount).toBeGreaterThan(0);
+  }, 15_000);
+
+  it("separates Project Health sources without silently contacting remote providers", async () => {
+    const project = await makeProjectSummary(fixture("workspace-clean"));
+    const profile = await detectProjectProfile(project);
+    const timestamp = "2026-08-24T00:00:00.000Z";
+    const sources = projectHealthEvidenceSources(project, profile, "READY", false, timestamp);
+    expect(Object.keys(sources)).toEqual(["LOCAL", "GITHUB", "CI", "REMOTE_REGISTRY", "PREVIEW"]);
+    expect(sources.LOCAL).toMatchObject({ state: "READY", timestamp, freshness: "CURRENT_SCAN", network: "NOT_REQUIRED" });
+    expect(sources.GITHUB.state).toBe(project.remoteUrl?.includes("github.com") ? "OFFLINE" : "NOT_CONFIGURED");
+    expect(sources.REMOTE_REGISTRY).toMatchObject({ state: "OFFLINE", network: "NOT_REQUIRED" });
+    expect(sources.PREVIEW.network).toBe("NOT_REQUIRED");
+    for (const source of Object.values(sources)) {
+      expect(source.source).toBeTruthy();
+      expect(source.provider).toBeTruthy();
+      expect(source.evidence.length).toBeGreaterThan(0);
+    }
   }, 15_000);
 
   it("normalizes a TypeScript compiler failure into a typecheck diagnostic after explicit trust", async () => {
@@ -70,6 +98,26 @@ describe("KForge Workspace engines", () => {
     expect(result.ok).toBe(false);
     expect(result.exitCode).not.toBe(0);
     expect(result.output).toContain("fixture test failed intentionally");
+    expect(result.transparency).toMatchObject({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], projectSourceSent: false, secretRedaction: true, result: "FAILED" });
+  }, 15_000);
+
+  it("blocks an unconfirmed Git push before any remote contact", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-push-confirmation-"));
+    const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
+    try {
+      process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
+      await setLocalPlatformMode(workspaceRoot, "online-optional");
+      const project = { ...(await makeProjectSummary(fixture("workspace-clean"))), remoteUrl: "https://github.com/knoux/forge.git", modifiedFiles: 0, untrackedFiles: 0 };
+      const result = await executeProjectAction(project, "push");
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain("explicitly confirmed");
+      expect(result.transparency).toMatchObject({ execution: "HYBRID", network: "REQUIRED", dataClasses: ["METADATA", "SOURCE_CODE"], projectSourceSent: true, confirmation: "REQUIRED", result: "BLOCKED" });
+      await expect(fs.stat(path.join(workspaceRoot, ".kforge", "network-contacts.json"))).rejects.toThrow();
+    } finally {
+      if (previousWorkspaceRoot === undefined) delete process.env.KFORGE_WORKSPACE_ROOT;
+      else process.env.KFORGE_WORKSPACE_ROOT = previousWorkspaceRoot;
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
   }, 15_000);
 
   it("defaults the local platform to offline core operation without a network requirement", async () => {
@@ -92,14 +140,14 @@ describe("KForge Workspace engines", () => {
     const expectations = [
       { name: "workspace-clean", frameworks: ["React", "Vite", "Node.js"], languages: ["TypeScript", "JavaScript"], commands: { test: true, build: true } },
       { name: "workspace-node", frameworks: ["Node.js", "Express"], languages: ["JavaScript"], commands: { test: true, build: true, runtime: true } },
-      { name: "workspace-python", frameworks: ["FastAPI", "pytest"], languages: ["Python"], commands: { test: true, build: false } },
-      { name: "workspace-django", frameworks: ["Django", "pytest"], languages: ["Python"], commands: { test: true, build: false } },
-      { name: "workspace-go", frameworks: ["Go"], languages: ["Go"], commands: { test: true, build: true } },
-      { name: "workspace-rust", frameworks: ["Rust"], languages: ["Rust"], commands: { test: true, build: true } },
-      { name: "workspace-java-maven", frameworks: ["Maven", "Spring Boot"], languages: ["Java"], commands: { test: true, build: true } },
-      { name: "workspace-java-gradle", frameworks: ["Gradle"], languages: ["Java"], commands: { test: false, build: false } },
-      { name: "workspace-dotnet", frameworks: [".NET"], languages: ["C#"], commands: { test: true, build: true } },
-      { name: "workspace-php", frameworks: ["PHP", "Composer", "Laravel"], languages: ["PHP"], commands: { test: true, build: false } },
+      { name: "workspace-python", frameworks: ["FastAPI", "pytest"], languages: ["Python"], commands: { test: true, build: false, runtime: true }, preview: true },
+      { name: "workspace-django", frameworks: ["Django", "pytest"], languages: ["Python"], commands: { test: true, build: false, runtime: false }, preview: false },
+      { name: "workspace-go", frameworks: ["Go"], languages: ["Go"], commands: { test: true, build: true, runtime: true }, preview: false },
+      { name: "workspace-rust", frameworks: ["Rust"], languages: ["Rust"], commands: { test: true, build: true, runtime: true }, preview: false },
+      { name: "workspace-java-maven", frameworks: ["Maven", "Spring Boot"], languages: ["Java"], commands: { test: true, build: true, runtime: false }, preview: false },
+      { name: "workspace-java-gradle", frameworks: ["Gradle"], languages: ["Java"], commands: { test: false, build: false, runtime: false }, preview: false },
+      { name: "workspace-dotnet", frameworks: [".NET"], languages: ["C#"], commands: { test: true, build: true, runtime: true }, preview: false },
+      { name: "workspace-php", frameworks: ["PHP", "Composer", "Laravel"], languages: ["PHP"], commands: { test: true, build: false, runtime: false }, preview: false },
     ] as const;
     for (const expectation of expectations) {
       const profile = await detectProjectProfile(await makeProjectSummary(fixture(expectation.name)));
@@ -107,8 +155,15 @@ describe("KForge Workspace engines", () => {
       expect(profile.languages, expectation.name).toEqual(expect.arrayContaining([...expectation.languages]));
       expect(profile.manifests.length, expectation.name).toBeGreaterThan(0);
       for (const [kind, known] of Object.entries(expectation.commands)) {
-        expect(profile.commandEvidence.find((entry) => entry.kind === kind)?.known, `${expectation.name}:${kind}`).toBe(known);
+        const evidence = profile.commandEvidence.find((entry) => entry.kind === kind);
+        expect(evidence?.known, `${expectation.name}:${kind}`).toBe(known);
+        if (kind === "runtime") {
+          const selected = selectProjectRuntime(profile, 43123);
+          expect(selected.available, `${expectation.name}:Preview/runtime selector`).toBe(known);
+          if (!known) expect(evidence?.detail, `${expectation.name}:unavailable reason`).toContain("UNAVAILABLE:");
+        }
       }
+      if ("preview" in expectation) expect(selectProjectRuntime(profile, 43123, "preview").available, `${expectation.name}:Preview`).toBe(expectation.preview);
     }
   }, 30_000);
 
@@ -167,6 +222,84 @@ describe("KForge Workspace engines", () => {
     }
   });
 
+  it("discovers supported non-Node projects from their canonical root metadata", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-non-node-discovery-"));
+    const dotnetProject = path.join(workspaceRoot, "dotnet-app");
+    const gradleProject = path.join(workspaceRoot, "gradle-app");
+    const requirementsProject = path.join(workspaceRoot, "python-app");
+    try {
+      await Promise.all([
+        fs.mkdir(dotnetProject),
+        fs.mkdir(gradleProject),
+        fs.mkdir(requirementsProject),
+      ]);
+      await Promise.all([
+        fs.writeFile(path.join(dotnetProject, "App.csproj"), '<Project Sdk="Microsoft.NET.Sdk" />'),
+        fs.writeFile(path.join(gradleProject, "build.gradle.kts"), "plugins { application }"),
+        fs.writeFile(path.join(requirementsProject, "requirements.txt"), "pytest\n"),
+      ]);
+      await expect(candidateProjectPaths(workspaceRoot)).resolves.toEqual(expect.arrayContaining([dotnetProject, gradleProject, requirementsProject]));
+      await expect(candidateProjectPaths(dotnetProject)).resolves.toContain(dotnetProject);
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Release Gate source verdicts independent and never hides absent CI evidence", async () => {
+    const project = await makeProjectSummary(fixture("workspace-clean"));
+    const scan = await scanProject(project);
+    const release = releaseGateSourceVerdicts(scan);
+    expect(Object.keys(release.verdicts)).toEqual(["LOCAL", "GITHUB", "CI", "PREVIEW"]);
+    expect(release.verdicts.CI).toMatchObject({ kind: "CI", state: "NOT_CONFIGURED", source: expect.any(String), freshness: expect.any(String), evidence: expect.any(Array) });
+    expect(release.verdicts.LOCAL.timestamp).toEqual(expect.any(String));
+    expect(release.readiness).toBe("READY WITH WARNINGS");
+  });
+
+  it("runs Preview Fix & Verify through a snapshot, deterministic patch, commands, restart, and healthy probe", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-preview-loop-"));
+    const projectPath = path.join(workspaceRoot, "project");
+    const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
+    let projectId = "";
+    try {
+      await fs.mkdir(path.join(projectPath, "src"), { recursive: true });
+      const typescriptCli = path.relative(projectPath, path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc")).replace(/\\/g, "/");
+      await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "preview-fix-verify", private: true, scripts: { typecheck: `node ${typescriptCli} --noEmit`, build: "node build.cjs", dev: "node server.cjs" } }), "utf8");
+      await fs.writeFile(path.join(projectPath, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2020", module: "ESNext", moduleResolution: "bundler", strict: true, noEmit: true }, include: ["src"] }), "utf8");
+      await fs.writeFile(path.join(projectPath, "src", "index.ts"), 'export const status: number = "ready";\n', "utf8");
+      await fs.writeFile(path.join(projectPath, "build.cjs"), "process.exit(0);\n", "utf8");
+      await fs.writeFile(path.join(projectPath, "server.cjs"), 'const http=require("http"),fs=require("fs"),path=require("path");const i=process.argv.indexOf("--port"),port=Number(i>=0?process.argv[i+1]:process.env.PORT);http.createServer((q,r)=>{const broken=fs.readFileSync(path.join(__dirname,"src/index.ts"),"utf8").includes(": number");r.statusCode=broken?500:200;r.setHeader("content-type","text/html");r.end(broken?"broken":"<a href=\\"/healthy\\">healthy</a>")}).listen(port,"127.0.0.1");', "utf8");
+      process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
+      await setProjectTrust(workspaceRoot, projectPath, "trusted");
+      const project = await makeProjectSummary(projectPath);
+      projectId = project.id;
+      const profile = await detectProjectProfile(project);
+      await startPreview(project.id, project.path, profile);
+      const failing = await waitForPreviewHealth(project.id, 10_000, 100);
+      expect(failing.health?.ok).toBe(false);
+      const scan = await scanProject(project);
+      const issue = scan.issues.find((entry) => entry.category === "typecheck" && entry.file === "src/index.ts");
+      expect(issue).toBeTruthy();
+      const result = await executePreviewFixVerify(project, issue!.id);
+      expect(result).toMatchObject({ ok: true, rolledBack: false, previewAfter: { health: { ok: true } } });
+      expect(result.stages.map((stage) => `${stage.id}:${stage.state}`)).toEqual(expect.arrayContaining(["preview-evidence:PASSED", "snapshot:PASSED", "fix:PASSED", "typecheck:PASSED", "build:PASSED", "preview-restart:PASSED", "preview-verify:PASSED"]));
+      expect(await fs.readFile(path.join(projectPath, "src", "index.ts"), "utf8")).toContain('status: string = "ready"');
+
+      await fs.writeFile(path.join(projectPath, "src", "index.ts"), 'export const status: number = "ready";\n', "utf8");
+      await fs.writeFile(path.join(projectPath, "build.cjs"), "process.exit(9);\n", "utf8");
+      const failingAgain = await waitForPreviewHealth(project.id, 2_000, 100);
+      expect(failingAgain.health?.ok).toBe(false);
+      const failed = await executePreviewFixVerify(project, issue!.id);
+      expect(failed).toMatchObject({ ok: false, rolledBack: true });
+      expect(failed.stages.map((stage) => `${stage.id}:${stage.state}`)).toEqual(expect.arrayContaining(["build:FAILED", "rollback:PASSED"]));
+      expect(await fs.readFile(path.join(projectPath, "src", "index.ts"), "utf8")).toContain('status: number = "ready"');
+    } finally {
+      if (projectId) await stopPreviewAndWait(projectId);
+      if (previousWorkspaceRoot === undefined) delete process.env.KFORGE_WORKSPACE_ROOT;
+      else process.env.KFORGE_WORKSPACE_ROOT = previousWorkspaceRoot;
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  }, 90_000);
+
   it("restores the latest completed verification evidence and preserves fresher in-memory results", () => {
     const projectId = "evidence-project";
     const tasks: KForgeTask[] = [
@@ -176,7 +309,7 @@ describe("KForge Workspace engines", () => {
       { id: "agent", projectId, kind: "agent", status: "succeeded", progress: 100, logs: [], startedAt: "2026-01-04T00:00:00.000Z", finishedAt: "2026-01-04T00:01:00.000Z", output: "not a command result" },
     ];
     const evidence = actionEvidenceFromTasks(tasks, {
-      test: { action: "test", projectId, ok: true, startedAt: "2026-01-05T00:00:00.000Z", completedAt: "2026-01-05T00:01:00.000Z", exitCode: 0, output: "current test pass", message: "Test completed successfully." },
+      test: { action: "test", projectId, ok: true, startedAt: "2026-01-05T00:00:00.000Z", completedAt: "2026-01-05T00:01:00.000Z", exitCode: 0, output: "current test pass", message: "Test completed successfully.", transparency: { execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], projectSourceSent: false, secretRedaction: true, provider: "Local project toolchain", destination: "Selected project process", purpose: "Run tests.", confirmation: "NOT_REQUIRED", startedAt: "2026-01-05T00:00:00.000Z", completedAt: "2026-01-05T00:01:00.000Z", durationMs: 60_000, result: "SUCCEEDED" } },
     });
     expect(evidence.test).toMatchObject({ ok: true, output: "current test pass" });
     expect(evidence.typecheck).toMatchObject({ ok: true, output: "typecheck pass" });
@@ -185,7 +318,7 @@ describe("KForge Workspace engines", () => {
 
   it("marks persisted command evidence as stale after the explicit freshness window", () => {
     const completedAt = new Date(Date.now() - STALE_TASK_EVIDENCE_MS - 1_000).toISOString();
-    const details = taskEvidenceDetails({ action: "test", projectId: "freshness-project", ok: true, startedAt: completedAt, completedAt, output: "pass", message: "persisted pass", evidenceSource: "persisted" });
+    const details = taskEvidenceDetails({ action: "test", projectId: "freshness-project", ok: true, startedAt: completedAt, completedAt, output: "pass", message: "persisted pass", evidenceSource: "persisted", transparency: { execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], projectSourceSent: false, secretRedaction: true, provider: "Local project toolchain", destination: "Selected project process", purpose: "Run tests.", confirmation: "NOT_REQUIRED", startedAt: completedAt, completedAt, durationMs: 0, result: "SUCCEEDED" } });
     expect(details.freshness).toBe("stale-task");
     expect(details.evidenceSource).toContain("stale");
     expect(details.evidenceAgeMs).toBeGreaterThan(STALE_TASK_EVIDENCE_MS);
@@ -220,6 +353,12 @@ describe("KForge Workspace engines", () => {
     } finally {
       await fs.rm(projectPath, { recursive: true, force: true });
     }
+  });
+
+  it("separates synthetic test credential patterns from production security blockers", () => {
+    expect(nonProductionSecurityEvidence("server/services/redaction.spec.ts")).toBe(true);
+    expect(nonProductionSecurityEvidence("fixtures/security/token.ts")).toBe(true);
+    expect(nonProductionSecurityEvidence("server/services/provider.ts")).toBe(false);
   });
 
   it("creates and restores a file snapshot", async () => {

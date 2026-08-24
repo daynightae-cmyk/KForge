@@ -1,8 +1,8 @@
-# Fusion Starter
+# KNOuX Forge
 
-A production-ready full-stack React application template with integrated Express server, featuring React Router 6 SPA mode, TypeScript, Vitest, Zod and modern tooling.
+KNOuX Forge is a local-first engineering command center built as a React SPA with an integrated Express API, TypeScript, Vite, Vitest, Zod, and Tailwind CSS.
 
-While the starter comes with a express server, only create endpoint when strictly neccesary, for example to encapsulate logic that must leave in the server, such as private keys handling, or certain DB operations, db...
+Extend the existing Workspace routes, services, stores, and evidence contracts. Create a new endpoint only when server-side behavior is required, such as filesystem/process access, secret isolation, or persistence.
 
 ## Tech Stack
 

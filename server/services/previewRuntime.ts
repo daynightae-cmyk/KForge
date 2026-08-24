@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
 import net from "net";
 import type { ProjectProfile } from "../../shared/workspace";
+import { selectProjectRuntime } from "./projectExecution";
 
 export type PreviewState = "idle" | "starting" | "running" | "failed" | "stopped" | "blocked" | "unavailable";
 
@@ -75,20 +76,6 @@ function appendLog(status: PreviewStatus, value: string) {
   status.logs = [...status.logs, ...lines.map((line) => line.slice(0, MAX_LOG_LINE_LENGTH))].slice(-MAX_LOG_LINES);
 }
 
-function commandFor(packageManager: string | null, script: string, port: number) {
-  const command = packageManager === "pnpm" ? "pnpm" : packageManager === "yarn" ? "yarn" : "npm";
-  const executable = process.platform === "win32" ? `${command}.cmd` : command;
-  const args = command === "npm" ? ["run", script, "--", "--port", String(port)] : ["run", script, "--port", String(port)];
-  return { command: executable, args, display: `${command} run ${script} -- --port ${port}` };
-}
-
-function selectedPreviewScript(profile: ProjectProfile) {
-  if (profile.scripts.preview) return "preview";
-  if (profile.scripts.dev) return "dev";
-  if (profile.scripts.start) return "start";
-  return undefined;
-}
-
 function reserveLocalPort() {
   return new Promise<number>((resolve, reject) => {
     const server = net.createServer();
@@ -144,18 +131,18 @@ export function getPreviewStatus(projectId: string): PreviewStatus {
 export async function startPreview(projectId: string, projectPath: string, profile: ProjectProfile): Promise<PreviewStatus> {
   const existing = activePreviews.get(projectId);
   if (existing && ["starting", "running"].includes(existing.status.state)) return cloneStatus(existing.status);
-  const script = selectedPreviewScript(profile);
-  if (!script) {
-    const unavailable = { ...baseStatus(projectId), state: "unavailable" as const, health: { ok: false, detail: "No preview, dev, or start script was detected from local project manifests." }, error: "PREVIEW_COMMAND_UNAVAILABLE" };
+  const port = await reserveLocalPort();
+  const selection = selectProjectRuntime(profile, port, "preview");
+  if (selection.available === false) {
+    const unavailable = { ...baseStatus(projectId), state: "unavailable" as const, health: { ok: false, detail: selection.reason }, error: "PREVIEW_COMMAND_UNAVAILABLE" };
     previewRecords.set(projectId, unavailable);
     return cloneStatus(unavailable);
   }
-  const port = await reserveLocalPort();
-  const selected = commandFor(profile.packageManager, script, port);
+  const selected = selection.selected;
   const previous = previewRecords.get(projectId);
-  const status: PreviewStatus = { ...baseStatus(projectId), sessionId: randomUUID(), state: "starting", command: selected.display, port, url: `http://127.0.0.1:${port}/`, startedAt: new Date().toISOString(), logs: [`Starting detected ${script} script on local port ${port}.`], history: previous?.history || [], healthHistory: previous?.healthHistory || [] };
-  recordEvent(status, "start", `Detected ${script} started on local port ${port}.`);
-  const child = spawn(selected.command, selected.args, { cwd: projectPath, shell: process.platform === "win32" && selected.command.endsWith(".cmd"), windowsHide: true, detached: process.platform !== "win32", env: { ...process.env, PORT: String(port), HOST: "127.0.0.1" } });
+  const status: PreviewStatus = { ...baseStatus(projectId), sessionId: randomUUID(), state: "starting", command: selected.display, port, url: `http://127.0.0.1:${port}${selected.urlPath || "/"}`, startedAt: new Date().toISOString(), logs: [`Starting detected runtime from ${selected.source} on local port ${port}.`], history: previous?.history || [], healthHistory: previous?.healthHistory || [] };
+  recordEvent(status, "start", `Detected runtime from ${selected.source} started on local port ${port}.`);
+  const child = spawn(selected.command, selected.args, { cwd: projectPath, shell: process.platform === "win32" && selected.command.endsWith(".cmd"), windowsHide: true, detached: process.platform !== "win32", env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${port}` } });
   status.pid = child.pid;
   const active: ActivePreview = { child, status };
   activePreviews.set(projectId, active);
@@ -170,7 +157,7 @@ export async function startPreview(projectId: string, projectPath: string, profi
     status.stoppedAt = new Date().toISOString();
     appendLog(status, `Preview process exited: code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}.`);
     recordEvent(status, "exit", `Process exited with code ${code ?? "unknown"}${signal ? ` and signal ${signal}` : ""}.`);
-    activePreviews.delete(projectId);
+    if (activePreviews.get(projectId)?.child === child) activePreviews.delete(projectId);
   });
   setTimeout(() => { void probe(status).then((health) => { if (status.state === "starting" && health.ok) status.state = "running"; }); }, 1_500).unref();
   return cloneStatus(status);
@@ -182,6 +169,16 @@ export async function checkPreviewHealth(projectId: string): Promise<PreviewStat
   const health = await probe(active.status);
   if (active.status.state === "starting" && health.ok) active.status.state = "running";
   return cloneStatus(active.status);
+}
+
+export async function waitForPreviewHealth(projectId: string, timeoutMs = 10_000, intervalMs = 250): Promise<PreviewStatus> {
+  const deadline = Date.now() + timeoutMs;
+  let status = await checkPreviewHealth(projectId);
+  while (Date.now() < deadline && !status.health?.ok && status.health?.status === undefined && !["failed", "blocked", "unavailable", "stopped"].includes(status.state)) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    status = await checkPreviewHealth(projectId);
+  }
+  return status;
 }
 
 export function stopPreview(projectId: string): PreviewStatus {
@@ -203,7 +200,21 @@ export function stopPreview(projectId: string): PreviewStatus {
   return cloneStatus(active.status);
 }
 
-export async function restartPreview(projectId: string, projectPath: string, profile: ProjectProfile) {
+export async function stopPreviewAndWait(projectId: string, timeoutMs = 5_000): Promise<PreviewStatus> {
+  const child = activePreviews.get(projectId)?.child;
+  if (!child) return stopPreview(projectId);
+  const exitPromise = new Promise<boolean>((resolve) => {
+    if (child.exitCode !== null) { resolve(true); return; }
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    child.once("exit", () => { clearTimeout(timer); resolve(true); });
+  });
   stopPreview(projectId);
+  const exited = await exitPromise;
+  if (!exited) throw new Error(`Preview process ${child.pid || "unknown"} did not exit within ${timeoutMs}ms.`);
+  return getPreviewStatus(projectId);
+}
+
+export async function restartPreview(projectId: string, projectPath: string, profile: ProjectProfile) {
+  await stopPreviewAndWait(projectId);
   return startPreview(projectId, projectPath, profile);
 }

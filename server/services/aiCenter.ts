@@ -7,6 +7,7 @@ import { promisify } from "util";
 const execFileAsync = promisify(execFile);
 
 export type AIProviderId = "ollama" | "lm-studio" | "llama-cpp" | "openai" | "anthropic" | "gemini" | "openrouter";
+export type CloudAIProviderId = Extract<AIProviderId, "openai" | "anthropic" | "gemini" | "openrouter">;
 export type ProviderKind = "local" | "cloud";
 export type CompatibilityClass = "recommended" | "possible" | "too-heavy" | "unsupported";
 
@@ -31,6 +32,21 @@ export interface AIProviderInfo {
   capabilities: string[];
   privacy: string;
   reason?: string;
+}
+
+export interface CloudAIConfiguration {
+  id: CloudAIProviderId;
+  name: string;
+  configured: boolean;
+  destination: string;
+  model: string | null;
+  state: "CONFIGURED" | "NOT_CONFIGURED";
+  reason: string;
+}
+
+export interface CloudAIGeneration {
+  provider: CloudAIConfiguration;
+  content: string;
 }
 
 export interface HardwareInfo {
@@ -151,7 +167,36 @@ async function runOllama(args: string[], timeout = 12_000) {
 
 function modelKey(provider: string, model: string) { return `${provider}:${model}`; }
 
-function cloudEnvironmentKey(id: AIProviderId) { return ({ openai: "OPENAI_API_KEY", anthropic: "ANTHROPIC_API_KEY", gemini: "GEMINI_API_KEY", openrouter: "OPENROUTER_API_KEY" } as const)[id as "openai" | "anthropic" | "gemini" | "openrouter"]; }
+const cloudConfiguration = {
+  openai: { name: "OpenAI", keyEnvironment: "OPENAI_API_KEY", modelEnvironment: "KFORGE_OPENAI_MODEL", destination: "https://api.openai.com/v1/responses" },
+  anthropic: { name: "Anthropic", keyEnvironment: "ANTHROPIC_API_KEY", modelEnvironment: "KFORGE_ANTHROPIC_MODEL", destination: "https://api.anthropic.com/v1/messages" },
+  gemini: { name: "Gemini", keyEnvironment: "GEMINI_API_KEY", modelEnvironment: "KFORGE_GEMINI_MODEL", destination: "https://generativelanguage.googleapis.com/v1beta/models" },
+  openrouter: { name: "OpenRouter", keyEnvironment: "OPENROUTER_API_KEY", modelEnvironment: "KFORGE_OPENROUTER_MODEL", destination: "https://openrouter.ai/api/v1/chat/completions" },
+} as const satisfies Record<CloudAIProviderId, { name: string; keyEnvironment: string; modelEnvironment: string; destination: string }>;
+
+export function isCloudAIProviderId(value: unknown): value is CloudAIProviderId {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(cloudConfiguration, value);
+}
+
+export function getCloudAIConfiguration(id: CloudAIProviderId): CloudAIConfiguration {
+  const definition = cloudConfiguration[id];
+  const keyConfigured = Boolean(process.env[definition.keyEnvironment]?.trim());
+  const model = process.env[definition.modelEnvironment]?.trim() || null;
+  const destination = id === "gemini" && model ? `${definition.destination}/${encodeURIComponent(model)}:generateContent` : definition.destination;
+  const configured = keyConfigured && Boolean(model);
+  const reason = configured
+    ? "Configured on the server. KForge will contact this provider only after an explicit provider choice and per-request disclosure confirmation."
+    : !keyConfigured && !model
+      ? `NOT_CONFIGURED: set ${definition.keyEnvironment} and ${definition.modelEnvironment} in the server environment.`
+      : !keyConfigured
+        ? `NOT_CONFIGURED: set ${definition.keyEnvironment} in the server environment.`
+        : `NOT_CONFIGURED: set ${definition.modelEnvironment} in the server environment.`;
+  return { id, name: definition.name, configured, destination, model, state: configured ? "CONFIGURED" : "NOT_CONFIGURED", reason };
+}
+
+export function listCloudAIProviders(): CloudAIConfiguration[] {
+  return (Object.keys(cloudConfiguration) as CloudAIProviderId[]).map(getCloudAIConfiguration);
+}
 
 export async function getOllamaRuntimeStatus(): Promise<OllamaRuntimeStatus> {
   const version = await runOllama(["--version"], 5_000);
@@ -174,10 +219,91 @@ async function localProvider(definition: typeof providerDefinitions[number]): Pr
 export async function listAIProviders(): Promise<AIProviderInfo[]> {
   return Promise.all(providerDefinitions.map(async (definition) => {
     if (definition.kind === "local") return localProvider(definition);
-    const key = cloudEnvironmentKey(definition.id);
-    const configured = Boolean(key && process.env[key]);
-    return { ...definition, configured, reachable: false, available: false, models: [], reason: configured ? "Configured but not contacted until the user explicitly chooses cloud AI." : "Not configured." };
+    const configuration = getCloudAIConfiguration(definition.id as CloudAIProviderId);
+    return {
+      ...definition,
+      endpoint: configuration.destination,
+      configured: configuration.configured,
+      reachable: false,
+      available: false,
+      models: configuration.model ? [{ id: configuration.model, name: configuration.model, capabilities: ["chat", "generate"] }] : [],
+      reason: configuration.reason,
+    };
   }));
+}
+
+function cloudCredential(id: CloudAIProviderId) {
+  return process.env[cloudConfiguration[id].keyEnvironment]?.trim() || "";
+}
+
+function responseText(data: unknown, id: CloudAIProviderId): string {
+  if (typeof data !== "object" || data === null) throw new Error(`${cloudConfiguration[id].name} returned a malformed response.`);
+  const value = data as Record<string, unknown>;
+  if (id === "openai") {
+    if (typeof value.output_text === "string" && value.output_text.trim()) return value.output_text.trim();
+    const output = Array.isArray(value.output) ? value.output : [];
+    const text = output
+      .flatMap((item) => typeof item === "object" && item !== null && Array.isArray((item as { content?: unknown }).content) ? (item as { content: unknown[] }).content : [])
+      .flatMap((part) => typeof part === "object" && part !== null && typeof (part as { text?: unknown }).text === "string" ? [(part as { text: string }).text] : [])
+      .join("\n").trim();
+    if (text) return text;
+  }
+  if (id === "anthropic") {
+    const text = (Array.isArray(value.content) ? value.content : [])
+      .flatMap((part) => typeof part === "object" && part !== null && typeof (part as { text?: unknown }).text === "string" ? [(part as { text: string }).text] : [])
+      .join("\n").trim();
+    if (text) return text;
+  }
+  if (id === "gemini") {
+    const candidates = Array.isArray(value.candidates) ? value.candidates : [];
+    const text = candidates
+      .flatMap((candidate) => {
+        if (typeof candidate !== "object" || candidate === null) return [];
+        const content = (candidate as { content?: unknown }).content;
+        if (typeof content !== "object" || content === null || !Array.isArray((content as { parts?: unknown }).parts)) return [];
+        return (content as { parts: unknown[] }).parts;
+      })
+      .flatMap((part) => typeof part === "object" && part !== null && typeof (part as { text?: unknown }).text === "string" ? [(part as { text: string }).text] : [])
+      .join("\n").trim();
+    if (text) return text;
+  }
+  if (id === "openrouter") {
+    const choices = Array.isArray(value.choices) ? value.choices : [];
+    const first = choices[0];
+    if (typeof first === "object" && first !== null) {
+      const message = (first as { message?: unknown }).message;
+      if (typeof message === "object" && message !== null) {
+        const content = (message as { content?: unknown }).content;
+        if (typeof content === "string" && content.trim()) return content.trim();
+      }
+    }
+  }
+  throw new Error(`${cloudConfiguration[id].name} returned no text content.`);
+}
+
+export async function generateWithCloudAI(id: CloudAIProviderId, system: string, user: string, fetcher: typeof fetch = fetch): Promise<CloudAIGeneration> {
+  const provider = getCloudAIConfiguration(id);
+  if (!provider.configured || !provider.model) throw new Error(provider.reason);
+  const credential = cloudCredential(id);
+  let url = provider.destination;
+  let headers: Record<string, string> = { "Content-Type": "application/json" };
+  let body: Record<string, unknown>;
+  if (id === "openai") {
+    headers = { ...headers, Authorization: `Bearer ${credential}` };
+    body = { model: provider.model, store: false, input: [{ role: "system", content: system }, { role: "user", content: user }] };
+  } else if (id === "anthropic") {
+    headers = { ...headers, "x-api-key": credential, "anthropic-version": "2023-06-01" };
+    body = { model: provider.model, max_tokens: 2_048, system, messages: [{ role: "user", content: user }] };
+  } else if (id === "gemini") {
+    headers = { ...headers, "x-goog-api-key": credential };
+    body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: { temperature: 0 } };
+  } else {
+    headers = { ...headers, Authorization: `Bearer ${credential}` };
+    body = { model: provider.model, temperature: 0, messages: [{ role: "system", content: system }, { role: "user", content: user }] };
+  }
+  const response = await fetcher(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90_000) });
+  if (!response.ok) throw new Error(`${provider.name} request failed with HTTP ${response.status}.`);
+  return { provider, content: responseText(await response.json(), id) };
 }
 
 export async function getHardwareInfo(): Promise<HardwareInfo> {
@@ -218,7 +344,7 @@ export async function getModelCenter(workspaceRoot: string) {
 export async function setActiveModel(workspaceRoot: string, provider: AIProviderId, model: string, fallback?: boolean) {
   const providers = await listAIProviders();
   const selected = providers.find((entry) => entry.id === provider);
-  if (!selected || !selected.available || !selected.models.some((entry) => entry.id === model)) throw new Error("The selected provider/model is not currently available locally.");
+  if (!selected || selected.kind !== "local" || !selected.available || !selected.models.some((entry) => entry.id === model)) throw new Error("The selected provider/model is not currently available locally.");
   const settings = await readSettings(workspaceRoot);
   if (fallback) settings.fallback = { provider, model }; else settings.active = { provider, model };
   await writeSettings(workspaceRoot, settings);

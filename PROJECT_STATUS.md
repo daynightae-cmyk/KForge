@@ -1,10 +1,11 @@
 # Project Status
 
-- Source snapshot: kforge-main
-- Readiness: 90% - ???? ???????
-- Static evidence: 98 source/config files
-- Known scripts: dev,build,build:client,build:server,start,test,format.fix,typecheck
-- Primary gaps: ?? ???? .gitignore? ?? ???? .env.example? ?? ???? LICENSE? ?? ???? ???? ????? ??????
-- Immediate action: Fix first: ?? ???? .gitignore? ?? ???? .env.example? ?? ???? LICENSE? ?? ???? ???? ????? ??????.
+- Product: KNOuX Forge
+- Delivery branch: main
+- Readiness: Active product-completion work; final readiness is not yet established
+- Last local verification (2026-08-24): typecheck passed; 109 tests passed with one opt-in performance benchmark skipped; production client/server build passed; built API, cloud-provider no-contact/NOT_CONFIGURED, and Self Audit restart/reload checks passed
+- Known scripts: dev, build, build:client, build:server, start, test, format.fix, typecheck
+- Primary gaps: See the repository-verified KNOuX Forge capability matrix; remote-provider gaps remain truthful when not configured
+- External acceptance gap: live visual/browser automation is unavailable in the current isolated browser environment; source, API, runtime, and persistence evidence remain available
 
-This score is static evidence only. Run builds, tests, and security checks in an isolated environment before release.
+Static file counts are not release evidence. Typecheck, tests, build, runtime/API, browser, persistence, accessibility, and remote-state checks must be recorded before final release readiness.
