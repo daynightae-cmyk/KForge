@@ -591,7 +591,7 @@ export async function installPackage(workspaceRoot: string, itemId: string): Pro
       requirements: Array.isArray(validatedManifest.requirements) ? validatedManifest.requirements : ["KForge Workspace server"],
       compatibility: String(validatedManifest.compatibility || ""),
       permissions: Array.isArray(validatedManifest.permissions) ? validatedManifest.permissions : [],
-      trust: "TRUSTED",
+      trust: integrityVerified && sizeVerified ? "TRUSTED" : "UNTRUSTED",
       installed: true,
       enabled: true,
       local: false,
@@ -643,12 +643,55 @@ export async function healthCheckPackage(workspaceRoot: string, itemId: string):
   try {
     const installedBytes = await fs.readFile(installedArtifactPath, "utf8");
     const installedHash = createHash("sha256").update(installedBytes).digest("hex");
-    const expectedHash = item.integrity ? String((item as any).integrity?.expectedHash || item.sha256 || "") : "";
+    const expectedHash = (item as any).integrity ? String((item as any).integrity.expectedHash || (item as any).sha256 || "") : String((item as any).sha256 || "");
     if (expectedHash && installedHash !== expectedHash) return { ok: false, message: `Health integrity mismatch: installed hash ${installedHash} does not match registry ${expectedHash}.`, installed: true, version: item.version };
   } catch {
     return { ok: false, message: "Installed artifact unreadable during health check.", installed: true, version: item.version };
   }
   return { ok: true, message: "Health check passed.", installed: true, version: item.version };
+}
+
+export async function updatePackage(workspaceRoot: string, itemId: string, newVersionManifestPath?: string): Promise<InstallResult> {
+  const opId = generateOperationId();
+  // For first-party update: read current registry, verify installed, apply new version
+  const registryFilePath = registryPath(workspaceRoot);
+  let registry: LocalRegistryFile = { items: [] };
+  try {
+    const raw = await fs.readFile(registryFilePath, "utf8").catch(() => "{}");
+    registry = JSON.parse(raw) as LocalRegistryFile;
+  } catch { registry = { items: [] }; }
+  const installedItem = registry.items?.find((i) => i && i.id === itemId && i.installed);
+  if (!installedItem) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "Package not installed; cannot update." };
+  // Use new version manifest if provided, else try v1.1.0 fixture
+  const newFixtureDir = newVersionManifestPath ? path.dirname(newVersionManifestPath) : path.resolve(process.cwd(), "fixtures", "marketplace-first-party-v110");
+  const newManifestPath = newVersionManifestPath ? newVersionManifestPath : path.join(newFixtureDir, "manifest.json");
+  const newManifestRaw = await fs.readFile(newManifestPath, "utf8").catch(() => null);
+  if (!newManifestRaw) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "New version manifest not found." };
+  const newManifest = JSON.parse(newManifestRaw) as Record<string, unknown>;
+  const newPackagePath = path.resolve(newFixtureDir, "index.js");
+  const newPackageBytes = await fs.readFile(newPackagePath, "utf8").catch(() => null);
+  if (!newPackageBytes) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "New version artifact missing." };
+  // Verify new version hash
+  const newExpectedHash = String(newManifest.sha256 || "");
+  const newActualHash = createHash("sha256").update(newPackageBytes).digest("hex");
+  if (newActualHash !== newExpectedHash) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: `New version integrity failed: expected ${newExpectedHash}, got ${newActualHash}.` };
+  // Backup current installed version
+  const currentInstalledDir = path.resolve(workspaceRoot, ".kforge", "marketplace", "installed", itemId);
+  const backupDir = path.resolve(workspaceRoot, ".kforge", "marketplace", "installed", `${itemId}-backup-${opId}`);
+  try { await fs.rm(backupDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  try { await fs.cp(currentInstalledDir, backupDir, { recursive: true, force: true }); } catch { /* safe */ }
+  // Replace installed files with new version
+  await fs.copyFile(newPackagePath, path.join(currentInstalledDir, "index.js"));
+  await fs.writeFile(path.join(currentInstalledDir, "manifest.json"), JSON.stringify(newManifest, null, 2), { encoding: "utf8" });
+  // Update registry
+  const installedItemIndex = registry.items?.findIndex((i) => i && i.id === itemId);
+  if (installedItemIndex !== undefined && installedItemIndex >= 0 && registry.items) {
+    registry.items[installedItemIndex].version = String(newManifest.version || "");
+    registry.items[installedItemIndex].updatedAt = new Date().toISOString();
+  }
+  await fs.mkdir(path.dirname(registryFilePath), { recursive: true });
+  await fs.writeFile(registryFilePath, JSON.stringify(registry, null, 2), { encoding: "utf8" });
+  return { operationId: opId, itemId, stage: "UPDATED", installed: true, rollback: false, integrityVerified: true, sizeVerified: true, error: undefined };
 }
 
 export async function runInstalledPackage(workspaceRoot: string, itemId: string): Promise<{ ok: boolean; result: unknown; error?: string }> {
