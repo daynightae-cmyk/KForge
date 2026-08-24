@@ -57,6 +57,22 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('/projects/${project.id}/marketplace');
   });
 
+  it("implements the Online Hub desktop, tablet, and contextual mobile inspector contract", () => {
+    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../global.css", import.meta.url), "utf8");
+    expect(source).toContain('useState<"browse" | "detail">');
+    expect(source).toContain('data-mobile-view={mobileView}');
+    expect(source).toContain('className="kf-online-mobile-back"');
+    expect(source).toContain('Back to results');
+    expect(css).toContain('@media (min-width: 721px) and (max-width: 1100px)');
+    expect(css).toContain('grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr)');
+    expect(css).toContain('.kf-online-hub[data-mobile-view="detail"] .kf-online-results { display: none; }');
+    expect(css).toContain('.kf-online-hub[data-mobile-view="browse"] .kf-online-detail { display: none; }');
+    expect(css).toContain('@media (max-width: 430px)');
+    expect(css).toContain('--kf-online-bg: #0c0914');
+    expect(css).toContain('prefers-reduced-motion: reduce');
+  });
+
   it("renders language-aware graph and transitive impact evidence without hiding unavailable boundaries", () => {
     const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
     expect(source).toContain("Exported symbols");
