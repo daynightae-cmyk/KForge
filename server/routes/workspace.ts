@@ -27,6 +27,10 @@ import type {
   WorkspaceActivity,
   WorkspaceResponse,
   WorkspaceStatus,
+  GlobalSearchCoverage,
+  GlobalSearchEntity,
+  GlobalSearchResponse,
+  GlobalSearchResult,
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
 import { detectLocalAIProvider, requestLocalPlan } from "../services/localAI";
@@ -36,7 +40,7 @@ import { buildAgentContext, buildLocalAIPlan, buildRulePlan, evaluatePatchQualit
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
 import { appendTaskLog, attachMission, cancelTask, completeMission, getTask, initializeTaskStore, listTasks, retryTask, startTask, updateMissionStep, type KForgeMission, type KForgeTask, type TaskKind, type MissionType } from "../services/tasks";
-import { createMissionFromStrategy, supportedMissionTypes } from "../services/missionStrategies";
+import { createMissionFromStrategy, missionStrategies, supportedMissionTypes } from "../services/missionStrategies";
 import { executeMissionDag, type MissionStepExecution } from "../services/missionOrchestrator";
 import { getLocalPlatformStatus, isOptionalOnlineFeatureEnabled, setLocalPlatformMode } from "../services/localPlatform";
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
@@ -2151,28 +2155,146 @@ router.post("/projects/:id/documentation/:findingId/apply", async (req, res) => 
 
 router.get("/search", async (req, res) => {
   const query = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase().slice(0, 120) : "";
-  if (!query) return res.json({ results: [] });
-  const results: Array<{ kind: string; title: string; detail: string; projectId: string; score: number }> = [];
-  for (const project of (await allProjects()).slice(0, 25)) {
-    const add = (kind: string, title: string, detail: string) => {
-      const haystack = `${title} ${detail}`.toLowerCase();
-      const exact = title.toLowerCase() === query ? 100 : title.toLowerCase().startsWith(query) ? 80 : haystack.includes(query) ? 50 : 0;
-      if (exact) results.push({ kind, title, detail, projectId: project.id, score: exact });
-    };
-    add("project", project.name, `${project.projectType} · ${project.tags.length ? `labels: ${project.tags.join(", ")}` : "no labels"} · ${project.favorite ? "favorite" : ""} ${project.pinned ? "pinned" : ""} ${project.archived ? "archived" : ""}`);
-    project.tags.forEach((tag) => add("project-label", tag, project.name));
-    add("git", `${project.branch} · ${project.name}`, `${project.remoteUrl || "local repository"} · ${project.ahead} ahead · ${project.behind} behind · ${project.modifiedFiles + project.untrackedFiles} local change(s)`);
-    if (project.remoteUrl) add("github", project.name, project.remoteUrl);
-    if (await pathExists(path.join(project.path, "README.md"))) add("documentation", "README.md", project.name);
-    add("release", `${project.name} release status`, `${project.testStatus} tests · ${project.buildStatus} build · ${project.securityStatus} security`);
+  const generatedAt = new Date().toISOString();
+  if (!query) return res.json({ query, results: [], coverage: {}, generatedAt });
+
+  const projectLimit = 25;
+  const resultLimit = 100;
+  const all = await allProjects();
+  const projects = all.slice(0, projectLimit);
+  const preferredProjectId = typeof req.query.projectId === "string" && projects.some((project) => project.id === req.query.projectId)
+    ? req.query.projectId
+    : projects[0]?.id || "";
+  const results: GlobalSearchResult[] = [];
+  const add = (result: Omit<GlobalSearchResult, "score">) => {
+    const title = result.title.toLowerCase();
+    const haystack = `${result.title} ${result.detail} ${result.kind} ${result.entity} ${result.source}`.toLowerCase();
+    const score = title === query ? 100 : title.startsWith(query) ? 80 : haystack.includes(query) ? 50 : 0;
+    if (score) results.push({ ...result, score });
+  };
+  const projectBounded = all.length > projectLimit;
+  const projectCoverage = (source: string, searchedCount: number, totalOrUnknown: number | null = searchedCount, boundedTotal: number | null = null): GlobalSearchCoverage => ({
+    state: projectBounded ? "LIMIT_REACHED" : "COMPLETE",
+    searchedCount,
+    totalOrUnknown: projectBounded ? boundedTotal : totalOrUnknown,
+    limit: projectLimit,
+    source,
+    reason: projectBounded ? `Search inspected the first ${projectLimit} of ${all.length} discovered projects.` : `Search inspected all ${projects.length} discovered project(s).`,
+  });
+
+  const evidence = await Promise.all(projects.map(async (project) => {
     const profile = await detectProjectProfile(project);
-    profile.dependencies.forEach((entry) => add("dependency", entry.name, `${entry.version} · ${project.name}`));
-    profile.framework.forEach((entry) => add("technology", entry, project.name));
-    const graph = await buildProjectGraph(project.path);
-    graph.nodes.forEach((entry) => add(entry.type, entry.label, `${entry.path || ""} · ${project.name}`));
-    listTasks(project.id).forEach((task) => add("task", `${task.kind} · ${task.status}`, task.error || task.logs.at(-1)?.message || project.name));
+    const [graph, documentation] = await Promise.all([buildProjectGraph(project.path), auditDocumentation(project.path, profile)]);
+    const scanResult = actionEvidence(project.id).scan;
+    let cachedScan: ProjectScan | undefined;
+    if (scanResult?.output) {
+      try {
+        const parsed: unknown = JSON.parse(scanResult.output);
+        if (typeof parsed === "object" && parsed !== null && Array.isArray((parsed as ProjectScan).issues)) cachedScan = parsed as ProjectScan;
+      } catch { /* malformed legacy task evidence stays unavailable */ }
+    }
+    return { project, profile, graph, documentation, cachedScan, tasks: listTasks(project.id) };
+  }));
+
+  const marketplaceResult = await getMarketplace(getWorkspaceRoot(), false).then((marketplace) => ({ marketplace })).catch((error: unknown) => ({ error: errorDetails(error).message }));
+  let fileCount = 0;
+  let symbolCount = 0;
+  let apiCount = 0;
+  let routeCount = 0;
+  let dependencyCount = 0;
+  let graphDependencyCount = 0;
+  let technologyCount = 0;
+  let taskCount = 0;
+  let documentCount = 0;
+  let problemCount = 0;
+  let cachedScanCount = 0;
+  let graphLimited = false;
+  let githubCount = 0;
+
+  for (const item of evidence) {
+    const { project, profile, graph, documentation, cachedScan, tasks } = item;
+    const projectSource = "Local workspace project discovery";
+    add({ kind: "project", entity: "Projects", entityId: project.id, title: project.name, detail: `${project.projectType} · ${project.tags.length ? `labels: ${project.tags.join(", ")}` : "no labels"} · ${project.favorite ? "favorite" : ""} ${project.pinned ? "pinned" : ""} ${project.archived ? "archived" : ""}`, projectId: project.id, target: "Workspace", source: projectSource });
+    project.tags.forEach((tag) => add({ kind: "project-label", entity: "Projects", entityId: `${project.id}:label:${tag}`, title: tag, detail: project.name, projectId: project.id, target: "Workspace", source: "Persisted local project labels" }));
+    add({ kind: "git", entity: "Git", entityId: `${project.id}:git`, title: `${project.branch} · ${project.name}`, detail: `${project.remoteUrl || "local repository"} · ${project.ahead} ahead · ${project.behind} behind · ${project.modifiedFiles + project.untrackedFiles} local change(s)`, projectId: project.id, target: "Git", source: "Local Git commands" });
+    if (project.remoteUrl) {
+      githubCount += 1;
+      add({ kind: "github", entity: "GitHub", entityId: `${project.id}:remote`, title: project.name, detail: project.remoteUrl, projectId: project.id, target: "GitHub", source: "Local Git remote configuration; no remote API contact" });
+    }
+    add({ kind: "release", entity: "Release", entityId: `${project.id}:release`, title: `${project.name} release status`, detail: `${project.testStatus} tests · ${project.buildStatus} build · ${project.securityStatus} security`, projectId: project.id, target: "Release Gate", source: "Current local project summary" });
+    profile.dependencies.forEach((entry) => add({ kind: "dependency", entity: "Dependencies", entityId: `${project.id}:dependency:${entry.kind}:${entry.name}`, title: entry.name, detail: `${entry.version} · ${entry.kind} · ${project.name}`, projectId: project.id, target: "Dependencies", source: "Local manifest dependency declarations" }));
+    dependencyCount += profile.dependencies.length;
+    profile.framework.forEach((entry) => add({ kind: "technology", entity: "Technologies", entityId: `${project.id}:technology:${entry}`, title: entry, detail: project.name, projectId: project.id, target: "Code understanding", source: "Local project profile detection" }));
+    technologyCount += profile.framework.length;
+    graphLimited ||= graph.coverage.state === "LIMIT_REACHED";
+    graph.nodes.forEach((entry) => {
+      const entity: GlobalSearchEntity = entry.type === "symbol" ? "Symbols" : entry.type === "api" ? "APIs" : entry.type === "route" ? "Routes" : entry.type === "dependency" ? "Dependencies" : "Files";
+      if (entity === "Symbols") symbolCount += 1;
+      else if (entity === "APIs") apiCount += 1;
+      else if (entity === "Routes") routeCount += 1;
+      else if (entity === "Dependencies") graphDependencyCount += 1;
+      else fileCount += 1;
+      add({ kind: entry.type, entity, entityId: entry.type === "symbol" ? entry.id : entry.path || entry.id, title: entry.label, detail: `${entry.path || "project graph node"} · ${project.name}`, projectId: project.id, target: "Project graph", source: `${graph.coverage.source} · ${graph.cache.state}` });
+    });
+    documentation.documents.forEach((document) => add({ kind: "documentation", entity: "Documentation", entityId: `${project.id}:document:${document}`, title: document, detail: project.name, projectId: project.id, target: "Documentation", source: "Local documentation audit" }));
+    documentation.findings.forEach((finding) => add({ kind: "documentation-finding", entity: "Documentation", entityId: finding.id, title: finding.sourceDocument, detail: `${finding.claim} · ${finding.actualState}`, projectId: project.id, target: "Documentation", source: "Local documentation audit finding" }));
+    documentCount += documentation.documents.length + documentation.findings.length;
+    if (cachedScan) {
+      cachedScanCount += 1;
+      cachedScan.issues.forEach((issue) => add({ kind: "problem", entity: "Problems", entityId: issue.id, title: issue.title, detail: `${issue.severity} · ${issue.file || issue.category} · ${project.name}`, projectId: project.id, target: "Problems", source: `Persisted or current local scan · ${cachedScan.scannedAt}` }));
+      problemCount += cachedScan.issues.length;
+    }
+    tasks.forEach((task) => add({ kind: "task", entity: "Tasks", entityId: task.id, title: `${task.kind} · ${task.status}`, detail: task.error || task.logs.at(-1)?.message || project.name, projectId: project.id, target: "Tasks", source: "Persisted local Task Center" }));
+    taskCount += tasks.length;
   }
-  return res.json({ results: results.sort((left, right) => right.score - left.score || left.title.localeCompare(right.title)).slice(0, 100) });
+
+  for (const strategy of Object.values(missionStrategies)) {
+    add({ kind: "agent", entity: "Agents", entityId: strategy.type, title: strategy.label, detail: strategy.description, projectId: preferredProjectId, target: "Agents", source: "Registered local mission strategies" });
+  }
+
+  const marketItems = "marketplace" in marketplaceResult ? marketplaceResult.marketplace.items : [];
+  for (const item of marketItems) {
+    add({ kind: item.category === "models" ? "model" : "marketplace", entity: item.category === "models" ? "Models" : "Marketplace", entityId: item.id, title: item.name, detail: `${item.category} · ${item.description} · ${item.capabilities.join(", ")}`, projectId: preferredProjectId, target: item.category === "models" ? "Models" : "Marketplace", source: item.source });
+  }
+
+  const graphCoverage = (count: number): GlobalSearchCoverage => ({
+    state: graphLimited || projectBounded ? "LIMIT_REACHED" : "COMPLETE",
+    searchedCount: count,
+    totalOrUnknown: graphLimited ? null : count,
+    limit: graphLimited ? evidence.reduce((sum, item) => sum + item.graph.coverage.limit, 0) : projectLimit,
+    source: "Bounded language-aware project graphs",
+    reason: graphLimited ? "At least one project graph reached its explicit source-file safety limit; unindexed files or symbols may exist." : projectBounded ? projectCoverage("", count).reason : "All graph nodes exposed by the discovered projects were searched.",
+  });
+  const problemsCoverage: GlobalSearchCoverage = cachedScanCount === projects.length
+    ? projectCoverage("Persisted or current local scan results", problemCount)
+    : { state: cachedScanCount ? "PARTIAL" : "UNAVAILABLE", searchedCount: problemCount, totalOrUnknown: null, limit: null, source: "Persisted or current local scan results", reason: cachedScanCount ? `Only ${cachedScanCount} of ${projects.length} project(s) have searchable scan evidence; typing did not start hidden scans.` : "No project has persisted or current scan evidence; typing did not start hidden scans." };
+  const marketplaceError = "error" in marketplaceResult ? marketplaceResult.error : undefined;
+  const marketplaceCoverage = (count: number): GlobalSearchCoverage => marketplaceError
+    ? { state: "UNAVAILABLE", searchedCount: 0, totalOrUnknown: null, limit: null, source: "Local Marketplace normalization", reason: marketplaceError }
+    : { state: "COMPLETE", searchedCount: count, totalOrUnknown: count, limit: null, source: "Local runtime, bundled compatibility profiles, and registered local Marketplace items", reason: "Search used offline-only normalized Marketplace evidence and did not contact a remote registry." };
+  const modelCount = marketItems.filter((item) => item.category === "models").length;
+  const nonModelMarketCount = marketItems.length - modelCount;
+  const sorted = results.sort((left, right) => right.score - left.score || left.title.localeCompare(right.title));
+  const coverage: Record<GlobalSearchEntity, GlobalSearchCoverage> = {
+    Projects: projectCoverage("Local workspace project discovery", projects.length, all.length, all.length),
+    Files: graphCoverage(fileCount),
+    Symbols: graphCoverage(symbolCount),
+    APIs: graphCoverage(apiCount),
+    Routes: graphCoverage(routeCount),
+    Problems: problemsCoverage,
+    Tasks: projectCoverage("Persisted local Task Center", taskCount),
+    Agents: { state: "COMPLETE", searchedCount: supportedMissionTypes.length, totalOrUnknown: supportedMissionTypes.length, limit: null, source: "Registered local mission strategies", reason: "All registered KForge mission strategies were searched." },
+    Models: marketplaceCoverage(modelCount),
+    Marketplace: marketplaceCoverage(nonModelMarketCount),
+    Git: projectCoverage("Local Git commands", projects.length, projects.length, all.length),
+    GitHub: githubCount ? projectCoverage("Local Git remote configuration; no remote API contact", githubCount) : { state: "NOT_CONFIGURED", searchedCount: 0, totalOrUnknown: 0, limit: projectLimit, source: "Local Git remote configuration", reason: "No GitHub remote is configured in the searched projects; no remote API call was made." },
+    Release: projectCoverage("Current local project summary", projects.length, projects.length, all.length),
+    Documentation: projectCoverage("Local documentation audit", documentCount),
+    Dependencies: projectCoverage("Local manifest declarations and bounded project-graph dependencies", dependencyCount + graphDependencyCount),
+    Technologies: projectCoverage("Local project profile detection", technologyCount),
+    Results: { state: sorted.length > resultLimit ? "LIMIT_REACHED" : "COMPLETE", searchedCount: Math.min(sorted.length, resultLimit), totalOrUnknown: sorted.length, limit: resultLimit, source: "Ranked local evidence matches", reason: sorted.length > resultLimit ? `Showing the first ${resultLimit} of ${sorted.length} matching evidence records.` : `Showing all ${sorted.length} matching evidence record(s).` },
+  };
+  return res.json({ query, results: sorted.slice(0, resultLimit), coverage, generatedAt } satisfies GlobalSearchResponse);
 });
 
 router.get("/projects/:id/cache", async (req, res) => {

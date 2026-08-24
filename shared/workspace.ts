@@ -79,6 +79,38 @@ export interface BoundedEvidenceCoverage {
   source: string;
 }
 
+export const GLOBAL_SEARCH_ENTITIES = ["Projects", "Files", "Symbols", "APIs", "Routes", "Problems", "Tasks", "Agents", "Models", "Marketplace", "Git", "GitHub", "Release", "Documentation", "Dependencies", "Technologies", "Results"] as const;
+export type GlobalSearchEntity = (typeof GLOBAL_SEARCH_ENTITIES)[number];
+export type GlobalSearchCoverageState = "COMPLETE" | "PARTIAL" | "LIMIT_REACHED" | "UNAVAILABLE" | "NOT_CONFIGURED";
+
+export interface GlobalSearchCoverage {
+  state: GlobalSearchCoverageState;
+  searchedCount: number;
+  totalOrUnknown: number | null;
+  limit: number | null;
+  source: string;
+  reason: string;
+}
+
+export interface GlobalSearchResult {
+  kind: string;
+  entity: GlobalSearchEntity;
+  entityId: string;
+  title: string;
+  detail: string;
+  projectId: string;
+  target: string;
+  source: string;
+  score: number;
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  results: GlobalSearchResult[];
+  coverage: Partial<Record<GlobalSearchEntity, GlobalSearchCoverage>>;
+  generatedAt: string;
+}
+
 export interface ProjectProfile {
   projectId: string;
   rootPath: string;
