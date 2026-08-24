@@ -84,4 +84,20 @@ describe("Marketplace lifecycle API", () => {
     expect(missingHealthResponse.status).toBe(404);
     await expect(missingHealthResponse.json()).resolves.toMatchObject({ ok: false, installed: false });
   }, 30_000);
+
+  it("serializes overlapping update and uninstall so durable state cannot be resurrected", async () => {
+    const installResponse = await post("install");
+    expect(installResponse.status).toBe(200);
+
+    const [updateResponse, uninstallResponse] = await Promise.all([post("update"), post("uninstall")]);
+    expect([200, 409]).toContain(updateResponse.status);
+    expect(uninstallResponse.status).toBe(200);
+
+    const healthResponse = await fetch(`${baseUrl}/api/workspace/marketplace/items/${encodeURIComponent(ITEM_ID)}/health`);
+    expect(healthResponse.status).toBe(404);
+    await expect(healthResponse.json()).resolves.toMatchObject({ ok: false, installed: false });
+
+    const registry = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".kforge", "marketplace-registry.json"), "utf8")) as { items: Array<{ id?: string }> };
+    expect(registry.items.filter((entry) => entry.id === ITEM_ID)).toHaveLength(0);
+  }, 30_000);
 });
