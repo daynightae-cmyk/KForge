@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+const LOCAL_ORIGINS = new Set(['http://localhost:4317', 'http://127.0.0.1:4317']);
+
+function isAllowedLocalRequest(rawUrl: string) {
+  const url = new URL(rawUrl);
+  return LOCAL_ORIGINS.has(url.origin);
+}
+
 test.describe('KForge Production E2E', () => {
   test('production server opens without page errors', async ({ page }) => {
     const errors: string[] = [];
@@ -34,18 +41,21 @@ test.describe('KForge Production E2E', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('offline mode does not trigger hidden remote contacts', async ({ page }) => {
+  test('offline mode performs zero external HTTP/HTTPS requests from first navigation', async ({ page }) => {
+    const externalRequests: string[] = [];
+
+    // CRITICAL: attach before navigation so startup requests cannot escape evidence capture.
+    page.on('request', (request) => {
+      const rawUrl = request.url();
+      if (!/^https?:/i.test(rawUrl)) return;
+      if (!isAllowedLocalRequest(rawUrl)) externalRequests.push(rawUrl);
+    });
+
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    const requests: string[] = [];
-    page.on('request', (req) => {
-      const url = req.url();
-      if (!url.startsWith('http://localhost:4317') && !url.startsWith('http://127.0.0.1:4317')) {
-        requests.push(url);
-      }
-    });
     await page.waitForTimeout(500);
-    expect(requests.filter((r) => r.includes('localhost'))).toHaveLength(0);
+
+    expect(externalRequests, `External HTTP/HTTPS requests observed in Offline mode:\n${externalRequests.join('\n')}`).toEqual([]);
   });
 
   test('responsive mobile smoke', async ({ page }) => {
