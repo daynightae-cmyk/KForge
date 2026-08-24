@@ -3,11 +3,16 @@ import { promises as fs } from "fs";
 import path from "path";
 
 const startedAt = new Date().toISOString();
+const installPlaywright = process.env.KFORGE_INSTALL_PLAYWRIGHT === "1";
+const requestedEvidencePath = process.env.KFORGE_VERIFICATION_EVIDENCE_PATH?.trim();
 const evidence = {
-  schemaVersion: 1,
-  source: "KForge local verification gate",
+  schemaVersion: 2,
+  source: "KForge verification gate",
   platform: process.platform,
   node: process.version,
+  testedSha: process.env.KFORGE_TESTED_SHA || null,
+  event: process.env.GITHUB_EVENT_NAME || null,
+  runId: process.env.GITHUB_RUN_ID || null,
   startedAt,
   finishedAt: null,
   gate: "RUNNING",
@@ -69,42 +74,55 @@ const installOk = await runStep("npm-ci", "npm", ["ci"]);
 if (installOk) {
   await runStep("typecheck", "npm", ["run", "typecheck"]);
   await runStep("lint", "npm", ["run", "lint"]);
-  await runStep("marketplace", "npx", [
-    "vitest",
-    "--run",
-    "server/services/marketplace.spec.ts",
-    "server/routes/marketplaceLifecycle.spec.ts",
-  ]);
   await runStep("tests", "npm", ["run", "test"]);
   const buildOk = await runStep("build", "npm", ["run", "build"]);
+
   if (buildOk) {
-    await runStep("e2e", "npm", ["run", "test:e2e"]);
+    let browserOk = true;
+    if (installPlaywright) {
+      browserOk = await runStep("playwright-browser", "npx", ["playwright", "install", "--with-deps", "chromium"]);
+    } else {
+      skipStep("playwright-browser", "npx playwright install --with-deps chromium", "Browser installation was not requested; the local environment must already provide the configured Playwright browser.");
+    }
+
+    if (browserOk) {
+      await runStep("e2e", "npm", ["run", "test:e2e"]);
+    } else {
+      skipStep("e2e", "npm run test:e2e", "Playwright browser installation failed; production E2E cannot run truthfully.");
+    }
   } else {
+    skipStep("playwright-browser", "npx playwright install --with-deps chromium", "Production build failed; browser setup is unnecessary.");
     skipStep("e2e", "npm run test:e2e", "Production build failed; E2E server artifact is unavailable.");
   }
 } else {
   for (const [id, command] of [
     ["typecheck", "npm run typecheck"],
     ["lint", "npm run lint"],
-    ["marketplace", "npx vitest --run server/services/marketplace.spec.ts server/routes/marketplaceLifecycle.spec.ts"],
     ["tests", "npm run test"],
     ["build", "npm run build"],
+    ["playwright-browser", "npx playwright install --with-deps chromium"],
     ["e2e", "npm run test:e2e"],
   ]) {
     skipStep(id, command, "npm ci failed; dependency-backed verification cannot run truthfully.");
   }
 }
 
-const required = ["npm-ci", "typecheck", "lint", "marketplace", "tests", "build", "e2e"];
+const required = ["npm-ci", "typecheck", "lint", "tests", "build", "e2e"];
+if (installPlaywright) required.splice(required.length - 1, 0, "playwright-browser");
 const byId = new Map(evidence.steps.map((step) => [step.id, step]));
 const pass = required.every((id) => byId.get(id)?.state === "PASS");
 evidence.gate = pass ? "PASS" : "FAIL";
 evidence.finishedAt = new Date().toISOString();
 
-const evidenceDirectory = path.join(process.cwd(), "docs", "verification-evidence");
-await fs.mkdir(evidenceDirectory, { recursive: true });
-const stamp = startedAt.replace(/[:.]/g, "-");
-const evidencePath = path.join(evidenceDirectory, `local-${stamp}.json`);
+let evidencePath;
+if (requestedEvidencePath) {
+  evidencePath = path.resolve(process.cwd(), requestedEvidencePath);
+} else {
+  const evidenceDirectory = path.join(process.cwd(), "docs", "verification-evidence");
+  const stamp = startedAt.replace(/[:.]/g, "-");
+  evidencePath = path.join(evidenceDirectory, `local-${stamp}.json`);
+}
+await fs.mkdir(path.dirname(evidencePath), { recursive: true });
 await fs.writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
 
 console.log(`\nKForge verification gate: ${evidence.gate}`);

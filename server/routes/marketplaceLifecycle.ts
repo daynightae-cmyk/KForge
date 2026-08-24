@@ -6,8 +6,8 @@ import {
   installPackage,
   runInstalledPackage,
   uninstallPackage,
-  updatePackage,
 } from "../services/marketplace";
+import { updatePackageSafely } from "../services/marketplaceLifecycleSafe";
 
 const router = Router();
 const confirmationSchema = z.object({ confirmed: z.literal(true) }).strict();
@@ -65,7 +65,7 @@ router.post("/items/:id/update", async (req, res) => {
   if (!confirmationSchema.safeParse(req.body).success) return res.status(400).json(confirmationError());
   const root = workspaceRoot();
   const itemId = parseItemId(req.params.id);
-  const result = await withLifecycleLock(root, () => updatePackage(root, itemId));
+  const result = await withLifecycleLock(root, () => updatePackageSafely(root, itemId));
   return res.status(result.stage === "UPDATED" ? 200 : 409).json(result);
 });
 
