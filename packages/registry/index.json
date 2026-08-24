@@ -1,0 +1,17 @@
+{
+  "name": "kforge-first-party-registry",
+  "version": "1.0.0",
+  "description": "First-party package registry for KForge",
+  "type": "library",
+  "main": "packages/registry/index.js",
+  "scripts": {
+    "test": "jest",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "kforge": "^1.0.0"
+  },
+  "peerDependencies": {
+    "kforge": "^1.0.0"
+  }
+}
