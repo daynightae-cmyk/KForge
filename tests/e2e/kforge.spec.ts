@@ -40,7 +40,7 @@ test.describe('KForge Production E2E', () => {
     const requests: string[] = [];
     page.on('request', (req) => {
       const url = req.url();
-      if (!url.startsWith('http://localhost:8080') && !url.startsWith('http://127.0.0.1:8080')) {
+      if (!url.startsWith('http://localhost:4317') && !url.startsWith('http://127.0.0.1:4317')) {
         requests.push(url);
       }
     });

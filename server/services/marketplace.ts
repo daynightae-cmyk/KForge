@@ -1,5 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { randomUUID, createHash } from "crypto";
+import { z } from "zod";
 import type { ProjectProfile, ProjectSummary } from "../../shared/workspace";
 import { getModelCenter } from "./aiCenter";
 import { listAgentTools } from "./agentTools";
@@ -479,6 +481,23 @@ export async function getProjectMarketplace(workspaceRoot: string, onlineOptiona
   return { ...market, project: { id: project.id, name: project.name, framework: profile.framework, languages: profile.languages, commandEvidence: profile.commandEvidence }, items, recommendations, capabilityGaps: commandGaps };
 }
 
+const manifestSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  version: z.string().regex(/^\d+\.\d+\.\d+$/),
+  publisher: z.string().min(1),
+  description: z.string().optional(),
+  permissions: z.array(z.any()).optional(),
+  capabilities: z.array(z.string()).optional(),
+  compatibility: z.string().optional(),
+  requirements: z.array(z.string()).optional(),
+  dependencies: z.array(z.record(z.any())).optional(),
+  license: z.string().optional(),
+  size: z.number().optional(),
+  sha256: z.string().length(64, { message: "sha256 must be exactly 64 hex characters" }).regex(/^[a-f0-9]{64}$/),
+  integrity: z.object({ algorithm: z.string(), expectedHash: z.string().length(64) }).optional(),
+});
+
 export async function previewMarketplaceInstall(workspaceRoot: string, onlineOptional: boolean, itemId: string) {
   const market = await getMarketplace(workspaceRoot, onlineOptional);
   const item = market.items.find((entry) => entry.id === itemId);
@@ -501,7 +520,7 @@ export interface InstallResult {
 }
 
 function generateOperationId(): string {
-  return `op-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+  return `op-${randomUUID()}`;
 }
 
 export async function installPackage(workspaceRoot: string, itemId: string): Promise<InstallResult> {
@@ -511,24 +530,41 @@ export async function installPackage(workspaceRoot: string, itemId: string): Pro
   const manifestPath = path.join(fixtureDir, "manifest.json");
   const manifestRaw = await fs.readFile(manifestPath, "utf8").catch(() => null);
   if (!manifestRaw) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "Package manifest not found at first-party source." };
-  const manifest = JSON.parse(manifestRaw) as Record<string, unknown>;
-  if (manifest.id !== itemId) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "Item ID mismatch with first-party manifest." };
+  let manifest: unknown;
+  try { manifest = JSON.parse(manifestRaw); } catch { return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "Manifest is not valid JSON." }; }
+  const validation = manifestSchema.safeParse(manifest);
+  if (!validation.success) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: `Manifest validation failed: ${validation.error.errors.map((e: any) => e.path?.join(".") + ":" + e.message).join("; ")}` };
+  const validatedManifest = validation.data;
+  if (validatedManifest.id !== itemId) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "Item ID mismatch with first-party manifest." };
   // Integrity verification: compare declared SHA with actual computed hash of fixture package
   const packagePath = path.join(fixtureDir, "index.js");
   const packageBytes = await fs.readFile(packagePath, "utf8").catch(() => null);
   if (!packageBytes) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: "Package artifact missing." };
   // Size verification
-  const declaredSize = Number(manifest.size) || 0;
+  const declaredSize = Number(validatedManifest.size) || 0;
   const actualSize = Buffer.byteLength(packageBytes, "utf8");
   if (declaredSize > 0 && declaredSize !== actualSize) {
     return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: false, error: `Size mismatch: expected ${declaredSize}, got ${actualSize}.` };
   }
-  // SHA verification (simplified: real SHA-256 comparison for the fixture)
-  const expectedHash = String(manifest.sha256 || "");
+  // SHA verification (real cryptographic comparison)
+  const expectedHash = String(validatedManifest.sha256 || "");
   if (!expectedHash) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: true, error: "Manifest integrity hash missing." };
-  // For the fixture we use the declared hash; real production would compute crypto hash. We verify it exists and is non-empty.
-  const integrityVerified = expectedHash.length === 64 && /^[a-f0-9]+$/.test(expectedHash);
-  if (!integrityVerified) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: true, error: "Integrity verification failed: invalid SHA-256 format." };
+  const actualHash = createHash("sha256").update(packageBytes).digest("hex");
+  const integrityVerified = actualHash === expectedHash;
+  if (!integrityVerified) return { operationId: opId, itemId, stage: "FAILED", installed: false, rollback: false, integrityVerified: false, sizeVerified: true, error: `Integrity verification failed: expected ${expectedHash}, got ${actualHash}.` };
+
+  // Actual staging: stage in transaction directory first
+  const stagingDir = path.resolve(workspaceRoot, ".kforge", "marketplace", "staging", opId);
+  await fs.mkdir(stagingDir, { recursive: true });
+  await fs.copyFile(packagePath, path.join(stagingDir, "index.js"));
+  await fs.writeFile(path.join(stagingDir, "manifest.json"), JSON.stringify(validatedManifest, null, 2), { encoding: "utf8" });
+
+  // Move stage to installed directory after all checks pass
+  const installedDir = path.resolve(workspaceRoot, ".kforge", "marketplace", "installed", itemId);
+  await fs.mkdir(installedDir, { recursive: true });
+  await fs.copyFile(packagePath, path.join(installedDir, "index.js"));
+  await fs.writeFile(path.join(installedDir, "manifest.json"), JSON.stringify(validatedManifest, null, 2), { encoding: "utf8" });
+
   // Stage: register durable registry
   const registryFilePath = registryPath(workspaceRoot);
   let registry: LocalRegistryFile = { items: [] };
@@ -541,20 +577,20 @@ export async function installPackage(workspaceRoot: string, itemId: string): Pro
   const existing = registry.items.find((i) => i && i.id === itemId);
   if (existing) {
     existing.installed = true;
-    existing.version = String(manifest.version || "");
+    existing.version = String(validatedManifest.version || "");
     existing.updatedAt = new Date().toISOString();
   } else {
     registry.items.push({
-      id: String(manifest.id),
+      id: String(validatedManifest.id),
       category: "plugins" as MarketplaceCategory,
-      name: String(manifest.name || itemId),
-      description: String(manifest.description || ""),
+      name: String(validatedManifest.name || itemId),
+      description: String(validatedManifest.description || ""),
       source: "First-party registry",
-      version: String(manifest.version || ""),
-      capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : ["inspection"],
-      requirements: Array.isArray(manifest.requirements) ? manifest.requirements : ["KForge Workspace server"],
-      compatibility: String(manifest.compatibility || ""),
-      permissions: Array.isArray(manifest.permissions) ? manifest.permissions : [],
+      version: String(validatedManifest.version || ""),
+      capabilities: Array.isArray(validatedManifest.capabilities) ? validatedManifest.capabilities : ["inspection"],
+      requirements: Array.isArray(validatedManifest.requirements) ? validatedManifest.requirements : ["KForge Workspace server"],
+      compatibility: String(validatedManifest.compatibility || ""),
+      permissions: Array.isArray(validatedManifest.permissions) ? validatedManifest.permissions : [],
       trust: "TRUSTED",
       installed: true,
       enabled: true,
@@ -581,7 +617,10 @@ export async function uninstallPackage(workspaceRoot: string, itemId: string): P
   registry.items = registry.items.filter((i) => !(i && i.id === itemId));
   await fs.mkdir(path.dirname(registryFilePath), { recursive: true });
   await fs.writeFile(registryFilePath, JSON.stringify(registry, null, 2), { encoding: "utf8" });
-  return { operationId: `op-uninstall-${itemId}-${Date.now()}`, itemId, stage: "UNINSTALLED", installed: false, rollback: false, integrityVerified: true, sizeVerified: true, error: beforeCount > registry.items.length ? undefined : "Package not registered; nothing removed." };
+  // Remove installed package directory
+  const installedDir = path.resolve(workspaceRoot, ".kforge", "marketplace", "installed", itemId);
+  try { await fs.rm(installedDir, { recursive: true, force: true }); } catch { /* safe to ignore */ }
+  return { operationId: `op-uninstall-${itemId}-${randomUUID()}`, itemId, stage: "UNINSTALLED", installed: false, rollback: false, integrityVerified: true, sizeVerified: true, error: beforeCount > registry.items.length ? undefined : "Package not registered; nothing removed." };
 }
 
 export async function healthCheckPackage(workspaceRoot: string, itemId: string): Promise<{ ok: boolean; message: string; version?: string; installed: boolean }> {
@@ -593,11 +632,21 @@ export async function healthCheckPackage(workspaceRoot: string, itemId: string):
   } catch { return { ok: false, message: "Registry unreadable.", installed: false }; }
   const item = (Array.isArray(registry.items) ? registry.items : []).find((i) => i && i.id === itemId);
   if (!item || !item.installed) return { ok: false, message: "Package not installed.", installed: false };
-  const fixtureDir = path.resolve(process.cwd(), "fixtures", "marketplace-first-party");
+  const installedDir = path.resolve(workspaceRoot, ".kforge", "marketplace", "installed", itemId);
   try {
-    await fs.access(path.join(fixtureDir, "index.js"));
+    await fs.access(path.join(installedDir, "index.js"));
   } catch {
-    return { ok: false, message: "Package artifact missing after install.", installed: true, version: item.version };
+    return { ok: false, message: "Package artifact missing at installed path after install.", installed: true, version: item.version };
+  }
+  // Verify integrity of installed artifact against registry hash
+  const installedArtifactPath = path.join(installedDir, "index.js");
+  try {
+    const installedBytes = await fs.readFile(installedArtifactPath, "utf8");
+    const installedHash = createHash("sha256").update(installedBytes).digest("hex");
+    const expectedHash = item.integrity ? String((item as any).integrity?.expectedHash || item.sha256 || "") : "";
+    if (expectedHash && installedHash !== expectedHash) return { ok: false, message: `Health integrity mismatch: installed hash ${installedHash} does not match registry ${expectedHash}.`, installed: true, version: item.version };
+  } catch {
+    return { ok: false, message: "Installed artifact unreadable during health check.", installed: true, version: item.version };
   }
   return { ok: true, message: "Health check passed.", installed: true, version: item.version };
 }
@@ -605,11 +654,11 @@ export async function healthCheckPackage(workspaceRoot: string, itemId: string):
 export async function runInstalledPackage(workspaceRoot: string, itemId: string): Promise<{ ok: boolean; result: unknown; error?: string }> {
   const health = await healthCheckPackage(workspaceRoot, itemId);
   if (!health.ok) return { ok: false, result: null, error: health.message };
-  // First-party package execution: run fixture index.js via node
-  const fixtureDir = path.resolve(process.cwd(), "fixtures", "marketplace-first-party");
+  // Execute installed package from its installed directory
+  const installedDir = path.resolve(workspaceRoot, ".kforge", "marketplace", "installed", itemId);
   try {
     const { execFileSync } = await import("child_process");
-    const output = execFileSync("node", [path.join(fixtureDir, "index.js")], { encoding: "utf8", timeout: 15000, maxBuffer: 1024 * 1024 });
+    const output = execFileSync("node", [path.join(installedDir, "index.js")], { encoding: "utf8", timeout: 15000, maxBuffer: 1024 * 1024 });
     let parsed: unknown = null;
     try { parsed = JSON.parse(output); } catch { parsed = output.trim(); }
     return { ok: true, result: parsed };

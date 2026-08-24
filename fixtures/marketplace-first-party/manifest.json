@@ -16,12 +16,12 @@
   "homepage": "https://kforge.local/packages/json-inspector",
   "repository": "https://github.com/daynightae-cmyk/KForge/packages/json-inspector",
   "downloadUrl": "/api/marketplace/packages/kforge-json-inspector-1.0.0.tar.gz",
-  "size": 2048,
-  "sha256": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3",
+  "size": 174,
+  "sha256": "a3b7d6e7d8eb57a1fbf990c72e1afa88b4f33684d0fd9f6f47436221765af8f2",
   "dependencies": [],
   "integrity": {
     "algorithm": "sha256",
-    "expectedHash": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"
+    "expectedHash": "a3b7d6e7d8eb57a1fbf990c72e1afa88b4f33684d0fd9f6f47436221765af8f2"
   },
   "runtimeRequirements": {
     "kforgeVersion": ">=1.0.0",

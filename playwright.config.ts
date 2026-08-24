@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: 'list',
   use: {
     trace: 'on-first-retry',
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:4317',
     headless: true,
   },
   projects: [
@@ -21,8 +21,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run start',
-    url: 'http://localhost:3000/api/ping',
+    command: 'PORT=4317 npm run start',
+    url: 'http://localhost:4317/api/ping',
     reuseExistingServer: false,
     timeout: 60000,
   },
