@@ -79,6 +79,12 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e
 
+      - name: Aggregate local verification gate
+        id: verify_gate
+        if: steps.npm_ci.outcome == 'success' && steps.e2e.outcome == 'success'
+        continue-on-error: true
+        run: npm run verify:gate
+
       - name: Create verification evidence
         if: always()
         env:
@@ -90,10 +96,11 @@ jobs:
           BUILD: ${{ steps.build.outcome }}
           PLAYWRIGHT_BROWSER: ${{ steps.playwright_browser.outcome }}
           E2E: ${{ steps.e2e.outcome }}
+          VERIFY_GATE: ${{ steps.verify_gate.outcome }}
         run: |
           node --input-type=module <<'NODE'
           import { writeFileSync } from 'node:fs';
-          const required = ['NPM_CI', 'TYPECHECK', 'LINT', 'MARKETPLACE', 'TESTS', 'BUILD', 'PLAYWRIGHT_BROWSER', 'E2E'];
+          const required = ['NPM_CI', 'TYPECHECK', 'LINT', 'MARKETPLACE', 'TESTS', 'BUILD', 'PLAYWRIGHT_BROWSER', 'E2E', 'VERIFY_GATE'];
           const steps = Object.fromEntries(required.map((name) => [name.toLowerCase(), process.env[name] || 'skipped']));
           const pass = required.every((name) => process.env[name] === 'success');
           const evidence = {
@@ -132,6 +139,7 @@ jobs:
           BUILD: ${{ steps.build.outcome }}
           PLAYWRIGHT_BROWSER: ${{ steps.playwright_browser.outcome }}
           E2E: ${{ steps.e2e.outcome }}
+          VERIFY_GATE: ${{ steps.verify_gate.outcome }}
         run: |
           printf '%s\n' \
             "npm_ci=${NPM_CI}" \
@@ -141,7 +149,8 @@ jobs:
             "tests=${TESTS}" \
             "build=${BUILD}" \
             "playwright_browser=${PLAYWRIGHT_BROWSER}" \
-            "e2e=${E2E}"
+            "e2e=${E2E}" \
+            "verify_gate=${VERIFY_GATE}"
           test "${NPM_CI}" = success
           test "${TYPECHECK}" = success
           test "${LINT}" = success
@@ -150,3 +159,4 @@ jobs:
           test "${BUILD}" = success
           test "${PLAYWRIGHT_BROWSER}" = success
           test "${E2E}" = success
+          test "${VERIFY_GATE}" = success
