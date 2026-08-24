@@ -1,5 +1,7 @@
 # KForge Mock and Placeholder Audit
 
+> Historical static audit at the baseline below. Current product status and blockers are maintained in `docs/KFORGE-CAPABILITY-MATRIX.md`; this file does not override current runtime evidence.
+
 **Baseline reviewed:** `0447a457226dda2bee7bf0ea0ef90264d676051e`  
 **Scope:** `client/`, `server/`, and `shared/`, excluding generated output, dependencies, and the user-owned `.ctrlnode/` directory.
 
@@ -20,6 +22,6 @@ The audit used static matching for `console.log`, `alert`, `TODO`, `FIXME`, `moc
 
 ## Prioritization
 
-The KForge Workspace has no active fake project, Git, scan, test, build, or task data path. The next implementation work therefore targets its evidence model: richer project discovery, normalized diagnostics, health evidence, problems, snapshots, and permission-gated operations.
+The KForge Workspace has no active fake project, Git, scan, test, build, or task data path. Current regression tests keep the legacy demo/editor routes outside the production router.
 
-The listed Knoux editor items remain an **exact legacy remediation backlog**, not a claim of functional completeness. They must not be represented as KForge Workspace capabilities until wired to persistent engines.
+The listed Knoux editor items remain historical, non-routed legacy code, not KForge Workspace capabilities. They must not be reintroduced into the production router without real persistent engines and fresh verification.

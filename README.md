@@ -1,129 +1,91 @@
+# KNOuX Forge
 
-Built by https://www.blackbox.ai
+KNOuX Forge is a local-first engineering command center for discovering repositories, inspecting evidence, running trusted project workflows, and coordinating verified engineering tasks. The product is a React 18 workspace backed by an Express API; it reports unavailable or unconfigured capabilities explicitly instead of fabricating remote, CI, registry, AI, or release state.
 
----
+KForge is under active product-completion work. Passing local checks are not presented as proof that an unavailable external provider or live browser acceptance has passed.
 
-# Fusion Starter
+## Current product surfaces
 
-A production-ready full-stack React application template with an integrated Express server, featuring React Router 6 SPA mode, TypeScript, Vitest, Zod, and modern tooling.
+- Local project discovery, collections, trust, profiles, health, problems, and bounded scans.
+- Language-aware files, imports, exports, symbols, routes, APIs, dependencies, impact, cycles, and architecture evidence.
+- Detected test, build, runtime, Preview, Git, task, mission, snapshot, and Release Gate workflows.
+- Source-separated Project Health and Release Gate evidence for local, GitHub, CI, registry, and Preview sources.
+- Local-first model and Agent centers plus a Marketplace that exposes provenance, permissions, compatibility, lifecycle eligibility, and truthful unavailable states.
+- A no-contact Online Control Center. Remote reads and writes occur only through explicit configured actions.
+- Global Search across real local product entities with visible coverage and safety limits.
+- An exact KForge-on-KForge Self Audit that persists evidence atomically and proves restart/reload only when a different server instance reads it.
 
-## Project Overview
+## Requirements and installation
 
-Fusion Starter is designed as a robust and efficient template for building modern web applications using React and Express. It leverages a variety of technologies to ensure a smooth development experience and a performant application. The template is built with TypeScript, making it type-safe, and is equipped with tools for testing and validation, such as Vitest and Zod.
+KForge requires Node.js with npm and Git. Optional project ecosystems and security tools must be installed separately; KForge does not download them silently.
 
-## Installation
+```powershell
+git clone https://github.com/daynightae-cmyk/KForge.git
+Set-Location KForge
+npm ci
+```
 
-To set up the project locally, follow these steps:
+Copy values from `.env.example` into the process environment as needed. The production server does not load `.env.example` automatically.
 
-1. **Clone the repository:**
-   ```bash
-   git clone <REPOSITORY_URL>
-   cd fusion-starter
-   ```
+`KFORGE_WORKSPACE_ROOT` should point to the parent directory whose immediate child repositories KForge should discover. If it is omitted, the server uses the parent of its current working directory.
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+## Development and production
 
-## Usage
+Development uses Vite on port `8080`:
 
-To start the development server, use:
-
-```bash
+```powershell
+$env:KFORGE_WORKSPACE_ROOT='D:\Projects'
 npm run dev
 ```
 
-This command will run both the client and server on a single port (8080) with hot reloading enabled for rapid development. You can navigate to [http://localhost:8080](http://localhost:8080) to see your application in action.
+Open `http://localhost:8080/workspace`. The `/` route is the KNOuX Forge reveal/entry screen and `/workspace` is the engineering workspace.
 
-## Features
+The production build serves the SPA and API together. It uses `PORT` or defaults to `3000`:
 
-- **Single Page Application (SPA):** Utilizes React Router 6 for client-side routing.
-- **Type Safety:** Built with TypeScript, ensuring type checks at compile time.
-- **Integrated Development:** Combines frontend and backend development in a single environment with Vite and Express.
-- **Testing Suite:** Includes Vitest for unit testing.
-- **Validation:** Utilizes Zod for runtime validation of data and schemas.
-- **Comprehensive UI components:** Pre-built library of UI components using Radix UI and TailwindCSS 3.
-
-## Dependencies
-
-The project requires the following dependencies as specified in `package.json`:
-
-- `express`: "^4.18.2"
-- `zod`: "^3.23.8"
-  
-Development dependencies include:
-- `@hookform/resolvers`
-- `@radix-ui/*` components
-- `@tanstack/react-query`
-- `tailwindcss`
-- Lots of types for better development experience with TypeScript.
-
-## Project Structure
-
-The project is structured as follows:
-
-```
-client/                   # React SPA frontend
-├── pages/                # Route components (Index.tsx = home)
-├── components/ui/        # Pre-built UI component library
-├── App.tsx               # App entry point with SPA routing setup
-└── global.css            # TailwindCSS theming and global styles
-
-server/                   # Express API backend
-├── index.ts              # Main server setup (express config + routes)
-└── routes/               # API handlers
-
-shared/                   # Types used by both client & server
-└── api.ts                # Example of how to share API interfaces
+```powershell
+npm run build
+$env:KFORGE_WORKSPACE_ROOT='D:\Projects'
+$env:PORT='3000'
+npm start
 ```
 
-## Development Commands
+Open `http://localhost:3000/workspace`. API routes are under `/api/workspace`; `/api/ping` is the local server smoke check.
 
-Here are some useful commands for development:
+## Verification commands
 
-```bash
-npm run dev        # Start dev server (client + server)
-npm run build      # Production build
-npm run start      # Start production server
-npm run typecheck  # TypeScript validation
-npm run test       # Run Vitest tests
+```powershell
+npm run typecheck
+npm test
+npm run build
 ```
 
-## Adding Features
+The large-project benchmark is intentionally opt-in because it generates thousands of temporary files:
 
-### To Add New Colors to the Theme:
-- Open `client/global.css` and `tailwind.config.ts`, adding new Tailwind colors as needed.
-
-### To Create a New API Route:
-1. **Optional:** Create a shared interface in `shared/api.ts` for type safety.
-2. Create a new route handler in `server/routes/<your-route>.ts`.
-3. Register the route in `server/index.ts`.
-
-### To Create a New Page Route:
-1. Create a new component in `client/pages/<YourPage>.tsx`.
-2. Add the corresponding route in `client/App.tsx`.
-
-## Production Deployment
-
-For production deployment, use:
-
-```bash
-npm run build  # To create a production build
-npm start      # To start the production server
+```powershell
+$env:KFORGE_RUN_BENCHMARK='1'
+npx vitest --run server/routes/performance.spec.ts
 ```
 
-### Docker Support
-- A Dockerfile is provided for containerized deployment. Customize as necessary for your production environment.
+## Architecture and persistence
 
-## Architecture Notes
+```text
+client/                 React workspace, routing, and presentation
+server/index.ts         Express application and API mount
+server/routes/          Workspace HTTP orchestration
+server/services/        Canonical local engines and persisted stores
+shared/                 Renderer/server evidence contracts
+fixtures/               Test-only project ecosystem fixtures
+```
 
-- Single-port development with Vite + Express integration.
-- Full TypeScript support across client, server, and shared code.
-- Rapid development with hot reload capabilities.
-- Multi-deployment options including standard builds and Docker containers.
-- Comprehensive UI components and type-safe API communication through shared interfaces.
+KForge-managed settings, tasks, trust decisions, collections, caches, snapshots, and Self Audit evidence are stored below `.kforge` in the configured workspace root or project cache locations. Project source is not uploaded merely because a screen opens. Secrets are redacted, remote writes require confirmation, and remote context remains blocked or confirmation-gated by policy.
 
----
+## Truthful limitations
 
-Feel free to contribute to the project, and for any issues or suggestions, raise a ticket in the repository.
+- KForge starts in Offline Mode. GitHub, registries, remote documentation, remote CI, remote Preview, updates, and cloud AI remain `OFFLINE`, `NOT_CONFIGURED`, `UNKNOWN`, `UNAVAILABLE`, or `BLOCKED` until a real adapter, policy, authentication, and explicit action provide evidence.
+- No trustworthy remote extension package adapter is currently configured, so remote install/update/uninstall claims remain blocked rather than simulated.
+- Local AI detection supports Ollama and LM Studio endpoints on loopback. No cloud provider is auto-selected and cloud credentials are not accepted through renderer settings.
+- Preview captures the local process output and KForge health probes. It does not claim browser console or full browser-network telemetry without a browser bridge.
+- Remote CI and GitHub Checks cannot pass from local Git state alone.
+- Live visual and keyboard acceptance requires an available browser automation bridge or external deployment; source, tests, built runtime, API, and persistence evidence do not substitute for that visual gate.
+
+See [PROJECT_STATUS.md](PROJECT_STATUS.md), [RUN.md](RUN.md), and [docs/KFORGE-CAPABILITY-MATRIX.md](docs/KFORGE-CAPABILITY-MATRIX.md) for current evidence and capability-level status. Licensing terms are in [LICENSE](LICENSE).
