@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "workflow": "KForge Verification Gate",
+  "testedSha": "11cbeff3982f4b1ecb32592e344accf9ba011203",
+  "branch": "traycer/kforge-eager-lemur",
+  "event": "push",
+  "runner": "Linux",
+  "runId": "32745922403",
+  "runAttempt": "1",
+  "recordedAt": "2026-08-24T15:39:11.257Z",
+  "steps": {
+    "npm_ci": "success",
+    "typecheck": "success",
+    "lint": "success",
+    "marketplace": "success",
+    "tests": "success",
+    "build": "success",
+    "playwright_browser": "success",
+    "e2e": "success"
+  },
+  "gate": "PASS"
+}
