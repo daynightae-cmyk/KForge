@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
+import { existsSync } from "fs";
 import net from "net";
+import path from "path";
 import type { ProjectProfile } from "../../shared/workspace";
 import { selectProjectRuntime } from "./projectExecution";
 
@@ -76,6 +78,13 @@ function appendLog(status: PreviewStatus, value: string) {
   status.logs = [...status.logs, ...lines.map((line) => line.slice(0, MAX_LOG_LINE_LENGTH))].slice(-MAX_LOG_LINES);
 }
 
+function resolvePreviewCommand(command: string, args: string[]) {
+  if (process.platform !== "win32" || command.toLowerCase() !== "npm.cmd") return { command, args, runAsNode: false };
+  const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  if (!existsSync(npmCli)) return { command, args, runAsNode: false };
+  return { command: process.execPath, args: [npmCli, ...args], runAsNode: Boolean(process.versions.electron) };
+}
+
 function reserveLocalPort() {
   return new Promise<number>((resolve, reject) => {
     const server = net.createServer();
@@ -142,7 +151,8 @@ export async function startPreview(projectId: string, projectPath: string, profi
   const previous = previewRecords.get(projectId);
   const status: PreviewStatus = { ...baseStatus(projectId), sessionId: randomUUID(), state: "starting", command: selected.display, port, url: `http://127.0.0.1:${port}${selected.urlPath || "/"}`, startedAt: new Date().toISOString(), logs: [`Starting detected runtime from ${selected.source} on local port ${port}.`], history: previous?.history || [], healthHistory: previous?.healthHistory || [] };
   recordEvent(status, "start", `Detected runtime from ${selected.source} started on local port ${port}.`);
-  const child = spawn(selected.command, selected.args, { cwd: projectPath, shell: process.platform === "win32" && selected.command.endsWith(".cmd"), windowsHide: true, detached: process.platform !== "win32", env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${port}` } });
+  const launch = resolvePreviewCommand(selected.command, selected.args);
+  const child = spawn(launch.command, launch.args, { cwd: projectPath, shell: false, windowsHide: true, detached: process.platform !== "win32", env: { ...process.env, ...(launch.runAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}), PORT: String(port), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${port}` } });
   status.pid = child.pid;
   const active: ActivePreview = { child, status };
   activePreviews.set(projectId, active);

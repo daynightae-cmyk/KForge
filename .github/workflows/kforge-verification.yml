@@ -49,3 +49,46 @@ jobs:
           path: verification-evidence.json
           if-no-files-found: error
           retention-days: 30
+
+  package-windows:
+    name: Windows NSIS package gate
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact tested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Validate production types
+        run: npm run typecheck
+
+      - name: Build signed-state-transparent NSIS installer
+        run: npm run package:windows
+
+      - name: Verify installed Windows runtime and NSIS lifecycle
+        run: npm run verify:installer
+
+      - name: Upload Windows installer and verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kforge-windows-nsis-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            release/KNOuX-Forge-Setup-*-Windows-x64.exe
+            release/SHA256SUMS.txt
+            release/installer-manifest.json
+            release/RELEASE-NOTES.md
+            release/verification/*.json
+          if-no-files-found: error
+          retention-days: 30

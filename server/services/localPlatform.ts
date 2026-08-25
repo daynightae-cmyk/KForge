@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { promises as fs } from "fs";
+import { existsSync, promises as fs } from "fs";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -50,9 +50,13 @@ async function writeSettingsAtomic(workspaceRoot: string, settings: LocalPlatfor
 }
 
 async function commandAvailable(command: string, args: string[]) {
-  const executable = process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
+  const options = { windowsHide: true, timeout: 4_000, shell: false } as const;
+  const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  const executable = process.platform === "win32" && command === "npm" ? process.execPath : command;
+  const commandArgs = process.platform === "win32" && command === "npm" ? (existsSync(npmCli) ? [npmCli, ...args] : []) : args;
+  if (commandArgs.length === 0) return false;
   try {
-    await execFileAsync(executable, args, { windowsHide: true, timeout: 4_000, shell: process.platform === "win32" && executable.endsWith(".cmd") });
+    await execFileAsync(executable, commandArgs, options);
     return true;
   } catch {
     return false;

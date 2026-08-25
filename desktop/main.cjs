@@ -111,7 +111,9 @@ async function startApplication() {
     await window.loadURL(`${productionServer.url}/workspace`);
     writeLog("INFO", "KNOuX Forge window loaded.");
     if (process.env.KFORGE_DESKTOP_SMOKE === "1") {
-      setTimeout(() => { void requestQuit(); }, 1_500).unref();
+      const requestedDelay = Number(process.env.KFORGE_DESKTOP_SMOKE_DELAY_MS || 1_500);
+      const delayMs = Number.isFinite(requestedDelay) ? Math.min(120_000, Math.max(500, requestedDelay)) : 1_500;
+      setTimeout(() => { void requestQuit(); }, delayMs).unref();
     }
   } catch (error) {
     startupError = error instanceof Error ? error.message : String(error);

@@ -29,7 +29,8 @@
     "lint": "node scripts/lint.mjs",
     "test:e2e": "playwright test",
     "verify:gate": "node scripts/verify-gate.mjs",
-    "verify:release": "npm run typecheck && npm run lint && npm run test && npm run build && npm run test:e2e",
+    "verify:desktop": "npm run build && node scripts/verify-desktop.mjs",
+    "verify:release": "npm run typecheck && npm run lint && npm run test && npm run build && npm run test:e2e && node scripts/verify-desktop.mjs && node scripts/package-windows.mjs && npm run verify:installer",
     "desktop": "npm run build && electron .",
     "package:windows": "npm run build && node scripts/package-windows.mjs",
     "verify:installer": "powershell -ExecutionPolicy Bypass -File installer/verify-installer.ps1"
@@ -149,9 +150,11 @@
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
       "allowElevation": false,
-      "createDesktopShortcut": "always",
+      "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "KNOuX Forge",
+      "uninstallDisplayName": "KNOuX Forge",
+      "include": "installer/installer-custom.nsh",
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,
       "artifactName": "KNOuX-Forge-Setup-v${version}-Windows-${arch}.${ext}"

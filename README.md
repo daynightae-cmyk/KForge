@@ -36,10 +36,14 @@ KNOuX Forge can be built as a Windows x64 desktop application. The packaged appl
 ```powershell
 npm ci
 npm run package:windows
+npm run verify:desktop
 npm run verify:installer
+npm run verify:release
 ```
 
-The package command creates the NSIS installer, checksum, artifact manifest, release notes, and verification records under `release/`. The installer is intentionally a per-user install and does not request administrator rights. Immutable application resources are installed by the package runtime, while KForge-managed settings, task state, logs, Marketplace state, and workspace collection data use `%LOCALAPPDATA%\KNOuX Forge`. Normal upgrades preserve this user data, and the uninstaller does not delete it automatically.
+The package command creates the NSIS installer, checksum, artifact manifest, release notes, and verification records under `release/`. The installer is intentionally a per-user install and does not request administrator rights. It creates a Start Menu shortcut and a Desktop shortcut on first installation; an existing Desktop shortcut deliberately remains removed if a user removed it before a reinstall. Immutable application resources are installed by the package runtime, while KForge-managed settings, task state, logs, Marketplace state, and workspace collection data use `%LOCALAPPDATA%\KNOuX Forge\workspace\.kforge`. Normal upgrades preserve this user data, and the uninstaller does not delete it automatically.
+
+To permanently remove retained KForge-managed user data after uninstalling, explicitly run `powershell -ExecutionPolicy Bypass -File installer/purge-kforge-user-data.ps1 -ConfirmPurge`. The purge command refuses to delete anything unless `-ConfirmPurge` is supplied and targets only `%LOCALAPPDATA%\KNOuX Forge`.
 
 The current installer is an **UNSIGNED DEVELOPMENT/RELEASE ARTIFACT**. It does not claim a Trusted Publisher, SmartScreen reputation, or code-signing verification. See [DESKTOP_ARCHITECTURE_DECISION.md](docs/DESKTOP_ARCHITECTURE_DECISION.md) for the architecture, trust boundaries, and signing-readiness constraints.
 
