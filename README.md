@@ -29,6 +29,20 @@ Copy values from `.env.example` into the process environment as needed. The prod
 
 `KFORGE_WORKSPACE_ROOT` should point to the parent directory whose immediate child repositories KForge should discover. If it is omitted, the server uses the parent of its current working directory.
 
+## Windows desktop installer
+
+KNOuX Forge can be built as a Windows x64 desktop application. The packaged application starts the local engine and opens its application window itself; end users do not need Node.js, npm, a terminal, or a manually entered localhost address.
+
+```powershell
+npm ci
+npm run package:windows
+npm run verify:installer
+```
+
+The package command creates the NSIS installer, checksum, artifact manifest, release notes, and verification records under `release/`. The installer is intentionally a per-user install and does not request administrator rights. Immutable application resources are installed by the package runtime, while KForge-managed settings, task state, logs, Marketplace state, and workspace collection data use `%LOCALAPPDATA%\KNOuX Forge`. Normal upgrades preserve this user data, and the uninstaller does not delete it automatically.
+
+The current installer is an **UNSIGNED DEVELOPMENT/RELEASE ARTIFACT**. It does not claim a Trusted Publisher, SmartScreen reputation, or code-signing verification. See [DESKTOP_ARCHITECTURE_DECISION.md](docs/DESKTOP_ARCHITECTURE_DECISION.md) for the architecture, trust boundaries, and signing-readiness constraints.
+
 ## Development and production
 
 Development uses Vite on port `8080`:
@@ -88,4 +102,4 @@ KForge-managed settings, tasks, trust decisions, collections, caches, snapshots,
 - Remote CI and GitHub Checks cannot pass from local Git state alone.
 - Live visual and keyboard acceptance requires an available browser automation bridge or external deployment; source, tests, built runtime, API, and persistence evidence do not substitute for that visual gate.
 
-See [PROJECT_STATUS.md](PROJECT_STATUS.md), [RUN.md](RUN.md), and [docs/KFORGE-CAPABILITY-MATRIX.md](docs/KFORGE-CAPABILITY-MATRIX.md) for current evidence and capability-level status. Licensing terms are in [LICENSE](LICENSE).
+See [PROJECT_STATUS.md](PROJECT_STATUS.md), [RUN.md](RUN.md), [docs/KFORGE-CAPABILITY-MATRIX.md](docs/KFORGE-CAPABILITY-MATRIX.md), and [docs/DESKTOP_ARCHITECTURE_DECISION.md](docs/DESKTOP_ARCHITECTURE_DECISION.md) for current evidence and capability-level status. Licensing terms are in [LICENSE](LICENSE).

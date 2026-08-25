@@ -218,3 +218,19 @@ export async function restartPreview(projectId: string, projectPath: string, pro
   await stopPreviewAndWait(projectId);
   return startPreview(projectId, projectPath, profile);
 }
+
+/**
+ * Stops every preview process created by this KForge server instance. This is
+ * used by the desktop runtime before its loopback server exits so no project
+ * child process is left behind after the application window closes.
+ */
+export async function stopAllPreviews(timeoutMs = 5_000): Promise<void> {
+  const projectIds = [...activePreviews.keys()];
+  const results = await Promise.allSettled(projectIds.map((projectId) => stopPreviewAndWait(projectId, timeoutMs)));
+  const failures = results
+    .map((result, index) => ({ result, projectId: projectIds[index] }))
+    .filter((entry): entry is { result: PromiseRejectedResult; projectId: string } => entry.result.status === "rejected");
+  if (failures.length) {
+    throw new Error(`KForge could not stop ${failures.length} preview process(es): ${failures.map((entry) => entry.projectId).join(", ")}`);
+  }
+}

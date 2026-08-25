@@ -67,3 +67,6 @@ CLAUDE.md
 # Playwright generated test output
 test-results/
 playwright-report/
+
+# Generated Windows installer and release evidence
+release/

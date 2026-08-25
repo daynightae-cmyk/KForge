@@ -942,6 +942,20 @@ function SnapshotsPanel({ project }: { project: ProjectSummary }) {
 
 
 
+function DesktopRuntimeCard() {
+  const [runtime, setRuntime] = useState<KForgeDesktopRuntimeInfo | null>(null);
+  const [message, setMessage] = useState(window.kforgeDesktop ? "Reading desktop runtime metadata…" : "UNAVAILABLE: this KForge session is not running inside the packaged desktop shell.");
+  useEffect(() => {
+    let active = true;
+    if (!window.kforgeDesktop) return () => { active = false; };
+    void window.kforgeDesktop.getRuntimeInfo()
+      .then((value) => { if (active) { setRuntime(value); setMessage(""); } })
+      .catch(() => { if (active) setMessage("UNAVAILABLE: desktop runtime metadata could not be read."); });
+    return () => { active = false; };
+  }, []);
+  return <article className="kf-command-evidence" aria-label="KForge desktop runtime information"><strong>About KNOuX Forge</strong>{runtime ? <div className="kf-hardware-grid"><span><strong>Version</strong>{runtime.version}</span><span><strong>Runtime</strong>{runtime.runtime}</span><span><strong>Platform</strong>{runtime.platform} · {runtime.architecture}</span><span><strong>Build type</strong>{runtime.packaged ? "Installed desktop" : "Development desktop"}</span><span><strong>Signing</strong>{runtime.signature}</span></div> : <p className="kf-capability-copy">{message}</p>}{runtime?.signature === "UNSIGNED" && <p className="kf-capability-copy">UNSIGNED DEVELOPMENT/RELEASE ARTIFACT. A valid signing certificate has not been configured or verified for this build.</p>}</article>;
+}
+
 function SettingsCenter({ settings, platform, onSettingsChange, onModeChange }: { settings: KForgePlatformSettings | null; platform?: LocalPlatformStatus; onSettingsChange: (settings: KForgePlatformSettings) => void; onModeChange: (mode: LocalPlatformStatus["mode"]) => void }) {
   const [draft, setDraft] = useState<KForgePlatformSettings | null>(settings);
   const [message, setMessage] = useState(settings ? "" : "Loading persisted platform settings…");
@@ -977,7 +991,8 @@ function SettingsCenter({ settings, platform, onSettingsChange, onModeChange }: 
   if (!draft) return <section className="kf-capability-panel"><p className="kf-capability-copy">{message}</p></section>;
   return <section className="kf-settings-center">
     <header className="kf-settings-header"><div><p className="kf-eyebrow">Persistent platform policy</p><h2>Settings Center</h2><p>Editable controls are connected to real runtime behavior. Every other requested domain is classified by its actual owner or availability.</p></div><div className="kf-heading-actions"><button className="kf-button kf-button--ghost" disabled={saving} onClick={() => void reset()}>Reset</button><button className="kf-button kf-button--primary" disabled={saving} onClick={() => void persist(draft)}>{saving ? "Saving…" : "Save settings"}</button></div></header>
-    {message && <StatusMessage>{message}</StatusMessage>}
+        {message && <StatusMessage>{message}</StatusMessage>}
+    <DesktopRuntimeCard />
     <div className="kf-settings-layout"><div className="kf-settings-form">
       <fieldset><legend>General · EDITABLE_REAL</legend>
         <label>Startup capability<select value={draft.general.startupCapability} onChange={(event) => setDraft({ ...draft, general: { ...draft.general, startupCapability: event.target.value as KForgePlatformSettings["general"]["startupCapability"] } })}>{KFORGE_STARTUP_CAPABILITIES.map((capability) => <option key={capability}>{capability}</option>)}</select><small>Applied the next time the Workspace loads.</small></label>

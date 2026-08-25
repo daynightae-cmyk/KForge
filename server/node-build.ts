@@ -1,34 +1,25 @@
-import { existsSync } from "fs";
 import path from "path";
-import express from "express";
-import { createServer } from "./index";
+import { startKForgeProductionServer } from "./productionServer";
 
 const applicationRoot = path.resolve(process.env.KFORGE_APP_ROOT || path.resolve(import.meta.dirname, "../.."));
-const firstPartyManifest = path.join(applicationRoot, "fixtures", "marketplace-first-party", "manifest.json");
-const firstPartyUpdateManifest = path.join(applicationRoot, "fixtures", "marketplace-first-party-v110", "manifest.json");
+const port = Number(process.env.PORT || 3000);
 
-if (!existsSync(firstPartyManifest) || !existsSync(firstPartyUpdateManifest)) {
-  throw new Error(`KForge first-party Marketplace fixtures are missing from the application root: ${applicationRoot}`);
+const runtime = await startKForgeProductionServer({ applicationRoot, host: "127.0.0.1", port });
+console.log(`KForge Workspace running at ${runtime.url}`);
+
+let closing = false;
+async function shutdown(signal: string) {
+  if (closing) return;
+  closing = true;
+  try {
+    await runtime.close();
+    console.log(`KForge Workspace stopped after ${signal}.`);
+    process.exit(0);
+  } catch (error: unknown) {
+    console.error(`KForge Workspace could not stop cleanly after ${signal}:`, error);
+    process.exit(1);
+  }
 }
 
-process.chdir(applicationRoot);
-
-const app = createServer();
-const port = Number(process.env.PORT || 3000);
-const distPath = path.join(import.meta.dirname, "../spa");
-
-app.use(express.static(distPath));
-
-app.get("*", (req, res) => {
-  if (req.path.startsWith("/api/") || req.path.startsWith("/health")) {
-    return res.status(404).json({ error: "API endpoint not found" });
-  }
-  res.sendFile(path.join(distPath, "index.html"));
-});
-
-app.listen(port, () => {
-  console.log(`KForge Workspace running at http://localhost:${port}`);
-});
-
-process.on("SIGTERM", () => process.exit(0));
-process.on("SIGINT", () => process.exit(0));
+process.on("SIGTERM", () => { void shutdown("SIGTERM"); });
+process.on("SIGINT", () => { void shutdown("SIGINT"); });

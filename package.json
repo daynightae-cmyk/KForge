@@ -1,6 +1,11 @@
 {
   "name": "knoux-forge",
   "private": true,
+  "version": "0.1.0",
+  "description": "Local-first engineering command center for verified project workflows.",
+  "main": "desktop/main.cjs",
+  "license": "MIT",
+  "author": "DAY NIGHT DELIVERY SERVICES",
   "type": "module",
   "pkg": {
     "assets": [
@@ -24,14 +29,19 @@
     "lint": "node scripts/lint.mjs",
     "test:e2e": "playwright test",
     "verify:gate": "node scripts/verify-gate.mjs",
-    "verify:release": "npm run typecheck && npm run lint && npm run test && npm run build && npm run test:e2e"
+    "verify:release": "npm run typecheck && npm run lint && npm run test && npm run build && npm run test:e2e",
+    "desktop": "npm run build && electron .",
+    "package:windows": "npm run build && node scripts/package-windows.mjs",
+    "verify:installer": "powershell -ExecutionPolicy Bypass -File installer/verify-installer.ps1"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "express": "^5.2.1",
+    "typescript": "^5.5.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.9.0",
+    "@playwright/test": "^1.49.0",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",
     "@radix-ui/react-aspect-ratio": "^1.1.0",
@@ -64,8 +74,7 @@
     "@swc/core": "^1.11.24",
     "@tailwindcss/typography": "^0.5.15",
     "@tanstack/react-query": "^5.56.2",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.5.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
@@ -75,8 +84,9 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
-    "cors": "^2.8.5",
     "date-fns": "^3.6.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "embla-carousel-react": "^8.3.0",
     "framer-motion": "^12.6.2",
     "globals": "^15.9.0",
@@ -99,10 +109,52 @@
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.176.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.5.3",
     "vaul": "^0.9.3",
     "vite": "^6.3.5",
-    "vitest": "^3.1.4",
-    "@playwright/test": "^1.49.0"
+    "vitest": "^3.1.4"
+  },
+  "build": {
+    "appId": "com.daynightdeliveryservices.knouxforge",
+    "productName": "KNOuX Forge",
+    "artifactName": "KNOuX-Forge-Setup-v${version}-Windows-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**",
+      "dist/**",
+      "fixtures/marketplace-first-party/**",
+      "fixtures/marketplace-first-party-v110/**",
+      "LICENSE",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "installer/assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "KNOuX Forge",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "artifactName": "KNOuX-Forge-Setup-v${version}-Windows-${arch}.${ext}"
+    }
   }
 }
