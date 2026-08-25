@@ -1,0 +1,4 @@
+# KForge integrity-sensitive first-party Marketplace fixtures.
+# Their manifest size/SHA-256 values are calculated from canonical LF bytes.
+fixtures/marketplace-first-party/index.js text eol=lf
+fixtures/marketplace-first-party-v110/index.js text eol=lf

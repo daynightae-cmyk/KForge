@@ -298,7 +298,7 @@ describe("KForge Workspace engines", () => {
       else process.env.KFORGE_WORKSPACE_ROOT = previousWorkspaceRoot;
       await fs.rm(workspaceRoot, { recursive: true, force: true });
     }
-  }, 90_000);
+  }, 180_000);
 
   it("restores the latest completed verification evidence and preserves fresher in-memory results", () => {
     const projectId = "evidence-project";

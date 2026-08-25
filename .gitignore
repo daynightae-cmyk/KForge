@@ -63,3 +63,7 @@ CLAUDE.md
 /build-*.log
 /final-*.log
 /verify-runtime*.log
+
+# Playwright generated test output
+test-results/
+playwright-report/
