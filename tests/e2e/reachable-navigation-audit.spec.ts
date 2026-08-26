@@ -41,7 +41,7 @@ test.describe("KForge reachable navigation audit in production", () => {
     await selectKForgeProject(page);
 
     const labels = await page.locator(".kf-nav section button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") || button.textContent?.trim() || "").filter(Boolean));
-    expect(labels.length).toBeGreaterThan(45);
+    expect(labels).toHaveLength(66);
     expect(new Set(labels).size).toBe(labels.length);
 
     for (const label of labels) {
