@@ -1,168 +1,94 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CAPABILITY_RENDERER_IDS, missingCapabilityRenderers, navHoverInfo, ONLINE_NAVIGATION_LABELS, PREVIEW_CONTEXT_NAVIGATION_LABELS, visibleNavigationLabels } from "./KForgeWorkspace";
+import { KFORGE_ACTIVITY_IDS, ONLINE_EXPLORER_VIEWS } from "./KForgeWorkbench";
 
-describe("KForge Workspace capability coverage", () => {
-  it("assigns every visible sidebar item to an explicit capability renderer", () => {
-    const labels = visibleNavigationLabels();
-    expect(labels.length).toBeGreaterThan(40);
-    expect(new Set(labels).size).toBe(labels.length);
-    expect(missingCapabilityRenderers()).toEqual([]);
-    labels.forEach((label) => expect(CAPABILITY_RENDERER_IDS[label]).toMatch(/Panel|Center|WorkspaceProjectList|Onboarding/));
-  });
-
-  it("provides accessible Hover and Focus card content for every visible sidebar item", () => {
-    visibleNavigationLabels().forEach((label) => {
-      const info = navHoverInfo(label, "Workspace");
-      expect(info.description.length).toBeGreaterThan(20);
-      expect(info.capability.length).toBeGreaterThan(3);
-    });
-  });
-
-  it("labels each Problems filter for assistive technology", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(source).toContain('aria-label="Filter problems by severity"');
-    expect(source).toContain('aria-label="Filter problems by source"');
-    expect(source).toContain('aria-label="Filter problems by category"');
-  });
-
-  it("routes every Online destination into one dedicated Online Hub renderer", () => {
-    expect(ONLINE_NAVIGATION_LABELS).toEqual([
-      "Discover", "Marketplace", "Extensions", "Model Hub", "Agent Marketplace", "Tool Marketplace", "Integrations",
-      "Providers", "Installed", "Updates", "Security Center", "Remote Sources", "Downloads", "Activity",
+describe("KForge contextual workbench architecture", () => {
+  it("publishes only the nine high-level Activity Bar domains", () => {
+    expect(KFORGE_ACTIVITY_IDS).toEqual([
+      "projects", "ai", "online", "intelligence", "quality", "developer-tools", "remote", "release", "system",
     ]);
-    ONLINE_NAVIGATION_LABELS.forEach((label) => expect(CAPABILITY_RENDERER_IDS[label]).toBe("OnlineHubPanel"));
+    expect(new Set(KFORGE_ACTIVITY_IDS).size).toBe(9);
   });
 
-  it("renders the no-contact Online Control Center and operation transparency evidence", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(source).toContain('/online/control-center');
-    expect(source).toContain('Online Control Center');
-    expect(source).toContain('NO REMOTE CONTACT');
-    expect(source).toContain('Opening disclosure');
-    expect(source).toContain('Execution and data disclosure');
-    expect(source).toContain('SOURCE_CODE');
+  it("keeps every Online child inside one scoped Online Explorer", () => {
+    expect(ONLINE_EXPLORER_VIEWS).toEqual([
+      "discover", "marketplace", "extensions", "models", "agents", "tools", "integrations",
+      "installed", "updates", "downloads", "providers", "remote-sources", "security", "activity",
+    ]);
   });
 
-  it("renders the complete Marketplace taxonomy, evidence details, and permission review", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(source).toContain('Marketplace product taxonomy');
-    expect(source).toContain('Integrity / checksum');
-    expect(source).toContain('Release History');
-    expect(source).toContain('Review all capability classes before installation or enablement.');
-    expect(source).toContain('NOT_AVAILABLE · no feature metadata was supplied.');
-    expect(source).toContain('Agent → Marketplace project evidence');
-    expect(source).toContain('Complete Lifecycle');
-    expect(source).toContain('Project-Aware Agent Flow');
-    expect(source).toContain('/projects/${project.id}/marketplace');
+  it("renders a persistent Activity Bar, contextual Explorer, one Workbench owner, Inspector, and developer bottom panel", () => {
+    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    expect(source).toContain('className="kw-activity-bar"');
+    expect(source).toContain('aria-label={`${currentActivity.label} Explorer`}');
+    expect(source).toContain('className="kw-workbench"');
+    expect(source).toContain('className="kw-inspector"');
+    expect(source).toContain('className="kw-bottom-panel"');
+    expect(source.match(/<WorkbenchSurface /g)).toHaveLength(1);
   });
 
-  it("implements the Online Hub desktop, tablet, and contextual mobile inspector contract", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    const css = readFileSync(new URL("../global.css", import.meta.url), "utf8");
-    expect(source).toContain('useState<"browse" | "detail">');
-    expect(source).toContain('data-mobile-view={mobileView}');
-    expect(source).toContain('className="kf-online-mobile-back"');
-    expect(source).toContain('Back to results');
-    expect(css).toContain('@media (min-width: 721px) and (max-width: 1100px)');
-    expect(css).toContain('grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr)');
-    expect(css).toContain('.kf-online-hub[data-mobile-view="detail"] .kf-online-results { display: none; }');
-    expect(css).toContain('.kf-online-hub[data-mobile-view="browse"] .kf-online-detail { display: none; }');
-    expect(css).toContain('@media (max-width: 430px)');
-    expect(css).toContain('--kf-online-bg: #0c0914');
-    expect(css).toContain('prefers-reduced-motion: reduce');
+  it("keeps Online global and explicitly reports projectless compatibility as NOT_EVALUATED", () => {
+    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    expect(source).toContain('"/api/workspace/online/control-center"');
+    expect(source).toContain('"/api/workspace/marketplace"');
+    expect(source).toContain('"NOT_EVALUATED"');
+    expect(source).toContain('No project selected');
+    expect(source).toContain('Opening this surface performs no remote catalog refresh.');
   });
 
-  it("provides rich Online Hub information cards on both hover and keyboard focus", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    const css = readFileSync(new URL("../global.css", import.meta.url), "utf8");
-    expect(source).toContain('type OnlineInfoCardData =');
-    expect(source).toContain('aria-label={`Information card for ${info.name}`}');
-    expect(source).toContain('<dt>Health</dt>');
-    expect(source).toContain('<dt>Availability</dt>');
-    expect(source).toContain('<dt>Privacy</dt>');
-    expect(source).toContain('<dt>Quick action</dt>');
-    expect(source.match(/onMouseEnter=\{/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(source.match(/onFocus=\{/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(source).toContain('opening this surface performs no remote contact');
-    expect(source).toContain('Open full item inspector');
-    expect(css).toContain('.kf-online-info-card { position: absolute;');
-    expect(css).toContain('pointer-events: none');
+  it("uses explicit authority/runtime/install evidence instead of metadata-only local claims", () => {
+    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    expect(source).toContain("item.authority?.kind");
+    expect(source).toContain("item.runtimeEvidence?.state");
+    expect(source).toContain("item.availability");
+    expect(source).toContain('item.installAction === "NOT_AVAILABLE"');
+    expect(source).toContain("No required permission was declared by verified metadata.");
   });
 
-  it("renders language-aware graph and transitive impact evidence without hiding unavailable boundaries", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(source).toContain("Exported symbols");
-    expect(source).toContain("Transitive dependents");
-    expect(source).toContain("Language parser boundaries");
-    expect(source).toContain("Duplicated responsibility evidence");
-    expect(source).toContain("symbol node id");
-    expect(source).toContain("unsupported-language impact remain explicitly unavailable");
+  it("keeps Downloads distinct from broader Online Activity", () => {
+    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    expect(source).toContain("const downloadTasks = tasks.filter");
+    expect(source).toContain("const onlineTasks = tasks.filter");
+    expect(source).toContain("Downloads contains transfer, staging and installation-transfer tasks only");
   });
 
-  it("renders Projects and non-Workspace capabilities as mutually exclusive surfaces", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(source).toContain('activeNav === "Workspace" && <><section className="kf-workspace-panel"');
-    expect(source).toContain('activeNav !== "Workspace" && <section className={`kf-active-surface');
-    expect(source).not.toContain('activeProject && activeNav !== "Workspace" && <CapabilitySurface');
+  it("implements a safe KForge terminal rather than unrestricted shell input", () => {
+    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    expect(source).toContain("KForge Command Terminal");
+    expect(source).toContain("Only registered KForge actions are executable. There is no unrestricted shell input.");
+    expect(source).toContain("/actions");
+    expect(source).toContain("descriptor.enabled");
   });
 
-  it("keeps legacy demo and mock editor surfaces outside the production router", () => {
+  it("keeps artifacts structured and raw evidence secondary", () => {
+    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    expect(source).toContain("<th>Artifact</th>");
+    expect(source).toContain("<th>SHA-256</th>");
+    expect(source).toContain("<th>Signature</th>");
+    expect(source).toContain("Advanced · Raw release evidence");
+  });
+
+  it("uses Settings v3 hierarchical startup navigation and enforced security invariants", () => {
+    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    expect(source).toContain("startupActivity");
+    expect(source).toContain("startupOnlineView");
+    expect(source).toContain("version: 3");
+    expect(source).toContain("secretRedaction = true · confirmRemoteWrites = true");
+  });
+
+  it("routes production /workspace to the contextual workbench rather than the legacy flat mega-component", () => {
     const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-    const server = readFileSync(new URL("../../server/index.ts", import.meta.url), "utf8");
-    expect(app).not.toContain('path="/editor"');
-    expect(app).not.toContain("KnouxVideoEditor");
-    expect(server).not.toContain('/api/demo');
-    expect(server).not.toContain('/api/ai-models');
+    expect(app).toContain('import KForgeWorkbench from "./pages/KForgeWorkbench"');
+    expect(app).toContain('<Route path="/workspace" element={<KForgeWorkbench />} />');
+    expect(app).not.toContain('import KForgeWorkspace from "./pages/KForgeWorkspace"');
   });
 
-  it("connects Settings and Preview V2 to persisted platform behavior", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(CAPABILITY_RENDERER_IDS.Settings).toBe("SettingsCenter");
-    expect(source).toContain('<SettingsCenter settings={settings}');
-    expect(source).toContain('KNOuX Forge Preview Engine');
-    expect(source).toContain('Automatic health checks');
-    expect(source).toContain('Browser console capture: NOT AVAILABLE');
-    expect(source).toContain('/preview/fix-verify');
-    expect(source).toContain('Preview → Fix → Verify');
-    expect(source).toContain('Source · Local · Desktop · Package · Installer · Remote');
-    expect(source).toContain('["offline", "local-first", "online-optional", "online"]');
-    expect(source).toContain("externalMetadataReads");
-    expect(source).toContain("remoteTransfers");
-    expect(source).toContain("providerRefresh");
-  });
-
-  it("exposes the exact observational Self Audit with real restart and reload evidence", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(CAPABILITY_RENDERER_IDS["Self Audit"]).toBe("SelfAuditPanel");
-    expect(source).toContain("KForge Self Audit");
-    expect(source).toContain('/self-audit`');
-    expect(source).toContain("never applies a fix, starts Preview, or contacts a remote provider implicitly");
-    expect(source).toContain("a renderer refresh does not count");
-    expect(source).toContain("Reload persisted evidence");
-    expect(source).toContain("Source mutation");
-  });
-
-  it("references the single Preview session from every requested engineering context", () => {
-    expect(PREVIEW_CONTEXT_NAVIGATION_LABELS).toEqual([
-      "Project health", "Agents", "Tasks", "KForge Sonar", "Problems", "Solutions", "Project graph", "Architecture",
-      "Tests", "Build", "Runtime", "Git", "GitHub", "Pull requests", "Issues", "Actions", "Releases", "Marketplace", "Models",
-    ]);
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(source).toContain('source="Project"');
-    expect(source).toContain("Current Preview context");
-    expect(source).toContain("same project Preview session and evidence");
-    expect(source).toContain('onNavigate("Preview")');
-    expect(source).toContain('/preview`');
-  });
-
-  it("renders real GitHub Checks and per-source availability evidence as read-only remote data", () => {
-    const source = readFileSync(new URL("./KForgeWorkspace.tsx", import.meta.url), "utf8");
-    expect(source).toContain("Real GitHub Checks");
-    expect(source).toContain("GitHub source availability");
-    expect(source).toContain("checkRuns");
-    expect(source).toContain("combinedStatus");
-    expect(source).toContain("Branches and recent commits");
-    expect(source).toContain("Remote writes remain separate and unavailable");
+  it("uses one inherited KNOuX theme for shell and Online surfaces", () => {
+    const css = readFileSync(new URL("./KForgeWorkbench.css", import.meta.url), "utf8");
+    expect(css).toContain("hsl(var(--background))");
+    expect(css).toContain("hsl(var(--card))");
+    expect(css).toContain("hsl(var(--foreground))");
+    expect(css).not.toContain("--kf-online-bg");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
 });
