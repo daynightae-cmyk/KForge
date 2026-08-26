@@ -100,13 +100,24 @@ function errorDetails(error: unknown) {
   return { message: String(error), stdout: "", stderr: "", code: 1 };
 }
 
-async function run(command: string, args: string[], cwd: string, timeout = 15_000): Promise<CommandExecution> {
-  const executable = process.platform === "win32" && ["npm", "pnpm", "yarn"].includes(command) ? `${command}.cmd` : command;
+async function resolveLocalExecutable(command: string, args: string[]) {
+  if (process.platform !== "win32" || !/^npm(?:\.cmd)?$/i.test(command)) return { command, args };
+  const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
   try {
-    const result = await execFileAsync(executable, args, {
+    await fs.access(npmCli);
+    return { command: process.execPath, args: [npmCli, ...args] };
+  } catch {
+    return { command, args };
+  }
+}
+
+async function run(command: string, args: string[], cwd: string, timeout = 15_000): Promise<CommandExecution> {
+  const resolved = await resolveLocalExecutable(command, args);
+  try {
+    const result = await execFileAsync(resolved.command, resolved.args, {
       cwd,
       timeout,
-      shell: process.platform === "win32" && executable.endsWith(".cmd"),
+      shell: false,
       windowsHide: true,
       maxBuffer: 2_500_000,
     });
@@ -1152,7 +1163,8 @@ async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): P
     const message = execution.ok ? `Runtime process completed successfully with ${selected.source}.` : missingExecutable(selected.command, execution) || `Runtime process ${selected.display} failed.`;
     return { action: "runtime", projectId: project.id, ok: execution.ok, startedAt, completedAt, exitCode: execution.code, output: execution.output, message, transparency: projectActionTransparency(project, "runtime", startedAt, completedAt, execution.ok ? "SUCCEEDED" : "FAILED", execution.ok ? undefined : message) };
   }
-  const child = spawn(selected.command, selected.args, { cwd: project.path, shell: process.platform === "win32" && selected.command.endsWith(".cmd"), windowsHide: true, env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${port}` } });
+  const resolved = await resolveLocalExecutable(selected.command, selected.args);
+  const child = spawn(resolved.command, resolved.args, { cwd: project.path, shell: false, windowsHide: true, env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${port}` } });
   let output = "";
   child.stdout.on("data", (data: Buffer) => { output += data.toString(); });
   child.stderr.on("data", (data: Buffer) => { output += data.toString(); });

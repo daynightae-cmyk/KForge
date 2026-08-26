@@ -15,7 +15,7 @@ test.describe("KForge agent mission evidence in production", () => {
   let untrustedFixturePath = "";
 
   test.afterEach(async () => {
-    if (untrustedFixturePath) await rm(untrustedFixturePath, { recursive: true, force: true });
+    if (untrustedFixturePath) await rm(untrustedFixturePath, { recursive: true, force: true, maxRetries: 24, retryDelay: 250 });
     untrustedFixturePath = "";
   });
 

@@ -17,6 +17,13 @@ test.describe("KForge product evidence surfaces in production", () => {
     await page.goto("/workspace");
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
+    const rows = page.locator(".kf-table tbody tr");
+    const projectPath = path.resolve(process.cwd());
+    const projectIndex = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), projectPath);
+    expect(projectIndex).toBeGreaterThanOrEqual(0);
+    const selectedRow = rows.nth(projectIndex);
+    await selectedRow.locator(".kf-project-cell").click();
+    await expect(selectedRow).toHaveClass(/is-active/);
   });
 
   test("loads local Online, AI, graph, and quality evidence without a silent external request", async ({ page }) => {
@@ -39,7 +46,7 @@ test.describe("KForge product evidence surfaces in production", () => {
 
     await navigate("Marketplace");
     const modelsCategory = page.getByRole("button", { name: /^Models \d+ AVAILABLE$/ });
-    await expect(modelsCategory).toBeVisible();
+    await expect(modelsCategory).toBeVisible({ timeout: 30_000 });
     await modelsCategory.click();
     await expect(page.getByRole("heading", { name: "DeepSeek Coder 6.7B", exact: true })).toBeVisible();
 

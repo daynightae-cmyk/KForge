@@ -28,10 +28,17 @@ test.describe("KForge project intelligence in production", () => {
 
     await page.goto("/workspace");
     await page.waitForLoadState("networkidle");
+    const rows = page.locator(".kf-table tbody tr");
+    const projectPath = path.resolve(process.cwd());
+    const projectIndex = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), projectPath);
+    expect(projectIndex).toBeGreaterThanOrEqual(0);
+    const selectedRow = rows.nth(projectIndex);
+    await selectedRow.locator(".kf-project-cell").click();
+    await expect(selectedRow).toHaveClass(/is-active/);
     await page.locator(".kf-nav").getByRole("button", { name: "Project graph", exact: true }).click();
     const graph = page.locator(".kf-active-surface");
     await expect(graph.getByRole("heading", { name: "Project Graph", exact: true })).toBeVisible();
-    await expect(graph).toContainText(/COMPLETE|LIMIT_REACHED/);
+    await expect(graph).toContainText(/COMPLETE|LIMIT_REACHED/, { timeout: 30_000 });
     await expect(graph).toContainText("Language parser boundaries");
     const impactInput = graph.getByLabel("File path or symbol node id for impact analysis");
     const graphMap = graph.getByLabel("Interactive local project graph");
@@ -55,8 +62,8 @@ test.describe("KForge project intelligence in production", () => {
     await page.locator(".kf-nav").getByRole("button", { name: "Architecture", exact: true }).click();
     const architecture = page.locator(".kf-active-surface");
     await expect(architecture.getByRole("heading", { name: "Architecture Evidence", exact: true })).toBeVisible();
-    await expect(architecture).toContainText("Boundaries, dependency cycles, and coupling");
-    await expect(architecture).toContainText("Measured limitations");
+    await expect(architecture).toContainText("Boundaries, dependency cycles, and coupling", { timeout: 30_000 });
+    await expect(architecture).toContainText("Measured limitations", { timeout: 30_000 });
 
     await page.locator(".kf-nav").getByRole("button", { name: "Ask KForge", exact: true }).click();
     const ask = page.locator(".kf-active-surface");

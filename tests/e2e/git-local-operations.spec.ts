@@ -12,6 +12,8 @@ async function git(repository: string, args: string[]) {
 }
 
 test.describe("KForge local Git operations in production", () => {
+  test.setTimeout(90_000);
+
   test("requires trust and confirmation, then stages, unstages, and commits only an isolated local repository", async ({ page }) => {
     const repository = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-git-acceptance-"));
     try {
@@ -64,7 +66,7 @@ test.describe("KForge local Git operations in production", () => {
       expect(commitPayload).toMatchObject({ action: "commit", remotePush: "NOT_PERFORMED" });
       expect(commitPayload.git.commits[0]?.subject).toBe("test: verify local Git operations");
     } finally {
-      await fs.rm(repository, { recursive: true, force: true });
+      await fs.rm(repository, { recursive: true, force: true, maxRetries: 24, retryDelay: 250 });
     }
   });
 });

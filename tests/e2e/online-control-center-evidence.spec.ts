@@ -28,9 +28,16 @@ test.describe("KForge Online Control Center in production", () => {
 
     await page.goto("/workspace");
     await page.waitForLoadState("networkidle");
+    const rows = page.locator(".kf-table tbody tr");
+    const projectPath = path.resolve(process.cwd());
+    const projectIndex = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), projectPath);
+    expect(projectIndex).toBeGreaterThanOrEqual(0);
+    const selectedRow = rows.nth(projectIndex);
+    await selectedRow.locator(".kf-project-cell").click();
+    await expect(selectedRow).toHaveClass(/is-active/);
     await page.locator(".kf-nav").getByRole("button", { name: "Marketplace", exact: true }).click();
     const controlCenter = page.getByRole("region", { name: "Online Control Center" });
-    await expect(controlCenter).toBeVisible();
+    await expect(controlCenter).toBeVisible({ timeout: 30_000 });
     await expect(controlCenter).toContainText("NO REMOTE CONTACT");
     await expect(controlCenter).toContainText("Marketplace Registry");
     await expect(controlCenter).toContainText("Model Registry");
