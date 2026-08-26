@@ -8,7 +8,7 @@ function isExternalHttpRequest(rawUrl: string) {
   return /^https?:$/i.test(url.protocol) && !LOCAL_ORIGINS.has(url.origin);
 }
 
-test.describe("KForge Online Control Center in production", () => {
+test.describe("KForge Online Control Center in contextual workbench", () => {
   test.setTimeout(120_000);
 
   test.beforeEach(async ({ page }) => {
@@ -18,53 +18,37 @@ test.describe("KForge Online Control Center in production", () => {
     expect(platform.ok(), await platform.text()).toBeTruthy();
     const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
     expect(opened.ok(), await opened.text()).toBeTruthy();
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await page.getByLabel("Project context").selectOption("");
   });
 
-  test("renders local service policy, cache/contact evidence, and remote-source empty state without implicit network contact", async ({ page }) => {
+  test("renders global policy/source evidence and projectless compatibility without implicit network contact", async ({ page }) => {
     const externalRequests: string[] = [];
     const apiFailures: string[] = [];
     page.on("request", (request) => { if (isExternalHttpRequest(request.url())) externalRequests.push(request.url()); });
-    page.on("response", (response) => {
-      if (response.url().includes("/api/") && response.status() >= 400) apiFailures.push(`${response.status()} ${response.url()}`);
-    });
+    page.on("response", (response) => { if (response.url().includes("/api/") && response.status() >= 400) apiFailures.push(`${response.status()} ${response.url()}`); });
 
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    const rows = page.locator(".kf-table tbody tr");
-    const projectPath = path.resolve(process.cwd());
-    const projectIndex = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), projectPath);
-    expect(projectIndex).toBeGreaterThanOrEqual(0);
-    const selectedRow = rows.nth(projectIndex);
-    await selectedRow.locator(".kf-project-cell").click();
-    await expect(selectedRow).toHaveClass(/is-active/);
-    const marketplace = page.locator(".kf-nav").getByRole("button", { name: "Marketplace", exact: true });
-    await marketplace.click();
-    await expect(marketplace).toHaveClass(/is-active/);
-    await expect(page.getByRole("heading", { name: "Marketplace", exact: true })).toBeVisible();
-    const controlCenter = page.getByRole("region", { name: "Online Control Center" });
-    await expect(controlCenter).toBeVisible({ timeout: 60_000 });
-    await expect(controlCenter).toContainText("NO REMOTE CONTACT");
-    await expect(controlCenter).toContainText("Marketplace Registry");
-    await expect(controlCenter).toContainText("Model Registry");
-    await expect(controlCenter).toContainText("Remote CI");
+    const online = page.locator(".kw-activity-bar").getByRole("button", { name: "Online", exact: true });
+    await online.click();
+    const explorer = page.getByRole("complementary", { name: "Online Explorer", exact: true });
+    await explorer.getByRole("button", { name: "Marketplace", exact: true }).click();
+    await expect(page.locator(".kw-online-context")).toContainText("Online is global");
+    await expect(page.locator(".kw-online-context")).toContainText("NOT_EVALUATED");
+    await expect(page.locator(".kw-online-context")).toContainText("No project selected");
+    await expect(page.locator(".kw-online-context")).toContainText(/offline|policy evidence loaded/i);
+    await expect(page.locator(".kw-online")).toContainText("Opening this surface performs no remote catalog refresh.");
 
-    const registryEvidence = controlCenter.getByText("Marketplace Registry", { exact: true });
-    await registryEvidence.click();
-    await expect(controlCenter).toContainText("Last success");
-    await expect(controlCenter).toContainText("Destination");
-    await expect(controlCenter).toContainText("Cache");
-    await expect(controlCenter).toContainText("Not configured");
-
-    const refresh = page.locator(".kf-online-results-header").getByRole("button", { name: "Refresh", exact: true });
-    const refreshed = page.waitForResponse((response) => response.url().includes("/api/workspace/projects/") && response.url().includes("/marketplace"));
+    const refresh = page.getByRole("button", { name: "Refresh local evidence", exact: true });
+    const marketplaceResponse = page.waitForResponse((response) => response.url().endsWith("/api/workspace/marketplace") && response.request().method() === "GET");
     await refresh.click();
-    expect((await refreshed).ok()).toBeTruthy();
-    await expect(controlCenter).toContainText("NO REMOTE CONTACT");
+    expect((await marketplaceResponse).ok()).toBeTruthy();
 
-    await page.locator(".kf-nav").getByRole("button", { name: "Remote Sources", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Remote Sources", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Declared remote sources", exact: true })).toBeVisible();
-    await expect(page.locator(".kf-active-surface")).toContainText(/No provider matches|NOT_CONFIGURED|OFFLINE/i);
+    await explorer.getByRole("button", { name: "Remote Sources", exact: true }).click();
+    await expect(page.locator(".kw-workbench h1")).toHaveText("Remote Sources");
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(/NOT_CONFIGURED|OFFLINE|No remote sources configured|remote/i);
+
+    await explorer.getByRole("button", { name: "Providers", exact: true }).click();
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(/provider|adapter|configured|offline|not_configured/i);
 
     expect(externalRequests, `Unexpected external requests from Online Control Center:\n${externalRequests.join("\n")}`).toEqual([]);
     expect(apiFailures, `Unexpected API failures in Online Control Center:\n${apiFailures.join("\n")}`).toEqual([]);

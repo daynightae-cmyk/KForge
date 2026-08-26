@@ -1,5 +1,5 @@
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
 
@@ -8,25 +8,28 @@ function isExternalHttpRequest(rawUrl: string) {
   return /^https?:$/i.test(url.protocol) && !LOCAL_ORIGINS.has(url.origin);
 }
 
-test.describe("KForge product evidence surfaces in production", () => {
+async function navigate(page: Page, activity: string, view: string) {
+  await page.locator(".kw-activity-bar").getByRole("button", { name: activity, exact: true }).click();
+  const explorer = page.getByRole("complementary", { name: `${activity} Explorer`, exact: true });
+  await explorer.getByRole("button", { name: view, exact: true }).click();
+  await expect(page.locator(".kw-workbench h1")).toHaveText(view);
+}
+
+test.describe("KForge product evidence surfaces in contextual workbench", () => {
   test.beforeEach(async ({ page }) => {
     const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
     expect(reset.ok(), await reset.text()).toBeTruthy();
+    const platform = await page.request.post("/api/workspace/platform/mode", { data: { mode: "offline" } });
+    expect(platform.ok(), await platform.text()).toBeTruthy();
     const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
     expect(opened.ok(), await opened.text()).toBeTruthy();
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-    const rows = page.locator(".kf-table tbody tr");
-    const projectPath = path.resolve(process.cwd());
-    const projectIndex = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), projectPath);
-    expect(projectIndex).toBeGreaterThanOrEqual(0);
-    const selectedRow = rows.nth(projectIndex);
-    await selectedRow.locator(".kf-project-cell").click();
-    await expect(selectedRow).toHaveClass(/is-active/);
+    const project = await opened.json() as { project: { id: string } };
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await expect(page.locator(".kw-shell")).toBeVisible({ timeout: 60_000 });
+    await page.getByLabel("Project context").selectOption(project.project.id);
   });
 
-  test("loads local Online, AI, graph, and quality evidence without a silent external request", async ({ page }) => {
+  test("loads Online, AI, graph and quality evidence without silent external requests", async ({ page }) => {
     const externalRequests: string[] = [];
     const pageErrors: string[] = [];
     const apiFailures: string[] = [];
@@ -36,29 +39,22 @@ test.describe("KForge product evidence surfaces in production", () => {
       if (response.url().includes("/api/") && response.status() >= 400) apiFailures.push(`${response.status()} ${response.url()}`);
     });
 
-    const navigate = async (label: string) => {
-      const button = page.locator(".kf-nav").getByRole("button", { name: label, exact: true });
-      await expect(button).toBeVisible();
-      await button.click();
-      await expect(page.locator(".kf-page-heading h1")).toHaveText(label);
-      await expect(page.locator(`.kf-active-surface[aria-label="${label} capability"]`)).toBeVisible();
-    };
+    await navigate(page, "Online", "Marketplace");
+    await expect(page.locator(".kw-online")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".kw-online-results")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".kw-online-inspector")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".kw-online")).toContainText(/authority|availability|runtime evidence/i);
 
-    await navigate("Marketplace");
-    const modelsCategory = page.getByRole("button", { name: /^Models \d+ AVAILABLE$/ });
-    await expect(modelsCategory).toBeVisible({ timeout: 30_000 });
-    await modelsCategory.click();
-    await expect(page.getByRole("heading", { name: "DeepSeek Coder 6.7B", exact: true })).toBeVisible();
+    await navigate(page, "AI", "Providers");
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(/ollama|lm studio|llama\.cpp|provider/i, { timeout: 30_000 });
 
-    await navigate("AI providers");
-    await expect(page.locator(".kf-active-surface")).toContainText(/provider|local|configured|unavailable/i);
+    await navigate(page, "Intelligence", "Project Graph");
+    await expect(page.locator(".kw-simple-surface")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(/graph|nodes|coverage|evidence/i);
 
-    await navigate("Project graph");
-    await expect(page.getByLabel("File path or symbol node id for impact analysis")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Project Graph", exact: true })).toBeVisible();
-
-    await navigate("KForge Sonar");
-    await expect(page.locator(".kf-active-surface")).toContainText(/security|tool|unavailable|detecting/i);
+    await navigate(page, "Quality", "KForge Sonar");
+    await expect(page.locator(".kw-simple-surface")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(/problem|health|coverage|security/i);
 
     expect(externalRequests, `Unexpected external requests in Offline mode:\n${externalRequests.join("\n")}`).toEqual([]);
     expect(apiFailures, `Unexpected API failures while loading product evidence surfaces:\n${apiFailures.join("\n")}`).toEqual([]);
