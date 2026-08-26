@@ -1,18 +1,18 @@
 {
   "id": "large-project-5100",
-  "createdAt": "2026-08-26T10:08:14.150Z",
+  "createdAt": "2026-08-26T10:54:19.360Z",
   "fixture": {
     "files": 5100,
     "packages": 5,
     "sourceFiles": 5101
   },
   "measurements": {
-    "discoveryMs": 1263.76,
-    "profileMs": 1099.03,
-    "graphMs": 4369.15,
-    "cachedGraphMs": 114.72,
-    "scanMs": 9415.85,
-    "memoryRssBytes": 182841344,
-    "repeatedNavigationMemoryDeltaBytes": 1019904
+    "discoveryMs": 1317,
+    "profileMs": 1079.37,
+    "graphMs": 4224.34,
+    "cachedGraphMs": 141.55,
+    "scanMs": 9371.85,
+    "memoryRssBytes": 146173952,
+    "repeatedNavigationMemoryDeltaBytes": 26566656
   }
 }

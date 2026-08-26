@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   Archive,
@@ -279,6 +279,30 @@ export default function KForgeWorkspace() {
   const [submitting, setSubmitting] = useState(false);
   const [settings, setSettings] = useState<KForgePlatformSettings | null>(null);
   const localPlatform = workspace?.localPlatform;
+  const commandFocusReturnRef = useRef<HTMLElement | null>(null);
+  const modalFocusReturnRef = useRef<HTMLElement | null>(null);
+
+  const openCommandPalette = () => {
+    const active = document.activeElement;
+    commandFocusReturnRef.current = active instanceof HTMLElement ? active : null;
+    setCommandOpen(true);
+  };
+
+  const closeCommandPalette = () => {
+    setCommandOpen(false);
+    window.requestAnimationFrame(() => commandFocusReturnRef.current?.focus());
+  };
+
+  const openProjectModal = (mode: "open" | "clone") => {
+    const active = document.activeElement;
+    modalFocusReturnRef.current = active instanceof HTMLElement ? active : null;
+    setModal(mode);
+  };
+
+  const closeProjectModal = () => {
+    setModal(null);
+    window.requestAnimationFrame(() => modalFocusReturnRef.current?.focus());
+  };
 
   const refreshProjects = async () => {
     setLoading(true);
@@ -321,16 +345,17 @@ export default function KForgeWorkspace() {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setCommandOpen((open) => !open);
+        if (commandOpen) closeCommandPalette();
+        else openCommandPalette();
       }
       if (event.key === "Escape") {
-        setCommandOpen(false);
-        setModal(null);
+        if (commandOpen) closeCommandPalette();
+        if (modal) closeProjectModal();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [commandOpen, modal]);
 
   useEffect(() => {
     if (!commandOpen || commandQuery.trim().length < 2) { setGlobalResults([]); setGlobalSearchCoverage({}); setGlobalSearchLoading(false); return; }
@@ -459,7 +484,7 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
       const response = await fetch("/api/workspace/projects/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: localPath.trim() }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "The project could not be opened.");
-      setModal(null);
+      closeProjectModal();
       setLocalPath("");
       await refreshProjects();
       setActiveProjectId(payload.project.id);
@@ -508,7 +533,7 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
       const response = await fetch("/api/workspace/projects/clone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remoteUrl: remoteUrl.trim(), targetName: targetName.trim(), confirmed: true }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "The repository could not be cloned.");
-      setModal(null);
+      closeProjectModal();
       setRemoteUrl("");
       setTargetName("");
       await refreshProjects();
@@ -529,8 +554,8 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
   };
 
   const commandItems = [
-    { label: "Open local project", meta: "Project", callback: () => setModal("open") },
-    { label: "Clone repository", meta: "Project", callback: () => setModal("clone") },
+    { label: "Open local project", meta: "Project", callback: () => openProjectModal("open") },
+    { label: "Clone repository", meta: "Project", callback: () => openProjectModal("clone") },
     { label: "Refresh workspace", meta: "Workspace", callback: () => void refreshProjects() },
     { label: "Scan selected project", meta: "Audit", callback: () => activeProject && void runAction(activeProject, "scan") },
     { label: "Run tests", meta: "Developer tools", callback: () => activeProject && void runAction(activeProject, "test") },
@@ -562,14 +587,14 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
       <main className="kf-main">
         <header className="kf-topbar">
           <div className="kf-breadcrumb"><span>{activeContext.group}</span><ChevronRight size={14} /><strong>{activeTitle}</strong></div>
-          <button className="kf-command-trigger" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Ask KForge or run a command</span><kbd>Ctrl K</kbd></button>
+          <button className="kf-command-trigger" onClick={openCommandPalette}><Search size={17} /><span>Ask KForge or run a command</span><kbd>Ctrl K</kbd></button>
           <div className="kf-topbar-state"><span><i className="kf-connection-dot" />{platformModeLabel(localPlatform?.mode)}</span><span><i className="kf-connection-dot" />Local AI</span></div>
         </header>
 
         <section className="kf-content">
           <div className="kf-page-heading">
             <div><p className="kf-eyebrow">{activeContext.group}</p><h1>{activeTitle}</h1><p className="kf-page-subtitle">{activeNav === "Workspace" ? "Real local repositories, Git state, audits, and engineering actions in one workspace." : activeContext.description}</p></div>
-            {activeNav === "Workspace" ? <div className="kf-heading-actions"><button className="kf-button kf-button--ghost" onClick={() => void refreshProjects()} disabled={loading}><RefreshCw size={16} className={loading ? "kf-spin" : ""} />Refresh</button><button className="kf-button kf-button--secondary" onClick={() => setModal("clone")} disabled={!remoteTransfersEnabled(localPlatform)} title={!remoteTransfersEnabled(localPlatform) ? "Enable Online Optional or Online mode to clone a remote repository." : "Clone a remote repository"}><Github size={16} />Clone repository</button><button className="kf-button kf-button--primary" onClick={() => setModal("open")}><Plus size={16} />Open project</button></div> : <div className="kf-heading-actions"><span className="kf-active-project-chip"><FolderGit2 size={14} />{activeProject?.name || "No project selected"}</span><button className="kf-button kf-button--ghost" onClick={() => setActiveNav("Workspace")}><LayoutDashboard size={16} />Projects</button></div>}
+            {activeNav === "Workspace" ? <div className="kf-heading-actions"><button className="kf-button kf-button--ghost" onClick={() => void refreshProjects()} disabled={loading}><RefreshCw size={16} className={loading ? "kf-spin" : ""} />Refresh</button><button className="kf-button kf-button--secondary" onClick={() => openProjectModal("clone")} disabled={!remoteTransfersEnabled(localPlatform)} title={!remoteTransfersEnabled(localPlatform) ? "Enable Online Optional or Online mode to clone a remote repository." : "Clone a remote repository"}><Github size={16} />Clone repository</button><button className="kf-button kf-button--primary" onClick={() => openProjectModal("open")}><Plus size={16} />Open project</button></div> : <div className="kf-heading-actions"><span className="kf-active-project-chip"><FolderGit2 size={14} />{activeProject?.name || "No project selected"}</span><button className="kf-button kf-button--ghost" onClick={() => setActiveNav("Workspace")}><LayoutDashboard size={16} />Projects</button></div>}
           </div>
 
           {error && <div className="kf-alert"><ShieldAlert size={17} /><span>{error}</span><button onClick={() => setError("")}><X size={16} /></button></div>}
@@ -586,14 +611,14 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
 
             <div className="kf-group-header"><button onClick={() => setOpenGroups((state) => ({ ...state, active: !state.active }))}>{openGroups.active ? <ChevronDown size={16} /> : <ChevronRight size={16} />}<span>Local projects</span><small>{filteredProjects.length}</small></button><span>Local workspace: {workspace?.root || "Loading…"}</span></div>
             {openGroups.active && (
-              loading ? <WorkspaceLoading /> : filteredProjects.length === 0 ? <WorkspaceEmpty onOpen={() => setModal("open")} /> : (
+              loading ? <WorkspaceLoading /> : filteredProjects.length === 0 ? <WorkspaceEmpty onOpen={() => openProjectModal("open")} /> : (
                 <div className="kf-table-wrap" tabIndex={0} onKeyDown={(event) => {
                   const index = filteredProjects.findIndex((project) => project.id === activeProjectId);
                   if (event.key === "ArrowDown" && index < filteredProjects.length - 1) { event.preventDefault(); setActiveProjectId(filteredProjects[index + 1].id); }
                   if (event.key === "ArrowUp" && index > 0) { event.preventDefault(); setActiveProjectId(filteredProjects[index - 1].id); }
                   if (event.key === " " && activeProjectId) { event.preventDefault(); toggleSelected(activeProjectId); }
                 }}>
-                  <table className="kf-table"><thead><tr><th><input aria-label="Select all filtered projects" type="checkbox" checked={allFilteredSelected} onChange={() => setSelected(allFilteredSelected ? new Set() : new Set(filteredProjects.map((project) => project.id)))} /></th><SortableHeader label="Project" onClick={() => updateSort("name")} active={sort.key === "name"} />{columns.type && <SortableHeader label="Type" onClick={() => updateSort("projectType")} active={sort.key === "projectType"} />}{columns.branch && <SortableHeader label="Branch" onClick={() => updateSort("branch")} active={sort.key === "branch"} />}{columns.status && <th>Health & checks</th>}{columns.git && <SortableHeader label="Git sync" onClick={() => updateSort("sync")} active={sort.key === "sync"} />}{columns.activity && <SortableHeader label="Last activity" onClick={() => updateSort("lastActivity")} active={sort.key === "lastActivity"} />}<th aria-label="Actions" /></tr></thead>
+                  <table className="kf-table"><thead><tr><th><input aria-label="Select all filtered projects" type="checkbox" checked={allFilteredSelected} onChange={() => setSelected(allFilteredSelected ? new Set() : new Set(filteredProjects.map((project) => project.id)))} /></th><SortableHeader label="Project" onClick={() => updateSort("name")} active={sort.key === "name"} />{columns.type && <SortableHeader label="Type" onClick={() => updateSort("projectType")} active={sort.key === "projectType"} />}{columns.branch && <SortableHeader label="Branch" onClick={() => updateSort("branch")} active={sort.key === "branch"} />}{columns.status && <th>Health & checks</th>}{columns.git && <SortableHeader label="Git sync" onClick={() => updateSort("sync")} active={sort.key === "sync"} />}{columns.activity && <SortableHeader label="Last activity" onClick={() => updateSort("lastActivity")} active={sort.key === "lastActivity"} />}<th scope="col"><span className="kf-visually-hidden">Actions</span></th></tr></thead>
                   <tbody>{filteredProjects.map((project) => <ProjectRow key={project.id} project={project} selected={selected.has(project.id)} active={project.id === activeProjectId} scan={scans[project.id]} results={actionResults[project.id]} columns={columns} onSelect={() => toggleSelected(project.id)} onActivate={() => setActiveProjectId(project.id)} onRun={(action) => void runAction(project, action)} onCollectionUpdate={(patch) => void updateProjectCollection(project, patch)} onEditTags={() => editProjectTags(project)} />)}</tbody></table>
                 </div>
               )
@@ -603,12 +628,12 @@ const controlTask = async (task: TaskItem, control: "cancel" | "retry" | "resume
           {activeProject && <><ProjectInspectorV2 project={activeProject} scan={activeScan} results={actionResults[activeProject.id]} tasks={activeTaskList} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} /><PreviewContextCard project={activeProject} source="Project" onNavigate={() => setActiveNav("Preview")} /></>}</>}
 
           {activeProject && activeNav !== "Workspace" && <section className={`kf-active-surface ${isOnlineNavigation(activeNav) ? "kf-active-surface--online" : ""}`} aria-label={`${activeTitle} capability`}>{selectedSearchResult?.projectId === activeProject.id && selectedSearchResult.target === activeNav && <SearchSelectionCard result={selectedSearchResult} onClear={() => setSelectedSearchResult(null)} />}<CapabilitySurface activeNav={activeNav} project={activeProject} projects={projects} scan={activeScan} tasks={activeTaskList} results={actionResults[activeProject.id]} platform={localPlatform} settings={settings} searchSelection={selectedSearchResult?.projectId === activeProject.id && selectedSearchResult.target === activeNav ? selectedSearchResult : undefined} onSettingsChange={setSettings} onPlatformModeChange={(mode) => void setPlatformMode(mode)} onOpenProject={() => setModal("open")} onRun={(action) => void runAction(activeProject, action)} onTaskControl={(task, control) => void controlTask(task, control)} onTrust={() => void approveProjectTrust(activeProject)} onNavigate={(label) => setActiveNav(label)} onRefreshWorkspace={() => void refreshProjects()} onProjectCollectionUpdate={(target, patch) => void updateProjectCollection(target, patch)} /></section>}
-          {!activeProject && activeNav !== "Workspace" && <WorkspaceEmpty onOpen={() => setModal("open")} />}
+          {!activeProject && activeNav !== "Workspace" && <WorkspaceEmpty onOpen={() => openProjectModal("open")} />}
         </section>
       </main>
 
-      {commandOpen && <div className="kf-overlay" role="dialog" aria-modal="true" aria-label="KForge command palette"><div className="kf-command-palette"><div className="kf-command-input"><Command size={18} /><input autoFocus aria-label="Search commands and local workspace" placeholder="Search projects, files, symbols, problems, tasks, agents, models…" value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} /><button aria-label="Close command palette" onClick={() => setCommandOpen(false)}><X size={16} /></button></div><div className="kf-command-list">{commandItems.map((command) => <button key={command.label} onClick={() => executeCommand(command.label, command.callback)}><span>{command.label}</span><small>{command.meta}</small></button>)}{globalSearchLoading && <p role="status">Searching bounded local evidence…</p>}{globalResults.map((result) => <button key={`${result.projectId}:${result.entity}:${result.entityId}`} onClick={() => { setActiveProjectId(result.projectId); setActiveNav(result.target); setSelectedSearchResult(result); setCommandOpen(false); setCommandQuery(""); }}><span>{result.title}</span><small>{result.entity} · {result.kind} · {result.detail} · open {result.target}</small></button>)}{Object.keys(globalSearchCoverage).length > 0 && <details className="kf-command-search-coverage"><summary>Search evidence coverage</summary>{Object.entries(globalSearchCoverage).map(([entity, coverage]) => <p key={entity}><strong>{entity} · {coverage.state}</strong><small>{coverage.searchedCount} searched · total {coverage.totalOrUnknown ?? "UNKNOWN"} · {coverage.reason}</small></p>)}</details>}{commandItems.length === 0 && !globalSearchLoading && globalResults.length === 0 && <p>No local result found. Review coverage for unavailable or bounded sources.</p>}</div><p className="kf-command-help"><kbd>Ctrl/Cmd K</kbd> search · <kbd>Esc</kbd> close</p></div></div>}
-      {modal && <ProjectModal mode={modal} localPath={localPath} setLocalPath={setLocalPath} remoteUrl={remoteUrl} setRemoteUrl={setRemoteUrl} targetName={targetName} setTargetName={setTargetName} submitting={submitting} onClose={() => setModal(null)} onSubmit={modal === "open" ? () => void openProject() : () => void cloneProject()} />}
+      {commandOpen && <div className="kf-overlay" role="dialog" aria-modal="true" aria-label="KForge command palette" onKeyDown={(event) => { if (event.key !== "Tab") return; const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex='-1'])")).filter((element) => element.offsetParent !== null); const first = focusable[0]; const last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } }}><div className="kf-command-palette"><div className="kf-command-input"><Command size={18} /><input autoFocus aria-label="Search commands and local workspace" placeholder="Search projects, files, symbols, problems, tasks, agents, models…" value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} /><button aria-label="Close command palette" onClick={closeCommandPalette}><X size={16} /></button></div><div className="kf-command-list">{commandItems.map((command) => <button key={command.label} onClick={() => executeCommand(command.label, command.callback)}><span>{command.label}</span><small>{command.meta}</small></button>)}{globalSearchLoading && <p role="status">Searching bounded local evidence…</p>}{globalResults.map((result) => <button key={`${result.projectId}:${result.entity}:${result.entityId}`} onClick={() => { setActiveProjectId(result.projectId); setActiveNav(result.target); setSelectedSearchResult(result); closeCommandPalette(); setCommandQuery(""); }}><span>{result.title}</span><small>{result.entity} · {result.kind} · {result.detail} · open {result.target}</small></button>)}{Object.keys(globalSearchCoverage).length > 0 && <details className="kf-command-search-coverage"><summary>Search evidence coverage</summary>{Object.entries(globalSearchCoverage).map(([entity, coverage]) => <p key={entity}><strong>{entity} · {coverage.state}</strong><small>{coverage.searchedCount} searched · total {coverage.totalOrUnknown ?? "UNKNOWN"} · {coverage.reason}</small></p>)}</details>}{commandItems.length === 0 && !globalSearchLoading && globalResults.length === 0 && <p>No local result found. Review coverage for unavailable or bounded sources.</p>}</div><p className="kf-command-help"><kbd>Ctrl/Cmd K</kbd> search · <kbd>Esc</kbd> close</p></div></div>}
+      {modal && <ProjectModal mode={modal} localPath={localPath} setLocalPath={setLocalPath} remoteUrl={remoteUrl} setRemoteUrl={setRemoteUrl} targetName={targetName} setTargetName={setTargetName} submitting={submitting} onClose={closeProjectModal} onSubmit={modal === "open" ? () => void openProject() : () => void cloneProject()} />}
     </div>
   );
 }
@@ -1567,4 +1592,4 @@ function Metric({ icon, label, value, tone }: { icon: ReactNode; label: string; 
 function WorkspaceLoading() { return <div className="kf-loading"><div /><div /><div /><div /></div>; }
 function WorkspaceEmpty({ onOpen }: { onOpen: () => void }) { return <div className="kf-empty"><FolderOpen size={28} /><h2>No projects found</h2><p>Choose a local repository or clone one into the configured KForge workspace to begin.</p><button className="kf-button kf-button--primary" onClick={onOpen}><Plus size={16} />Open local project</button></div>; }
 
-function ProjectModal({ mode, localPath, setLocalPath, remoteUrl, setRemoteUrl, targetName, setTargetName, submitting, onClose, onSubmit }: { mode: "open" | "clone"; localPath: string; setLocalPath: (value: string) => void; remoteUrl: string; setRemoteUrl: (value: string) => void; targetName: string; setTargetName: (value: string) => void; submitting: boolean; onClose: () => void; onSubmit: () => void }) { const clone = mode === "clone"; return <div className="kf-overlay" role="dialog" aria-modal="true" aria-labelledby="project-modal-title"><form className="kf-modal" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}><div><p className="kf-eyebrow">{clone ? "Remote repository" : "Local project"}</p><h2 id="project-modal-title">{clone ? "Clone repository" : "Open project"}</h2><p>{clone ? "Clone a GitHub or GitLab HTTPS repository directly into the configured KForge workspace." : "Enter an existing local project folder. KForge will detect its stack and real Git state."}</p></div>{clone ? <><label>Repository HTTPS URL<input required value={remoteUrl} onChange={(event) => setRemoteUrl(event.target.value)} placeholder="https://github.com/owner/repository.git" /></label><label>Destination folder name<input required pattern="[A-Za-z0-9._-]+" value={targetName} onChange={(event) => setTargetName(event.target.value)} placeholder="my-repository" /></label></> : <label>Local project path<input required value={localPath} onChange={(event) => setLocalPath(event.target.value)} placeholder="D:\\Projects\\my-repository" /></label>}<div className="kf-modal-actions"><button type="button" className="kf-button kf-button--ghost" onClick={onClose}>Cancel</button><button type="submit" className="kf-button kf-button--primary" disabled={submitting}>{submitting ? "Working…" : clone ? "Clone repository" : "Open project"}</button></div></form></div>; }
+function ProjectModal({ mode, localPath, setLocalPath, remoteUrl, setRemoteUrl, targetName, setTargetName, submitting, onClose, onSubmit }: { mode: "open" | "clone"; localPath: string; setLocalPath: (value: string) => void; remoteUrl: string; setRemoteUrl: (value: string) => void; targetName: string; setTargetName: (value: string) => void; submitting: boolean; onClose: () => void; onSubmit: () => void }) { const clone = mode === "clone"; const trapFocus = (event: React.KeyboardEvent<HTMLDivElement>) => { if (event.key !== "Tab") return; const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex='-1'])")).filter((element) => element.offsetParent !== null); const first = focusable[0]; const last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } }; return <div className="kf-overlay" role="dialog" aria-modal="true" aria-labelledby="project-modal-title" onKeyDown={trapFocus}><form className="kf-modal" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}><div><p className="kf-eyebrow">{clone ? "Remote repository" : "Local project"}</p><h2 id="project-modal-title">{clone ? "Clone repository" : "Open project"}</h2><p>{clone ? "Clone a GitHub or GitLab HTTPS repository directly into the configured KForge workspace." : "Enter an existing local project folder. KForge will detect its stack and real Git state."}</p></div>{clone ? <><label>Repository HTTPS URL<input autoFocus required value={remoteUrl} onChange={(event) => setRemoteUrl(event.target.value)} placeholder="https://github.com/owner/repository.git" /></label><label>Destination folder name<input required pattern="[A-Za-z0-9._-]+" value={targetName} onChange={(event) => setTargetName(event.target.value)} placeholder="my-repository" /></label></> : <label>Local project path<input autoFocus required value={localPath} onChange={(event) => setLocalPath(event.target.value)} placeholder="D:\\Projects\\my-repository" /></label>}<div className="kf-modal-actions"><button type="button" className="kf-button kf-button--ghost" onClick={onClose}>Cancel</button><button type="submit" className="kf-button kf-button--primary" disabled={submitting}>{submitting ? "Working…" : clone ? "Clone repository" : "Open project"}</button></div></form></div>; }

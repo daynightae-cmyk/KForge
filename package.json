@@ -41,6 +41,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@hookform/resolvers": "^3.9.0",
     "@playwright/test": "^1.49.0",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -118,11 +119,21 @@
   "overrides": {
     "tailwindcss": {
       "chokidar": {
-        "anymatch": { "picomatch": "2.3.2" },
-        "readdirp": { "picomatch": "2.3.2" }
+        "anymatch": {
+          "picomatch": "2.3.2"
+        },
+        "readdirp": {
+          "picomatch": "2.3.2"
+        }
       },
-      "fast-glob": { "micromatch": { "picomatch": "2.3.2" } },
-      "micromatch": { "picomatch": "2.3.2" }
+      "fast-glob": {
+        "micromatch": {
+          "picomatch": "2.3.2"
+        }
+      },
+      "micromatch": {
+        "picomatch": "2.3.2"
+      }
     }
   },
   "build": {
