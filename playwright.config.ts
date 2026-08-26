@@ -7,10 +7,13 @@ const windowsBrowserChannel =
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  // The production server owns one isolated local workspace per run. Tests intentionally
+  // persist settings, collections, and task evidence there, so parallel workers would race
+  // on product state and make the release gate nondeterministic.
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   reporter: "list",
   use: {
     ...devices["Desktop Chrome"],
