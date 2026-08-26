@@ -70,15 +70,28 @@ function normalizeSettings(value: unknown, now = new Date().toISOString(), fallb
   const appearance = isRecord(value.appearance) ? value.appearance : {};
   const preview = isRecord(value.preview) ? value.preview : {};
   const privacy = isRecord(value.privacy) ? value.privacy : {};
-  const startup = typeof general.startupCapability === "string" && startupCapabilities.has(general.startupCapability)
-    ? general.startupCapability as KForgeStartupCapability
-    : fallback.general.startupCapability;
+  const rawStartup = typeof general.startupCapability === "string" ? general.startupCapability : fallback.general.startupCapability;
   const legacyOnline: Record<string, KForgePlatformSettings["general"]["startupOnlineView"]> = {
     Discover: "discover", Marketplace: "marketplace", Extensions: "extensions", "Model Hub": "models", "Agent Marketplace": "agents", "Tool Marketplace": "tools", Integrations: "integrations", Installed: "installed", Updates: "updates", Providers: "providers", "Remote Sources": "remote-sources", "Security Center": "security", Downloads: "downloads", Activity: "activity",
   };
-  const legacyActivity = legacyOnline[startup] ? "online" : startup === "Agents" ? "ai" : startup === "Preview" ? "developer-tools" : "projects";
-  const startupActivity = typeof general.startupActivity === "string" && activities.has(general.startupActivity) ? general.startupActivity as KForgePlatformSettings["general"]["startupActivity"] : legacyActivity;
-  const startupOnlineView = typeof general.startupOnlineView === "string" && onlineViews.has(general.startupOnlineView) ? general.startupOnlineView as KForgePlatformSettings["general"]["startupOnlineView"] : legacyOnline[startup] || fallback.general.startupOnlineView;
+  const startup = startupCapabilities.has(rawStartup)
+    ? rawStartup as KForgeStartupCapability
+    : legacyOnline[rawStartup]
+      ? "Discover"
+      : fallback.general.startupCapability;
+  const legacyActivity: KForgePlatformSettings["general"]["startupActivity"] = legacyOnline[rawStartup]
+    ? "online"
+    : rawStartup === "Agents"
+      ? "ai"
+      : rawStartup === "Preview"
+        ? "developer-tools"
+        : "projects";
+  const startupActivity = typeof general.startupActivity === "string" && activities.has(general.startupActivity)
+    ? general.startupActivity as KForgePlatformSettings["general"]["startupActivity"]
+    : legacyActivity;
+  const startupOnlineView = typeof general.startupOnlineView === "string" && onlineViews.has(general.startupOnlineView)
+    ? general.startupOnlineView as KForgePlatformSettings["general"]["startupOnlineView"]
+    : legacyOnline[rawStartup] || fallback.general.startupOnlineView;
   const interval = typeof preview.healthIntervalMs === "number" && healthIntervals.has(preview.healthIntervalMs)
     ? preview.healthIntervalMs as KForgePlatformSettings["preview"]["healthIntervalMs"]
     : fallback.preview.healthIntervalMs;
@@ -119,7 +132,9 @@ export async function readPlatformSettings(workspaceRoot: string): Promise<KForg
   try {
     const parsed = JSON.parse(await fs.readFile(settingsPath(workspaceRoot), "utf8")) as unknown;
     const normalized = normalizeSettings(parsed);
-    if (isRecord(parsed) && parsed.version !== 3) await writeSettingsAtomic(workspaceRoot, normalized);
+    if (!isRecord(parsed) || parsed.version !== 3 || JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+      await writeSettingsAtomic(workspaceRoot, normalized);
+    }
     return normalized;
   } catch {
     return defaultPlatformSettings();
