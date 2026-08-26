@@ -123,14 +123,38 @@ export function resolveAgentToolStatus(tool: Pick<AgentToolDefinition, "permissi
 
 const registeredHandlers = new Set<AgentToolName>(["list_files", "read_file", "search_files", "find_symbol", "inspect_file", "typecheck", "lint", "test", "build", "start", "health", "logs", "git_status", "git_diff", "scan", "sonar", "graph", "dependency_audit"]);
 
+type ExecutableCommandKind = "typecheck" | "test" | "build" | "lint" | "runtime";
+
+function executableEvidence(profile: ProjectProfile, kind: ExecutableCommandKind) {
+  const canonical = kind === "lint"
+    ? undefined
+    : profile.commandEvidence.find((entry) => entry.kind === kind || (kind === "runtime" && ["dev", "production"].includes(entry.kind)));
+  if (canonical?.known) return { known: true, command: canonical.command, source: canonical.source, detail: canonical.detail };
+
+  if (kind === "lint") {
+    const command = profile.scripts.lint ? `${profile.packageManager || "npm"} run lint` : undefined;
+    return { known: Boolean(command), command, source: "package.json#scripts.lint", detail: command ? "Explicit package lint script." : "No lint command was detected in the selected project profile." };
+  }
+
+  const fallback = kind === "runtime"
+    ? profile.commands.runtime || profile.commands.dev || profile.commands.production
+    : profile.commands[kind];
+  return {
+    known: Boolean(fallback),
+    command: fallback,
+    source: canonical?.source || "ProjectProfile.commands",
+    detail: fallback ? "Detected executable command preserved in the canonical project profile." : canonical?.detail || `No ${kind} command was detected in the selected project profile.`,
+  };
+}
+
 export function listAgentTools(context?: { profile: ProjectProfile; trust: "trusted" | "untrusted" }) {
   return definitions.map((definition) => {
     const tool = { ...definition };
-    const commandKinds: Partial<Record<AgentToolName, "typecheck" | "test" | "build" | "lint" | "runtime">> = { typecheck: "typecheck", test: "test", build: "build", lint: "lint", start: "runtime", health: "runtime" };
+    const commandKinds: Partial<Record<AgentToolName, ExecutableCommandKind>> = { typecheck: "typecheck", test: "test", build: "build", lint: "lint", start: "runtime", health: "runtime" };
     const commandKind = commandKinds[tool.name];
-    const evidence = commandKind && context ? context.profile.commandEvidence.find((entry) => entry.kind === commandKind || (commandKind === "runtime" && ["dev", "production"].includes(entry.kind))) : undefined;
+    const command = commandKind && context ? executableEvidence(context.profile, commandKind) : undefined;
     if (commandKind && !context) tool.unavailableReason = "No project context was selected; executable capability is NOT_EVALUATED.";
-    else if (commandKind && !evidence?.known) tool.unavailableReason = `No ${commandKind} command was detected in the selected project profile.`;
+    else if (commandKind && !command?.known) tool.unavailableReason = `No ${commandKind} command was detected in the selected project profile.`;
     if (context?.trust === "untrusted" && tool.permission !== "read-only") tool.unavailableReason = "Project trust is required before this tool may execute.";
     const handlerRegistered = registeredHandlers.has(tool.name);
     if (!handlerRegistered && !tool.unavailableReason) tool.unavailableReason = "No executable handler is registered for this tool.";
@@ -142,7 +166,7 @@ export function listAgentTools(context?: { profile: ProjectProfile; trust: "trus
         definition: "VERIFIED",
         handler: handlerRegistered ? "VERIFIED" : "NOT_AVAILABLE",
         permission: tool.permission === "blocked" ? "BLOCKED" : tool.permission === "dangerous" || tool.permission === "safe-write" || tool.requiresConfirmation ? "REQUIRES_CONFIRMATION" : "PERMITTED",
-        runtime: commandKind ? evidence?.known ? "DETECTED" : context ? "NOT_DETECTED" : "UNKNOWN" : "NOT_APPLICABLE",
+        runtime: commandKind ? command?.known ? "DETECTED" : context ? "NOT_DETECTED" : "UNKNOWN" : "NOT_APPLICABLE",
         projectPrerequisite: context ? `${context.profile.projectId} · trust=${context.trust}` : "No project selected",
         actionEligibility: status,
       },
