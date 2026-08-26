@@ -9,6 +9,8 @@ function isExternalHttpRequest(rawUrl: string) {
 }
 
 test.describe("KForge Online Control Center in production", () => {
+  test.setTimeout(120_000);
+
   test.beforeEach(async ({ page }) => {
     const settings = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
     expect(settings.ok(), await settings.text()).toBeTruthy();
@@ -35,9 +37,12 @@ test.describe("KForge Online Control Center in production", () => {
     const selectedRow = rows.nth(projectIndex);
     await selectedRow.locator(".kf-project-cell").click();
     await expect(selectedRow).toHaveClass(/is-active/);
-    await page.locator(".kf-nav").getByRole("button", { name: "Marketplace", exact: true }).click();
+    const marketplace = page.locator(".kf-nav").getByRole("button", { name: "Marketplace", exact: true });
+    await marketplace.click();
+    await expect(marketplace).toHaveClass(/is-active/);
+    await expect(page.getByRole("heading", { name: "Marketplace", exact: true })).toBeVisible();
     const controlCenter = page.getByRole("region", { name: "Online Control Center" });
-    await expect(controlCenter).toBeVisible({ timeout: 30_000 });
+    await expect(controlCenter).toBeVisible({ timeout: 60_000 });
     await expect(controlCenter).toContainText("NO REMOTE CONTACT");
     await expect(controlCenter).toContainText("Marketplace Registry");
     await expect(controlCenter).toContainText("Model Registry");

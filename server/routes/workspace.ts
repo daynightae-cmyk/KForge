@@ -1170,15 +1170,21 @@ async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): P
   child.stderr.on("data", (data: Buffer) => { output += data.toString(); });
   child.on("error", (error) => { output += `\nUNAVAILABLE: ${selected.command} could not start: ${error.message}`; });
   const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-  await wait(3_500);
+  const probeDeadline = Date.now() + 12_000;
   let ok = false;
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}${selected.urlPath || "/"}`, { signal: AbortSignal.timeout(4_000) });
-    ok = response.ok;
-    output += `\nHTTP ${response.status} ${response.statusText}`;
-  } catch (error: unknown) {
-    output += `\n${error instanceof Error ? error.message : String(error)}`;
+  let probeEvidence = "fetch failed";
+  while (!ok && Date.now() < probeDeadline) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}${selected.urlPath || "/"}`, { signal: AbortSignal.timeout(1_500) });
+      probeEvidence = `HTTP ${response.status} ${response.statusText}`;
+      ok = response.ok;
+    } catch (error: unknown) {
+      probeEvidence = error instanceof Error ? error.message : String(error);
+    }
+    if (!ok && Date.now() < probeDeadline) await wait(250);
   }
+  output += `\n${probeEvidence}`;
+
   await stopRuntimeProcess(child);
   const completedAt = new Date().toISOString();
   const unavailable = missingExecutable(selected.command, { ok: false, code: 1, output });

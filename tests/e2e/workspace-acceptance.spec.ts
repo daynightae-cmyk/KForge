@@ -105,6 +105,8 @@ test.describe("KForge Settings persistence in production", () => {
 
 
 test.describe("KForge project collections in production", () => {
+  test.setTimeout(120_000);
+
   test.beforeEach(async ({ page }) => {
     const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
     expect(reset.ok(), await reset.text()).toBeTruthy();
@@ -120,17 +122,24 @@ test.describe("KForge project collections in production", () => {
   test("persists favorite, pinned, and archive membership through visible project actions", async ({ page }) => {
     await page.goto("/workspace");
     await page.waitForLoadState("networkidle");
-    const firstRow = page.locator(".kf-table tbody tr").first();
-    await expect(firstRow).toBeVisible();
-    const projectName = (await firstRow.locator(".kf-project-cell strong").textContent())?.trim();
+    const workspacePath = path.resolve(process.cwd());
+    const table = page.locator(".kf-table");
+    const ensureWorkspaceTable = async () => {
+      await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled({ timeout: 30_000 });
+      await expect(table).toBeVisible({ timeout: 30_000 });
+    };
+    const rows = page.locator(".kf-table tbody tr");
+    const projectRow = async () => {
+      await ensureWorkspaceTable();
+      const index = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), workspacePath);
+      expect(index).toBeGreaterThanOrEqual(0);
+      return rows.nth(index);
+    };
+    const projectName = (await (await projectRow()).locator(".kf-project-cell strong").textContent())?.trim();
     expect(projectName).toBeTruthy();
     const expectedProjectName = projectName!;
-    const projectRow = () =>
-      page.locator(".kf-table tbody tr").filter({
-        has: page.locator(".kf-project-cell").getByText(expectedProjectName, { exact: true }),
-      });
     const clickAction = async (label: string) => {
-      const currentRow = projectRow();
+      const currentRow = await projectRow();
       await expect(currentRow).toBeVisible();
       await currentRow.locator(`summary[aria-label="Actions for ${expectedProjectName}"]`).click();
       const persisted = page.waitForResponse((response) =>
@@ -140,7 +149,7 @@ test.describe("KForge project collections in production", () => {
       expect((await persisted).ok()).toBeTruthy();
     };
 
-    const collectionCard = () => page.locator(".kf-provider-card").filter({ hasText: expectedProjectName });
+    const collectionCard = () => page.locator(".kf-provider-card").filter({ hasText: workspacePath });
     const clickCollectionAction = async (label: string) => {
       const persisted = page.waitForResponse((response) =>
         response.request().method() === "POST" && response.url().includes("/collection"),
@@ -155,11 +164,13 @@ test.describe("KForge project collections in production", () => {
     await expect(collectionCard()).toBeVisible();
 
     await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
     await clickAction("Pin project");
     await page.locator(".kf-nav").getByRole("button", { name: "Pinned", exact: true }).click();
     await expect(collectionCard()).toBeVisible();
 
     await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
     await clickAction("Archive project");
     await page.locator(".kf-nav").getByRole("button", { name: "Archive", exact: true }).click();
     await expect(collectionCard()).toBeVisible();

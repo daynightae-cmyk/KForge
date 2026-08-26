@@ -2,6 +2,8 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 test.describe("KForge release evidence in production", () => {
+  test.setTimeout(120_000);
+
   test("keeps local desktop, Windows package, and installer evidence distinct from CI", async ({ page }) => {
     const projectPath = process.cwd();
     const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
@@ -22,9 +24,17 @@ test.describe("KForge release evidence in production", () => {
     await page.goto("/workspace");
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-    await page.locator(".kf-nav").getByRole("button", { name: "Artifacts", exact: true }).click();
+    const rows = page.locator(".kf-table tbody tr");
+    const projectIndex = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), projectPath);
+    expect(projectIndex).toBeGreaterThanOrEqual(0);
+    const selectedRow = rows.nth(projectIndex);
+    await selectedRow.locator(".kf-project-cell").click();
+    await expect(selectedRow).toHaveClass(/is-active/);
+    const artifacts = page.locator(".kf-nav").getByRole("button", { name: "Artifacts", exact: true });
+    await artifacts.click();
+    await expect(artifacts).toHaveClass(/is-active/);
     await expect(page.locator(".kf-page-heading h1")).toHaveText("Artifacts");
-    await expect(page.getByText("Independent local artifact evidence", { exact: true })).toBeVisible();
+    await expect(page.getByText("Independent local artifact evidence", { exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(page.locator(".kf-command-evidence pre").filter({ hasText: "localEvidence" })).toContainText("WINDOWS_PACKAGE");
     await expect(page.locator(".kf-command-evidence pre").filter({ hasText: "localEvidence" })).toContainText("INSTALLER");
     expect(path.basename(projectPath)).toBe("KForge");

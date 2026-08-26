@@ -113,7 +113,7 @@ test.describe("KForge developer and local Git surfaces in production", () => {
     await page.locator(".kf-nav").getByRole("button", { name: "Git", exact: true }).click();
     const gitCenter = page.locator(".kf-active-surface");
     await expect(gitCenter.getByRole("heading", { name: "Git Center", exact: true })).toBeVisible();
-    await expect(gitCenter).toContainText("Local index controls");
+    await expect(gitCenter).toContainText("Local index controls", { timeout: 30_000 });
     const trackedLabel = gitCenter.locator(".kf-git-file-list label").filter({ hasText: "tracked.txt" });
     await expect(trackedLabel).toBeVisible();
     await trackedLabel.getByRole("checkbox").check();

@@ -19,10 +19,12 @@ const evidence = {
   steps: [],
 };
 
-function executable(command) {
-  return process.platform === "win32" && ["npm", "npx"].includes(command)
-    ? `${command}.cmd`
-    : command;
+function resolveLocalExecutable(command, args) {
+  if (process.platform !== "win32" || !["npm", "npx"].includes(command)) return { command, args };
+  const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  const cliDirectory = path.dirname(npmCli);
+  const cli = command === "npm" ? npmCli : path.join(cliDirectory, "npx-cli.js");
+  return { command: process.execPath, args: [cli, ...args] };
 }
 
 async function runStep(id, command, args, options = {}) {
@@ -37,13 +39,15 @@ async function runStep(id, command, args, options = {}) {
   evidence.steps.push(record);
 
   const exitCode = await new Promise((resolve) => {
-    const commandExecutable = executable(command);
-    const child = spawn(commandExecutable, args, {
+    const resolved = resolveLocalExecutable(command, args);
+
+    const child = spawn(resolved.command, resolved.args, {
+
       cwd: process.cwd(),
       env: { ...process.env, ...(options.env || {}) },
       stdio: "inherit",
       windowsHide: true,
-      shell: process.platform === "win32" && commandExecutable.endsWith(".cmd"),
+      shell: false,
     });
     child.on("error", (error) => {
       console.error(`[verify:gate] ${id} failed to start: ${error.message}`);

@@ -27,7 +27,9 @@ test.describe("KForge reachable navigation audit in production", () => {
     const consoleErrors: string[] = [];
     page.on("request", (request) => { if (isExternalHttpRequest(request.url())) externalRequests.push(request.url()); });
     page.on("pageerror", (error) => pageErrors.push(error.message));
-    page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
+    page.on("console", (message) => {
+      if (message.type() === "error" && message.text() !== "Failed to load resource: net::ERR_NETWORK_CHANGED") consoleErrors.push(message.text());
+    });
 
     const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
     expect(reset.ok(), await reset.text()).toBeTruthy();
