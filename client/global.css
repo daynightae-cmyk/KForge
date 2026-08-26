@@ -493,7 +493,7 @@
   .kf-command-input { display: flex; align-items: center; gap: 10px; padding: 13px 15px; border-bottom: 1px solid var(--kf-border); color: var(--kf-muted); }
   .kf-command-input input { flex: 1; border: 0; outline: 0; color: #222a38; font: 15px inherit; }
   .kf-command-input button { border: 0; background: transparent; color: var(--kf-muted); cursor: pointer; }
-  .kf-command-list { display: grid; padding: 6px; }
+  .kf-command-list { display: grid; max-height: min(60vh, 480px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
   .kf-command-list button { display: flex; align-items: center; justify-content: space-between; min-height: 39px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: #3e4755; font: inherit; text-align: left; cursor: pointer; }
   .kf-command-list button:hover { background: var(--kf-primary-soft); color: #1f55cd; }
   .kf-command-list small { color: var(--kf-faint); font-size: 10px; }

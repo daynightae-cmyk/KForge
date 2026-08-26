@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { promises as fs, type Dirent } from "fs";
 import path from "path";
-import { execFile, spawn } from "child_process";
+import { execFile, spawn, type ChildProcess } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
 import type {
@@ -115,6 +115,24 @@ async function run(command: string, args: string[], cwd: string, timeout = 15_00
     const details = errorDetails(error);
     return { ok: false, code: details.code, output: redactProjectText("command-output", `${details.stdout}${details.stderr || details.message}`.trim()).content };
   }
+}
+
+async function stopRuntimeProcess(child: ChildProcess) {
+  if (!child.pid) return;
+  const closed = new Promise<void>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) resolve();
+    else child.once("close", () => resolve());
+  });
+  if (process.platform === "win32") {
+    try {
+      await execFileAsync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
+    } catch {
+      child.kill();
+    }
+  } else {
+    child.kill("SIGTERM");
+  }
+  await Promise.race([closed, new Promise<void>((resolve) => setTimeout(resolve, 5_000))]);
 }
 
 function commandResultFromTask(task: KForgeTask): CommandResult | undefined {
@@ -483,7 +501,18 @@ export async function candidateProjectPaths(root = getWorkspaceRoot()) {
 }
 
 async function allProjects() {
-  const projects = await Promise.all((await candidateProjectPaths()).map(makeProjectSummary));
+  const projects = (await Promise.all((await candidateProjectPaths()).map(async (candidate) => {
+    try {
+      return await makeProjectSummary(candidate);
+    } catch (cause) {
+      const stat = await fs.stat(candidate).catch(() => undefined);
+      if (!stat?.isDirectory()) {
+        openedPaths.delete(candidate);
+        return null;
+      }
+      throw cause;
+    }
+  }))).filter((project): project is ProjectSummary => project !== null);
   return projects.sort((left, right) => right.lastActivity.localeCompare(left.lastActivity));
 }
 
@@ -1138,7 +1167,7 @@ async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): P
   } catch (error: unknown) {
     output += `\n${error instanceof Error ? error.message : String(error)}`;
   }
-  child.kill();
+  await stopRuntimeProcess(child);
   const completedAt = new Date().toISOString();
   const unavailable = missingExecutable(selected.command, { ok: false, code: 1, output });
   const message = ok ? `Runtime start and HTTP probe completed successfully with ${selected.source}.` : unavailable || `Runtime verification using ${selected.display} could not obtain a successful HTTP probe response.`;
