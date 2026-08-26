@@ -1,3 +1,4 @@
+import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
@@ -10,6 +11,11 @@ function isExternalHttpRequest(rawUrl: string) {
 
 test.describe("KForge Self Audit persisted run evidence in production", () => {
   test.setTimeout(360_000);
+
+  test.beforeEach(async () => {
+    const entries = await readdir(process.cwd(), { withFileTypes: true });
+    await Promise.all(entries.filter((entry) => entry.isDirectory() && entry.name.startsWith("kforge-cloud-route-")).map((entry) => rm(path.join(process.cwd(), entry.name), { recursive: true, force: true })));
+  });
 
   test("runs the explicit observational KForge-on-KForge sequence and persists a restart boundary without source mutation", async ({ page }) => {
     const externalRequests: string[] = [];
