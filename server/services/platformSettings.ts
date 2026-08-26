@@ -4,17 +4,25 @@ import path from "path";
 import { z } from "zod";
 import {
   KFORGE_STARTUP_CAPABILITIES,
+  KFORGE_ACTIVITIES,
+  KFORGE_ONLINE_VIEWS,
   type KForgePlatformSettings,
   type KForgeStartupCapability,
 } from "../../shared/workspace";
 
 const startupCapabilities = new Set<string>(KFORGE_STARTUP_CAPABILITIES);
+const activities = new Set<string>(KFORGE_ACTIVITIES);
+const onlineViews = new Set<string>(KFORGE_ONLINE_VIEWS);
 const healthIntervals = new Set<number>([3_000, 5_000, 10_000, 30_000]);
 
 const settingsUpdateSchema = z.object({
-  version: z.literal(2).optional(),
-  general: z.object({ startupCapability: z.string().refine((value) => startupCapabilities.has(value), "Unknown startup capability.") }).strict().optional(),
-  appearance: z.object({ density: z.enum(["compact", "comfortable"]), reducedMotion: z.boolean() }).partial().strict().optional(),
+  version: z.literal(3).optional(),
+  general: z.object({
+    startupCapability: z.string().refine((value) => startupCapabilities.has(value), "Unknown startup capability.").optional(),
+    startupActivity: z.string().refine((value) => activities.has(value), "Unknown startup activity.").optional(),
+    startupOnlineView: z.string().refine((value) => onlineViews.has(value), "Unknown Online view.").optional(),
+  }).strict().optional(),
+  appearance: z.object({ density: z.enum(["compact", "comfortable"]), reducedMotion: z.boolean(), theme: z.enum(["light", "dark", "system"]) }).partial().strict().optional(),
   preview: z.object({ autoHealthCheck: z.boolean(), healthIntervalMs: z.number().int().refine((value) => healthIntervals.has(value), "Unsupported health interval.") }).partial().strict().optional(),
   privacy: z.object({ secretRedaction: z.boolean().optional(), remoteContextPolicy: z.enum(["blocked", "ask"]).optional() }).strict().optional(),
   git: z.object({ confirmRemoteWrites: z.boolean().optional() }).strict().optional(),
@@ -38,9 +46,9 @@ function settingsPath(workspaceRoot: string) {
 
 export function defaultPlatformSettings(now = new Date().toISOString()): KForgePlatformSettings {
   return {
-    version: 2,
-    general: { startupCapability: "Workspace" },
-    appearance: { density: "comfortable", reducedMotion: false },
+    version: 3,
+    general: { startupCapability: "Workspace", startupActivity: "projects", startupOnlineView: "discover" },
+    appearance: { density: "comfortable", reducedMotion: false, theme: "system" },
     preview: { autoHealthCheck: true, healthIntervalMs: 5_000 },
     privacy: { secretRedaction: true, remoteContextPolicy: "ask" },
     git: { confirmRemoteWrites: true },
@@ -65,15 +73,22 @@ function normalizeSettings(value: unknown, now = new Date().toISOString(), fallb
   const startup = typeof general.startupCapability === "string" && startupCapabilities.has(general.startupCapability)
     ? general.startupCapability as KForgeStartupCapability
     : fallback.general.startupCapability;
+  const legacyOnline: Record<string, KForgePlatformSettings["general"]["startupOnlineView"]> = {
+    Discover: "discover", Marketplace: "marketplace", Extensions: "extensions", "Model Hub": "models", "Agent Marketplace": "agents", "Tool Marketplace": "tools", Integrations: "integrations", Installed: "installed", Updates: "updates", Providers: "providers", "Remote Sources": "remote-sources", "Security Center": "security", Downloads: "downloads", Activity: "activity",
+  };
+  const legacyActivity = legacyOnline[startup] ? "online" : startup === "Agents" ? "ai" : startup === "Preview" ? "developer-tools" : "projects";
+  const startupActivity = typeof general.startupActivity === "string" && activities.has(general.startupActivity) ? general.startupActivity as KForgePlatformSettings["general"]["startupActivity"] : legacyActivity;
+  const startupOnlineView = typeof general.startupOnlineView === "string" && onlineViews.has(general.startupOnlineView) ? general.startupOnlineView as KForgePlatformSettings["general"]["startupOnlineView"] : legacyOnline[startup] || fallback.general.startupOnlineView;
   const interval = typeof preview.healthIntervalMs === "number" && healthIntervals.has(preview.healthIntervalMs)
     ? preview.healthIntervalMs as KForgePlatformSettings["preview"]["healthIntervalMs"]
     : fallback.preview.healthIntervalMs;
   return {
-    version: 2,
-    general: { startupCapability: startup },
+    version: 3,
+    general: { startupCapability: startup, startupActivity, startupOnlineView },
     appearance: {
       density: appearance.density === "compact" || appearance.density === "comfortable" ? appearance.density : fallback.appearance.density,
       reducedMotion: typeof appearance.reducedMotion === "boolean" ? appearance.reducedMotion : fallback.appearance.reducedMotion,
+      theme: appearance.theme === "light" || appearance.theme === "dark" || appearance.theme === "system" ? appearance.theme : fallback.appearance.theme,
     },
     preview: {
       autoHealthCheck: typeof preview.autoHealthCheck === "boolean" ? preview.autoHealthCheck : fallback.preview.autoHealthCheck,
@@ -104,7 +119,7 @@ export async function readPlatformSettings(workspaceRoot: string): Promise<KForg
   try {
     const parsed = JSON.parse(await fs.readFile(settingsPath(workspaceRoot), "utf8")) as unknown;
     const normalized = normalizeSettings(parsed);
-    if (isRecord(parsed) && parsed.version === 1) await writeSettingsAtomic(workspaceRoot, normalized);
+    if (isRecord(parsed) && parsed.version !== 3) await writeSettingsAtomic(workspaceRoot, normalized);
     return normalized;
   } catch {
     return defaultPlatformSettings();

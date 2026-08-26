@@ -427,6 +427,45 @@ export const KFORGE_STARTUP_CAPABILITIES = [
 
 export type KForgeStartupCapability = (typeof KFORGE_STARTUP_CAPABILITIES)[number];
 
+export const KFORGE_ACTIVITIES = ["projects", "ai", "online", "intelligence", "quality", "developer-tools", "remote", "release", "system"] as const;
+export type KForgeActivity = (typeof KFORGE_ACTIVITIES)[number];
+
+export const KFORGE_ONLINE_VIEWS = ["discover", "marketplace", "extensions", "models", "agents", "tools", "integrations", "installed", "updates", "providers", "remote-sources", "security", "downloads", "activity"] as const;
+export type KForgeOnlineView = (typeof KFORGE_ONLINE_VIEWS)[number];
+
+export type OnlineAuthorityKind = "LOCAL_RUNTIME" | "LOCAL_INSTALLED" | "LOCAL_BUNDLED" | "LOCAL_REGISTRY" | "CATALOG_ONLY" | "REMOTE_PROVIDER" | "REMOTE_REGISTRY" | "CACHED_REMOTE";
+export type OnlineAvailabilityState = "AVAILABLE" | "UNAVAILABLE" | "BLOCKED" | "NOT_DETECTED" | "NOT_INSTALLED" | "NOT_CONFIGURED" | "OFFLINE" | "UNKNOWN" | "INSTALLED" | "RUNNING" | "CATALOG";
+
+export interface OnlineAuthorityEvidence {
+  kind: OnlineAuthorityKind;
+  originalKind?: Exclude<OnlineAuthorityKind, "CACHED_REMOTE">;
+}
+
+export interface OnlineRuntimeEvidence {
+  state: "VERIFIED" | "UNKNOWN" | "NOT_AVAILABLE" | "NOT_CONFIGURED";
+  sources: string[];
+}
+
+export interface OnlineActionEligibility {
+  state: "ENABLED" | "DISABLED" | "REQUIRES_CONFIRMATION";
+  actions: Array<{ id: string; enabled: boolean; requiresConfirmation: boolean; reason?: string }>;
+  unavailableReason?: string;
+}
+
+export interface WorkspaceActionDescriptor {
+  id: WorkspaceAction;
+  label: string;
+  enabled: boolean;
+  state: "AVAILABLE" | "UNAVAILABLE" | "BLOCKED" | "AVAILABLE_WITH_CONFIRMATION";
+  requiresConfirmation: boolean;
+  requiresTrust: boolean;
+  requiresNetwork: boolean;
+  requiredPermission: "read-only" | "process-execution" | "git-read" | "git-write";
+  command?: string;
+  source: string;
+  unavailableReason?: string;
+}
+
 export type SettingsDomainHandling = "EDITABLE_REAL" | "MANAGED_ELSEWHERE" | "UNAVAILABLE" | "NOT_CONFIGURED";
 
 export const KFORGE_SETTINGS_DOMAIN_HANDLING = [
@@ -457,13 +496,16 @@ export const KFORGE_SETTINGS_DOMAIN_HANDLING = [
 ] as const satisfies readonly (readonly [string, SettingsDomainHandling, string])[];
 
 export interface KForgePlatformSettings {
-  version: 2;
+  version: 3;
   general: {
     startupCapability: KForgeStartupCapability;
+    startupActivity: KForgeActivity;
+    startupOnlineView: KForgeOnlineView;
   };
   appearance: {
     density: "compact" | "comfortable";
     reducedMotion: boolean;
+    theme: "light" | "dark" | "system";
   };
   privacy: {
     secretRedaction: true;

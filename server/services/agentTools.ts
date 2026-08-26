@@ -1,5 +1,6 @@
 import { promises as fs, type Dirent } from "fs";
 import path from "path";
+import type { ProjectProfile } from "../../shared/workspace";
 import { redactProjectText } from "./redaction";
 
 export type AgentToolPermission = "read-only" | "safe" | "safe-write" | "dangerous" | "blocked";
@@ -14,6 +15,14 @@ export interface AgentToolDefinition {
   unavailableReason?: string;
   status?: AgentToolStatus;
   runtimeError?: string;
+  evidence?: {
+    definition: "VERIFIED";
+    handler: "VERIFIED" | "NOT_AVAILABLE";
+    permission: "PERMITTED" | "REQUIRES_CONFIRMATION" | "BLOCKED";
+    runtime: "DETECTED" | "NOT_DETECTED" | "NOT_APPLICABLE" | "UNKNOWN";
+    projectPrerequisite: string;
+    actionEligibility: AgentToolStatus;
+  };
 }
 
 export interface AgentToolResult {
@@ -52,15 +61,15 @@ const definitions: AgentToolDefinition[] = [
   { name: "lint", permission: "safe", description: "Run the detected project lint command." },
   { name: "test", permission: "safe", description: "Run the detected project tests." },
   { name: "build", permission: "safe", description: "Run the detected project build." },
-  { name: "format", permission: "safe-write", description: "Formatting can modify files and requires explicit review before execution.", requiresConfirmation: true },
+  { name: "format", permission: "safe-write", description: "Formatting can modify files and requires explicit review before execution.", requiresConfirmation: true, unavailableReason: "No confirmed format execution handler is registered." },
   { name: "start", permission: "safe", description: "Run bounded local runtime verification, not a persistent production deployment." },
   { name: "stop", permission: "blocked", description: "Stopping arbitrary user processes is not available to the agent.", unavailableReason: "KForge does not claim to manage processes it did not create." },
   { name: "health", permission: "safe", description: "Perform a local runtime health check." },
   { name: "logs", permission: "read-only", description: "Read the latest KForge task and runtime logs." },
   { name: "git_status", permission: "read-only", description: "Read Git branch and working-tree state." },
   { name: "git_diff", permission: "read-only", description: "Read the current Git diff statistics." },
-  { name: "git_branch", permission: "dangerous", description: "Creating or switching branches requires confirmation.", requiresConfirmation: true },
-  { name: "git_commit", permission: "dangerous", description: "Creating a commit requires confirmation.", requiresConfirmation: true },
+  { name: "git_branch", permission: "dangerous", description: "Creating or switching branches requires confirmation.", requiresConfirmation: true, unavailableReason: "No branch mutation handler is registered for autonomous agent execution." },
+  { name: "git_commit", permission: "dangerous", description: "Creating a commit requires confirmation.", requiresConfirmation: true, unavailableReason: "No commit mutation handler is registered for autonomous agent execution." },
   { name: "scan", permission: "safe", description: "Run the real project scanner." },
   { name: "sonar", permission: "safe", description: "Run deterministic KForge Sonar analysis." },
   { name: "graph", permission: "safe", description: "Build the project dependency graph." },
@@ -112,8 +121,33 @@ export function resolveAgentToolStatus(tool: Pick<AgentToolDefinition, "permissi
   return "AVAILABLE";
 }
 
-export function listAgentTools() {
-  return definitions.map((tool) => ({ ...tool, status: resolveAgentToolStatus(tool) }));
+const registeredHandlers = new Set<AgentToolName>(["list_files", "read_file", "search_files", "find_symbol", "inspect_file", "typecheck", "lint", "test", "build", "start", "health", "logs", "git_status", "git_diff", "scan", "sonar", "graph", "dependency_audit"]);
+
+export function listAgentTools(context?: { profile: ProjectProfile; trust: "trusted" | "untrusted" }) {
+  return definitions.map((definition) => {
+    const tool = { ...definition };
+    const commandKinds: Partial<Record<AgentToolName, "typecheck" | "test" | "build" | "lint" | "runtime">> = { typecheck: "typecheck", test: "test", build: "build", lint: "lint", start: "runtime", health: "runtime" };
+    const commandKind = commandKinds[tool.name];
+    const evidence = commandKind && context ? context.profile.commandEvidence.find((entry) => entry.kind === commandKind || (commandKind === "runtime" && ["dev", "production"].includes(entry.kind))) : undefined;
+    if (commandKind && !context) tool.unavailableReason = "No project context was selected; executable capability is NOT_EVALUATED.";
+    else if (commandKind && !evidence?.known) tool.unavailableReason = `No ${commandKind} command was detected in the selected project profile.`;
+    if (context?.trust === "untrusted" && tool.permission !== "read-only") tool.unavailableReason = "Project trust is required before this tool may execute.";
+    const handlerRegistered = registeredHandlers.has(tool.name);
+    if (!handlerRegistered && !tool.unavailableReason) tool.unavailableReason = "No executable handler is registered for this tool.";
+    const status = resolveAgentToolStatus(tool);
+    return {
+      ...tool,
+      status,
+      evidence: {
+        definition: "VERIFIED",
+        handler: handlerRegistered ? "VERIFIED" : "NOT_AVAILABLE",
+        permission: tool.permission === "blocked" ? "BLOCKED" : tool.permission === "dangerous" || tool.permission === "safe-write" || tool.requiresConfirmation ? "REQUIRES_CONFIRMATION" : "PERMITTED",
+        runtime: commandKind ? evidence?.known ? "DETECTED" : context ? "NOT_DETECTED" : "UNKNOWN" : "NOT_APPLICABLE",
+        projectPrerequisite: context ? `${context.profile.projectId} · trust=${context.trust}` : "No project selected",
+        actionEligibility: status,
+      },
+    } satisfies AgentToolDefinition;
+  });
 }
 
 export function isAgentToolName(value: unknown): value is AgentToolName {

@@ -27,6 +27,7 @@ import type {
   WorkspaceActivity,
   WorkspaceResponse,
   WorkspaceStatus,
+  WorkspaceActionDescriptor,
   GlobalSearchCoverage,
   GlobalSearchEntity,
   GlobalSearchResponse,
@@ -36,8 +37,7 @@ import type {
   SelfAuditStageState,
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
-import { detectLocalAIProvider, requestLocalPlan } from "../services/localAI";
-import { checkForModelUpdates, deleteOllamaModel, generateWithLocalAI, getCloudAIConfiguration, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, isCloudAIProviderId, listAIProviders, listCloudAIProviders, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
+import { checkForModelUpdates, deleteOllamaModel, detectLocalAIProvider, generateWithLocalAI, getCloudAIConfiguration, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, isCloudAIProviderId, listAIProviders, listCloudAIProviders, requestLocalPlan, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
 import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
@@ -1325,6 +1325,12 @@ router.get("/projects/:id/online/control-center", async (req, res) => {
   return res.json(await getOnlineControlCenter({ workspaceRoot, platform, project, hasCiConfiguration: profile.ci.length > 0, preview: getPreviewStatus(project.id) }));
 });
 
+router.get("/online/control-center", async (_req, res) => {
+  const workspaceRoot = getWorkspaceRoot();
+  const platform = await getLocalPlatformStatus(workspaceRoot);
+  return res.json(await getOnlineControlCenter({ workspaceRoot, platform }));
+});
+
 router.post("/platform/mode", async (req, res) => {
   const mode = req.body?.mode;
   if (!(["offline", "local-first", "online-optional", "online"] as const).includes(mode)) return res.status(400).json({ error: "Choose offline, local-first, online-optional, or online mode." });
@@ -1936,6 +1942,37 @@ router.post("/projects/:id/snapshots/:snapshotId/restore", async (req, res) => {
 
 const agentPermissions = { readFiles: "allow", editFiles: "allow", runTests: "allow", runBuild: "allow", installPackage: "ask", deleteFile: "ask", gitCommit: "ask", gitPush: "ask", deploy: "ask", forcePush: "block", exposeSecret: "block" } as const;
 
+function projectActionDescriptors(project: ProjectSummary, profile: ProjectProfile): WorkspaceActionDescriptor[] {
+  const definitions: Array<{ id: WorkspaceAction; label: string; requiresTrust: boolean; requiresNetwork: boolean; permission: WorkspaceActionDescriptor["requiredPermission"]; command?: string; source: string }> = [
+    { id: "scan", label: "Scan project", requiresTrust: false, requiresNetwork: false, permission: "read-only", command: "KForge bounded scanner", source: "KForge scanner registry" },
+    { id: "typecheck", label: "Run typecheck", requiresTrust: true, requiresNetwork: false, permission: "process-execution", command: profile.commands.typecheck, source: profile.commandEvidence.find((entry) => entry.kind === "typecheck")?.source || "Project profile" },
+    { id: "test", label: "Run tests", requiresTrust: true, requiresNetwork: false, permission: "process-execution", command: profile.commands.test, source: profile.commandEvidence.find((entry) => entry.kind === "test")?.source || "Project profile" },
+    { id: "build", label: "Run build", requiresTrust: true, requiresNetwork: false, permission: "process-execution", command: profile.commands.build, source: profile.commandEvidence.find((entry) => entry.kind === "build")?.source || "Project profile" },
+    { id: "runtime", label: "Verify runtime", requiresTrust: true, requiresNetwork: false, permission: "process-execution", command: profile.commands.runtime || profile.commands.production || profile.commands.dev, source: profile.commandEvidence.find((entry) => entry.kind === "runtime" || entry.kind === "production" || entry.kind === "dev")?.source || "Project profile" },
+    { id: "pull", label: "Pull from upstream", requiresTrust: true, requiresNetwork: true, permission: "git-write", command: project.remoteUrl ? "git pull" : undefined, source: "Local Git remote configuration" },
+    { id: "push", label: "Push to upstream", requiresTrust: true, requiresNetwork: true, permission: "git-write", command: project.remoteUrl ? "git push" : undefined, source: "Local Git remote configuration" },
+  ];
+  return definitions.map((definition) => {
+    const missingCommand = !definition.command;
+    const blockedByTrust = definition.requiresTrust && project.trust !== "trusted";
+    const unavailableReason = blockedByTrust ? "Project trust is required before local process or Git execution." : missingCommand ? definition.requiresNetwork ? "No Git upstream is configured." : `No ${definition.id} command was detected in the project profile.` : undefined;
+    const enabled = !blockedByTrust && !missingCommand;
+    return {
+      id: definition.id,
+      label: definition.label,
+      enabled,
+      state: blockedByTrust ? "BLOCKED" : enabled ? (definition.id === "push" ? "AVAILABLE_WITH_CONFIRMATION" : "AVAILABLE") : "UNAVAILABLE",
+      requiresConfirmation: definition.id === "push",
+      requiresTrust: definition.requiresTrust,
+      requiresNetwork: definition.requiresNetwork,
+      requiredPermission: definition.permission,
+      ...(definition.command ? { command: definition.command } : {}),
+      source: definition.source,
+      ...(unavailableReason ? { unavailableReason } : {}),
+    } satisfies WorkspaceActionDescriptor;
+  });
+}
+
 
 function projectToolHandlers(project: ProjectSummary): ProjectToolHandlers {
   const action = (kind: WorkspaceAction) => async () => executeProjectAction(project, kind);
@@ -2024,7 +2061,15 @@ async function executeMissionStrategyStep(project: ProjectSummary, mission: Miss
 router.get("/projects/:id/agent/tools", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
-  return res.json({ projectId: project.id, tools: listAgentTools(), permissions: agentPermissions });
+  const profile = await detectProjectProfile(project);
+  return res.json({ projectId: project.id, tools: listAgentTools({ profile, trust: project.trust }), permissions: agentPermissions });
+});
+
+router.get("/projects/:id/actions", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const profile = await detectProjectProfile(project);
+  return res.json({ projectId: project.id, detectedAt: profile.detectedAt, actions: projectActionDescriptors(project, profile) });
 });
 
 router.post("/projects/:id/agent/tools/:tool", async (req, res) => {

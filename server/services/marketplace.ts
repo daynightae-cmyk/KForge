@@ -4,7 +4,7 @@ import { execFile } from "child_process";
 import { randomUUID, createHash } from "crypto";
 import { promisify } from "util";
 import { z } from "zod";
-import type { ProjectProfile, ProjectSummary } from "../../shared/workspace";
+import type { OnlineActionEligibility, OnlineAuthorityEvidence, OnlineAvailabilityState, OnlineRuntimeEvidence, ProjectProfile, ProjectSummary } from "../../shared/workspace";
 import { getModelCenter } from "./aiCenter";
 import { listAgentTools } from "./agentTools";
 
@@ -94,6 +94,15 @@ export interface MarketplaceItem {
   installAction: "INSTALL_REQUIRES_CONFIRMATION" | "NOT_AVAILABLE" | "MANAGE_LOCAL";
   dataState: MarketplaceSourceState;
   updatedAt?: string;
+  authority: OnlineAuthorityEvidence;
+  availability: OnlineAvailabilityState;
+  detectedAt?: string;
+  checkedAt: string;
+  freshness: { state: "CURRENT" | "CACHED" | "STALE" | "UNKNOWN"; at: string | null };
+  runtimeEvidence: OnlineRuntimeEvidence;
+  healthState: "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "UNKNOWN" | "NOT_EVALUATED";
+  actionEligibility: OnlineActionEligibility;
+  unavailableReason?: string;
 }
 
 export interface MarketplaceProviderStatus {
@@ -106,6 +115,14 @@ export interface MarketplaceProviderStatus {
   adapterKind?: "local" | "remote";
   configured?: boolean;
   capabilities?: string[];
+  authority: OnlineAuthorityEvidence;
+  availability: OnlineAvailabilityState;
+  checkedAt: string;
+  freshness: { state: "CURRENT" | "CACHED" | "STALE" | "UNKNOWN"; at: string | null };
+  runtimeEvidence: OnlineRuntimeEvidence;
+  healthState: "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "UNKNOWN" | "NOT_EVALUATED";
+  actionEligibility: OnlineActionEligibility;
+  unavailableReason?: string;
 }
 
 export interface MarketplaceRegistryAdapter {
@@ -176,6 +193,41 @@ function evidence(state: MarketplaceEvidenceState, source: string, value?: strin
 
 function evidenceList(state: MarketplaceEvidenceState, source: string, items: string[] = []): MarketplaceEvidenceList {
   return { state, source, items };
+}
+
+type MarketplaceItemDraft = Omit<MarketplaceItem, "authority" | "availability" | "detectedAt" | "checkedAt" | "freshness" | "runtimeEvidence" | "healthState" | "actionEligibility" | "unavailableReason">;
+
+function withAuthority(item: MarketplaceItemDraft, checkedAt = new Date().toISOString()): MarketplaceItem {
+  const catalogOnly = item.category === "models" && !item.installed && /compatibility profile/i.test(item.source);
+  const cachedRemote = !item.local && (/cache/i.test(item.source) || item.dataState === "DATA_UNAVAILABLE");
+  const builtIn = /^tool:kforge:|^agent:kforge:/.test(item.id);
+  const authority: OnlineAuthorityEvidence = catalogOnly ? { kind: "CATALOG_ONLY" }
+    : cachedRemote ? { kind: "CACHED_REMOTE", originalKind: "REMOTE_REGISTRY" }
+      : builtIn ? { kind: "LOCAL_BUNDLED" }
+        : item.installed ? { kind: "LOCAL_INSTALLED" }
+          : item.local ? { kind: "LOCAL_REGISTRY" }
+            : { kind: "REMOTE_REGISTRY" };
+  const availability: OnlineAvailabilityState = item.enabled && item.category === "models" ? "RUNNING" : builtIn && item.enabled ? "AVAILABLE" : item.installed ? "INSTALLED" : catalogOnly ? "CATALOG" : item.local ? "NOT_INSTALLED" : item.dataState === "OFFLINE" ? "OFFLINE" : item.dataState === "NOT_CONFIGURED" ? "NOT_CONFIGURED" : "UNKNOWN";
+  const installEnabled = item.installAction === "INSTALL_REQUIRES_CONFIRMATION";
+  const manageEnabled = item.installAction === "MANAGE_LOCAL" && item.installed;
+  const unavailableReason = availability === "AVAILABLE" || availability === "INSTALLED" || availability === "RUNNING" || installEnabled || manageEnabled ? undefined : catalogOnly ? "Catalog metadata is not local runtime inventory." : item.installAction === "NOT_AVAILABLE" ? "No verified installation or execution adapter is available." : undefined;
+  const actions = [
+    { id: "inspect", enabled: true, requiresConfirmation: false },
+    { id: "install", enabled: installEnabled, requiresConfirmation: installEnabled, ...(!installEnabled ? { reason: item.installed ? "Already installed." : unavailableReason || "Install adapter unavailable." } : {}) },
+    { id: "manage", enabled: manageEnabled, requiresConfirmation: manageEnabled, ...(!manageEnabled ? { reason: item.installed ? "No management adapter is registered." : "Item is not installed." } : {}) },
+  ];
+  return {
+    ...item,
+    authority,
+    availability,
+    ...(item.installed ? { detectedAt: checkedAt } : {}),
+    checkedAt,
+    freshness: { state: cachedRemote ? "CACHED" : authority.kind.startsWith("LOCAL_") ? "CURRENT" : "UNKNOWN", at: cachedRemote || authority.kind.startsWith("LOCAL_") ? checkedAt : null },
+    runtimeEvidence: item.installed || builtIn ? { state: "VERIFIED", sources: [item.installationState.source, item.source] } : catalogOnly ? { state: "NOT_AVAILABLE", sources: ["Bundled catalog profile only; no runtime inventory match."] } : { state: "UNKNOWN", sources: [item.installationState.source] },
+    healthState: item.enabled ? "HEALTHY" : item.installed ? "NOT_EVALUATED" : "UNAVAILABLE",
+    actionEligibility: { state: installEnabled || manageEnabled ? "REQUIRES_CONFIRMATION" : "DISABLED", actions, ...(unavailableReason ? { unavailableReason } : {}) },
+    ...(unavailableReason ? { unavailableReason } : {}),
+  };
 }
 
 function permissionReview(required: Partial<Record<MarketplacePermissionClass, string>> = {}): MarketplacePermission[] {
@@ -329,7 +381,7 @@ function toolTaxonomy(name: string): MarketplaceProductCategory[] {
 }
 
 function localEngineItems(): MarketplaceItem[] {
-  const tools: MarketplaceItem[] = listAgentTools().map((tool) => ({
+  const tools: MarketplaceItem[] = listAgentTools().map((tool) => withAuthority({
     id: `tool:kforge:${tool.name}`,
     category: "tools",
     taxonomy: toolTaxonomy(tool.name),
@@ -354,13 +406,13 @@ function localEngineItems(): MarketplaceItem[] {
     integrity: evidence("NOT_AVAILABLE", "No separately installable artifact or checksum exists for this built-in tool."),
     trust: tool.permission === "blocked" ? "PARTIALLY_TRUSTED" : "TRUSTED",
     installed: true,
-    enabled: tool.permission !== "blocked",
+    enabled: tool.status === "AVAILABLE" || tool.status === "AVAILABLE_WITH_CONFIRMATION",
     local: true,
     installAction: "MANAGE_LOCAL",
     dataState: "AVAILABLE",
   }));
 
-  const agents: MarketplaceItem[] = [{
+  const agents: MarketplaceItem[] = [withAuthority({
     id: "agent:kforge:engineer",
     category: "agents",
     taxonomy: ["agents"],
@@ -389,7 +441,7 @@ function localEngineItems(): MarketplaceItem[] {
     local: true,
     installAction: "MANAGE_LOCAL",
     dataState: "AVAILABLE",
-  }];
+  })];
 
   return [...agents, ...tools];
 }
@@ -447,7 +499,7 @@ function registeredItem(value: unknown): MarketplaceItem | null {
   const integrityField = normalizedEvidenceField(row.integrity, rawHash ? evidence("VERIFIED", "Persisted installed package checksum", `sha256:${rawHash}`) : evidence("NOT_AVAILABLE", "No checksum or signature was supplied by the configured registry."));
   const localVerifiedTrust = installed && integrityField.state === "VERIFIED";
   const trust: MarketplaceItem["trust"] = localVerifiedTrust && row.trust === "TRUSTED" ? "TRUSTED" : local && row.trust === "PARTIALLY_TRUSTED" ? "PARTIALLY_TRUSTED" : "UNTRUSTED";
-  return {
+  return withAuthority({
     id: row.id,
     category,
     taxonomy: taxonomy.length ? taxonomy : defaultTaxonomy(category),
@@ -480,7 +532,7 @@ function registeredItem(value: unknown): MarketplaceItem | null {
     installAction: local && (row.installAction === "INSTALL_REQUIRES_CONFIRMATION" || row.installAction === "MANAGE_LOCAL") ? row.installAction : "NOT_AVAILABLE",
     dataState: row.dataState === "AVAILABLE" || row.dataState === "DATA_UNAVAILABLE" || row.dataState === "OFFLINE" || row.dataState === "NOT_CONFIGURED" || row.dataState === "UNAVAILABLE" ? row.dataState : "DATA_UNAVAILABLE",
     ...(typeof row.updatedAt === "string" ? { updatedAt: row.updatedAt } : {}),
-  };
+  });
 }
 
 function marketplaceTaxonomy(items: MarketplaceItem[]): MarketplaceTaxonomyEntry[] {
@@ -654,7 +706,7 @@ async function firstPartyCatalogItem(workspaceRoot: string, registry: LocalRegis
     const rawHash = installed && typeof persisted?.sha256 === "string" ? persisted.sha256 : undefined;
     const updateAvailable = installedVersion ? compareSemver(installedVersion, latestManifest.version) < 0 : false;
     const permissions = installed ? permissionsForRegistryRow(persisted || {}) : normalizedManifestPermissions(baseManifest);
-    const item: MarketplaceItem = {
+    const item = withAuthority({
       id: baseManifest.id,
       category: "plugins",
       taxonomy: ["extensions", "tools"],
@@ -686,7 +738,7 @@ async function firstPartyCatalogItem(workspaceRoot: string, registry: LocalRegis
       installAction: installed ? "MANAGE_LOCAL" : "INSTALL_REQUIRES_CONFIRMATION",
       dataState: "AVAILABLE",
       ...(typeof persisted?.updatedAt === "string" ? { updatedAt: persisted.updatedAt } : {}),
-    };
+    });
     return item;
   } catch {
     return null;
@@ -697,7 +749,7 @@ export async function getMarketplace(workspaceRoot: string, onlineOptional: bool
   const [modelCenter, registeredRows] = await Promise.all([getModelCenter(workspaceRoot), readLocalRegistry(workspaceRoot)]);
   const registry: LocalRegistryFile = { schemaVersion: 1, items: registeredRows };
   const installedIds = new Set(modelCenter.ollama.models.map((model) => model.id));
-  const installed: MarketplaceItem[] = modelCenter.ollama.models.map((model) => ({
+  const installed: MarketplaceItem[] = modelCenter.ollama.models.map((model) => withAuthority({
     id: `ollama:${model.id}`, category: "models", taxonomy: ["models"], name: model.name,
     description: "Installed local Ollama model reported by the local runtime.", overview: "Installed local Ollama model reported by the local runtime.", features: model.capabilities, source: "Local Ollama runtime",
     version: model.id.includes(":") ? model.id.split(":").slice(1).join(":") : undefined,
@@ -715,11 +767,11 @@ export async function getMarketplace(workspaceRoot: string, onlineOptional: bool
     trust: "PARTIALLY_TRUSTED", installed: true,
     enabled: modelCenter.active?.provider === "ollama" && modelCenter.active.model === model.id, local: true, installAction: "MANAGE_LOCAL", dataState: "AVAILABLE",
   }));
-  const recommendations: MarketplaceItem[] = modelCenter.recommendations.map((model) => ({
+  const recommendations: MarketplaceItem[] = modelCenter.recommendations.map((model) => withAuthority({
     id: `ollama:${model.id}`, category: "models", taxonomy: ["models"], name: model.label,
-    description: `Official Ollama-library recommendation for local ${/coder/i.test(model.id) ? "coding" : "AI"} workflows. Compatibility is calculated from detected hardware.`, overview: `Bundled compatibility evidence for local ${/coder/i.test(model.id) ? "coding" : "AI"} workflows; no live registry metadata is claimed.`, features: /coder/i.test(model.id) ? ["coding", "chat", "generate"] : ["chat", "generate"], source: "KForge bundled compatibility profile (official links)", sourceUrl: model.sourceUrl,
+    description: `Official Ollama-library recommendation for local ${/coder/i.test(model.id) ? "coding" : "AI"} workflows. Compatibility is calculated from detected hardware.`, overview: `Bundled compatibility evidence for local ${/coder/i.test(model.id) ? "coding" : "AI"} workflows; no live registry metadata is claimed.`, features: ["recommended", "capabilities-unknown"], source: "KForge bundled compatibility profile (official links)", sourceUrl: model.sourceUrl,
     version: model.pullName.includes(":") ? model.pullName.split(":").slice(1).join(":") : undefined, license: model.license,
-    capabilities: /coder/i.test(model.id) ? ["coding", "chat", "generate"] : ["chat", "generate"], requirements: [`Estimated download: ${Math.round(model.estimatedDownloadBytes / 1_000_000_000)} GB`, `Estimated RAM: ${Math.round(model.estimatedRamBytes / 1_000_000_000)} GB`], compatibility: model.reason, permissions: modelPermissions(),
+    capabilities: ["UNKNOWN"], requirements: [`Estimated download: ${Math.round(model.estimatedDownloadBytes / 1_000_000_000)} GB`, `Estimated RAM: ${Math.round(model.estimatedRamBytes / 1_000_000_000)} GB`], compatibility: model.reason, permissions: modelPermissions(),
     security: evidence("UNKNOWN", "Bundled compatibility profiles do not provide a security verdict."),
     publisher: evidence("UNKNOWN", "The official library link does not prove publisher identity."),
     repository: evidence("UNKNOWN", "No repository metadata is included in the bundled compatibility profile."),
@@ -731,11 +783,27 @@ export async function getMarketplace(workspaceRoot: string, onlineOptional: bool
     provenance: evidence("VERIFIED", "KForge bundled compatibility profile", model.sourceUrl),
     integrity: evidence("NOT_AVAILABLE", "No checksum is available before a verified download adapter returns an artifact."),
     trust: "UNTRUSTED",
-    installed: installedIds.has(model.id), enabled: modelCenter.active?.provider === "ollama" && modelCenter.active.model === model.id, local: true,
-    installAction: onlineOptional && model.compatible ? "INSTALL_REQUIRES_CONFIRMATION" : "NOT_AVAILABLE", dataState: "AVAILABLE",
+    installed: installedIds.has(model.id), enabled: modelCenter.active?.provider === "ollama" && modelCenter.active.model === model.id, local: false,
+    installAction: onlineOptional && model.compatible ? "INSTALL_REQUIRES_CONFIRMATION" : "NOT_AVAILABLE", dataState: "DATA_UNAVAILABLE",
   }));
   const adapters = listMarketplaceRegistryAdapters(onlineOptional);
-  const providers: MarketplaceProviderStatus[] = adapters.map((adapter) => ({ id: adapter.id, label: adapter.label, sourceUrl: adapter.sourceUrl, state: adapter.state, detail: adapter.detail, lastChecked: adapter.lastChecked, adapterKind: adapter.kind, configured: adapter.configured, capabilities: adapter.capabilities }));
+  const providers: MarketplaceProviderStatus[] = adapters.map((adapter) => {
+    const local = adapter.kind === "local";
+    const availability: OnlineAvailabilityState = adapter.state === "AVAILABLE" ? "AVAILABLE" : adapter.state === "OFFLINE" ? "OFFLINE" : adapter.state === "NOT_CONFIGURED" ? "NOT_CONFIGURED" : "UNAVAILABLE";
+    const refreshEnabled = !local && adapter.configured && onlineOptional;
+    const unavailableReason = refreshEnabled || local ? undefined : adapter.detail;
+    return {
+      id: adapter.id, label: adapter.label, sourceUrl: adapter.sourceUrl, state: adapter.state, detail: adapter.detail, lastChecked: adapter.lastChecked, adapterKind: adapter.kind, configured: adapter.configured, capabilities: adapter.capabilities,
+      authority: { kind: local ? "LOCAL_REGISTRY" : "REMOTE_PROVIDER" },
+      availability,
+      checkedAt: adapter.lastChecked,
+      freshness: { state: local ? "CURRENT" : "UNKNOWN", at: local ? adapter.lastChecked : null },
+      runtimeEvidence: local ? { state: "VERIFIED", sources: [adapter.detail] } : { state: adapter.configured ? "UNKNOWN" : "NOT_CONFIGURED", sources: [adapter.detail] },
+      healthState: local ? "HEALTHY" : adapter.configured ? "NOT_EVALUATED" : "UNAVAILABLE",
+      actionEligibility: { state: refreshEnabled ? "REQUIRES_CONFIRMATION" : "DISABLED", actions: [{ id: "refresh", enabled: refreshEnabled, requiresConfirmation: refreshEnabled, ...(!refreshEnabled ? { reason: unavailableReason || "Local provider refresh is not required." } : {}) }], ...(unavailableReason ? { unavailableReason } : {}) },
+      ...(unavailableReason ? { unavailableReason } : {}),
+    };
+  });
   const localExtensions = localEngineItems();
   const firstParty = await firstPartyCatalogItem(workspaceRoot, registry);
   const firstPartyId = firstParty?.id;
@@ -747,7 +815,23 @@ export async function getMarketplace(workspaceRoot: string, onlineOptional: bool
 
 export async function getProjectMarketplace(workspaceRoot: string, onlineOptional: boolean, project: ProjectSummary, profile: ProjectProfile) {
   const market = await getMarketplace(workspaceRoot, onlineOptional);
-  const items = market.items.map((item) => ({ ...item, projectCompatibility: toolProjectCompatibility(item, project, profile) }));
+  const toolStates = new Map(listAgentTools({ profile, trust: project.trust }).map((tool) => [tool.name, tool]));
+  const items = market.items.map((item) => {
+    const toolName = item.id.startsWith("tool:kforge:") ? item.id.replace("tool:kforge:", "") : "";
+    const tool = toolStates.get(toolName as Parameters<typeof toolStates.get>[0]);
+    if (!tool) return { ...item, projectCompatibility: toolProjectCompatibility(item, project, profile) };
+    const operational = tool.status === "AVAILABLE" || tool.status === "AVAILABLE_WITH_CONFIRMATION";
+    return {
+      ...item,
+      enabled: operational,
+      availability: tool.status === "BLOCKED" ? "BLOCKED" as const : operational ? "AVAILABLE" as const : "UNAVAILABLE" as const,
+      runtimeEvidence: { state: tool.evidence?.runtime === "DETECTED" || tool.evidence?.runtime === "NOT_APPLICABLE" ? "VERIFIED" as const : "NOT_AVAILABLE" as const, sources: [tool.evidence?.projectPrerequisite || profile.projectId, tool.unavailableReason || tool.description] },
+      healthState: operational ? "HEALTHY" as const : "UNAVAILABLE" as const,
+      actionEligibility: { state: tool.status === "AVAILABLE_WITH_CONFIRMATION" ? "REQUIRES_CONFIRMATION" as const : operational ? "ENABLED" as const : "DISABLED" as const, actions: [{ id: "run", enabled: operational, requiresConfirmation: tool.status === "AVAILABLE_WITH_CONFIRMATION", ...(!operational ? { reason: tool.unavailableReason || "Tool execution is unavailable." } : {}) }], ...(!operational ? { unavailableReason: tool.unavailableReason || "Tool execution is unavailable." } : {}) },
+      ...(operational ? { unavailableReason: undefined } : { unavailableReason: tool.unavailableReason || "Tool execution is unavailable." }),
+      projectCompatibility: toolProjectCompatibility(item, project, profile),
+    };
+  });
   const commandGaps = (["typecheck", "test", "build", "runtime"] as const).flatMap((capability) => {
     const detected = capability === "runtime" ? profile.commands.runtime || profile.commands.production || profile.commands.dev : profile.commands[capability];
     if (detected) return [];

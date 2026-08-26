@@ -32,6 +32,16 @@ export interface AIProviderInfo {
   capabilities: string[];
   privacy: string;
   reason?: string;
+  detectionState: "NOT_DETECTED" | "DETECTED" | "CONFIGURED" | "REACHABLE" | "UNAVAILABLE" | "UNKNOWN";
+}
+
+export interface LocalAIProviderStatus {
+  provider: "ollama" | "lm-studio" | "llama-cpp" | "none";
+  available: boolean;
+  endpoint?: string;
+  models: string[];
+  reason?: string;
+  detectionState: AIProviderInfo["detectionState"];
 }
 
 export interface CloudAIConfiguration {
@@ -202,18 +212,18 @@ export async function getOllamaRuntimeStatus(): Promise<OllamaRuntimeStatus> {
   const version = await runOllama(["--version"], 5_000);
   if (!version.ok) return { installed: false, serviceReachable: false, models: [], reason: "Ollama CLI is not installed or is not available on PATH." };
   const response = await getJson<{ models?: Array<{ name?: string; size?: number; details?: { parameter_size?: string; context_length?: number } }> }>("http://127.0.0.1:11434/api/tags");
-  const models = (response.data?.models || []).flatMap((model) => model.name ? [{ id: model.name, name: model.name, sizeBytes: model.size, parameterSize: model.details?.parameter_size, contextLength: model.details?.context_length, capabilities: ["chat", "generate"] }] : []);
+  const models = (response.data?.models || []).flatMap((model) => model.name ? [{ id: model.name, name: model.name, sizeBytes: model.size, parameterSize: model.details?.parameter_size, contextLength: model.details?.context_length, capabilities: ["UNKNOWN"] }] : []);
   return { installed: true, executable: ollamaExecutable(), version: version.output, serviceReachable: response.ok, models, reason: response.ok ? undefined : response.reason || "Ollama is installed but its local service is unavailable." };
 }
 
 async function localProvider(definition: typeof providerDefinitions[number]): Promise<AIProviderInfo> {
   if (definition.id === "ollama") {
     const status = await getOllamaRuntimeStatus();
-    return { ...definition, configured: status.installed, reachable: status.serviceReachable, available: status.serviceReachable && status.models.length > 0, models: status.models, reason: status.reason };
+    return { ...definition, configured: status.installed, reachable: status.serviceReachable, available: status.serviceReachable && status.models.length > 0, models: status.models, reason: status.reason, detectionState: !status.installed ? "NOT_DETECTED" : status.serviceReachable ? "REACHABLE" : "DETECTED" };
   }
   const response = await getJson<{ data?: Array<{ id?: string; context_length?: number }> }>(`${definition.endpoint}/v1/models`);
-  const models = (response.data?.data || []).flatMap((model) => model.id ? [{ id: model.id, name: model.id, contextLength: model.context_length, capabilities: ["chat", "generate"] }] : []);
-  return { ...definition, configured: true, reachable: response.ok, available: response.ok && models.length > 0, models, reason: response.ok ? (models.length ? undefined : `${definition.name} is reachable but reports no loaded model.`) : response.reason };
+  const models = (response.data?.data || []).flatMap((model) => model.id ? [{ id: model.id, name: model.id, contextLength: model.context_length, capabilities: ["UNKNOWN"] }] : []);
+  return { ...definition, configured: response.ok, reachable: response.ok, available: response.ok && models.length > 0, models, reason: response.ok ? (models.length ? undefined : `${definition.name} is reachable but reports no loaded model.`) : `${definition.name} is NOT_DETECTED; knowing its default endpoint is not configuration evidence.`, detectionState: response.ok ? "REACHABLE" : "NOT_DETECTED" };
 }
 
 export async function listAIProviders(): Promise<AIProviderInfo[]> {
@@ -228,6 +238,7 @@ export async function listAIProviders(): Promise<AIProviderInfo[]> {
       available: false,
       models: configuration.model ? [{ id: configuration.model, name: configuration.model, capabilities: ["chat", "generate"] }] : [],
       reason: configuration.reason,
+      detectionState: configuration.configured ? "CONFIGURED" : "NOT_DETECTED",
     };
   }));
 }
@@ -447,6 +458,33 @@ export interface ModelUpdateEngineResult {
   latestKnownVersion: "UNKNOWN";
   changelog: "REMOTE_REGISTRY_NOT_CONFIGURED";
   detail: string;
+}
+
+export async function detectLocalAIProvider(): Promise<LocalAIProviderStatus> {
+  const providers = (await listAIProviders()).filter((provider) => provider.kind === "local");
+  const detected = providers.find((provider) => provider.available) || providers.find((provider) => provider.reachable) || providers.find((provider) => provider.detectionState === "DETECTED");
+  if (!detected) return { provider: "none", available: false, models: [], detectionState: "NOT_DETECTED", reason: "No supported local AI runtime is detected. KForge will not use fabricated AI output." };
+  return { provider: detected.id as LocalAIProviderStatus["provider"], available: detected.available, endpoint: detected.endpoint, models: detected.models.map((model) => model.id), reason: detected.reason, detectionState: detected.detectionState };
+}
+
+export async function requestLocalPlan(system: string, user: string): Promise<{ provider: LocalAIProviderStatus; content: string }> {
+  const provider = await detectLocalAIProvider();
+  if (!provider.available || !provider.endpoint || !provider.models[0]) throw new Error(provider.reason || "Local AI is unavailable.");
+  const model = provider.models[0];
+  if (provider.provider === "ollama") {
+    const response = await fetch(`${provider.endpoint}/api/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, stream: false, messages: [{ role: "system", content: system }, { role: "user", content: user }] }), signal: AbortSignal.timeout(90_000) });
+    if (!response.ok) throw new Error(`Ollama request failed with HTTP ${response.status}.`);
+    const payload = await response.json() as { message?: { content?: string } };
+    const content = payload.message?.content?.trim();
+    if (!content) throw new Error("Ollama returned no plan content.");
+    return { provider, content };
+  }
+  const response = await fetch(`${provider.endpoint}/v1/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, messages: [{ role: "system", content: system }, { role: "user", content: user }], temperature: 0.2 }), signal: AbortSignal.timeout(90_000) });
+  if (!response.ok) throw new Error(`${provider.provider} request failed with HTTP ${response.status}.`);
+  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const content = payload.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error(`${provider.provider} returned no plan content.`);
+  return { provider, content };
 }
 
 function validOllamaModelName(model: string) {
