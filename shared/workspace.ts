@@ -206,7 +206,7 @@ export interface ProjectHealthEvidenceSource {
   blocker?: string;
 }
 
-export type ReleaseGateSourceKind = "LOCAL" | "GITHUB" | "CI" | "PREVIEW";
+export type ReleaseGateSourceKind = "SOURCE" | "LOCAL" | "PREVIEW" | "DESKTOP" | "WINDOWS_PACKAGE" | "INSTALLER" | "GITHUB" | "CI" | "REMOTE";
 
 export interface ReleaseGateSourceVerdict {
   kind: ReleaseGateSourceKind;

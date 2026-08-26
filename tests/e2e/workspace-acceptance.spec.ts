@@ -102,3 +102,78 @@ test.describe("KForge Settings persistence in production", () => {
     await expect(reduceMotion).toBeChecked();
   });
 });
+
+
+test.describe("KForge project collections in production", () => {
+  test.beforeEach(async ({ page }) => {
+    const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
+    expect(reset.ok(), await reset.text()).toBeTruthy();
+    const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
+    expect(opened.ok(), await opened.text()).toBeTruthy();
+    const { project } = await opened.json() as { project: { id: string } };
+    const collectionReset = await page.request.post(`/api/workspace/projects/${encodeURIComponent(project.id)}/collection`, {
+      data: { favorite: false, pinned: false, archived: false },
+    });
+    expect(collectionReset.ok(), await collectionReset.text()).toBeTruthy();
+  });
+
+  test("persists favorite, pinned, and archive membership through visible project actions", async ({ page }) => {
+    await page.goto("/workspace");
+    await page.waitForLoadState("networkidle");
+    const firstRow = page.locator(".kf-table tbody tr").first();
+    await expect(firstRow).toBeVisible();
+    const projectName = (await firstRow.locator(".kf-project-cell strong").textContent())?.trim();
+    expect(projectName).toBeTruthy();
+    const expectedProjectName = projectName!;
+    const projectRow = () =>
+      page.locator(".kf-table tbody tr").filter({
+        has: page.locator(".kf-project-cell").getByText(expectedProjectName, { exact: true }),
+      });
+    const clickAction = async (label: string) => {
+      const currentRow = projectRow();
+      await expect(currentRow).toBeVisible();
+      await currentRow.locator(`summary[aria-label="Actions for ${expectedProjectName}"]`).click();
+      const persisted = page.waitForResponse((response) =>
+        response.request().method() === "POST" && response.url().includes("/collection"),
+      );
+      await currentRow.getByRole("button", { name: label, exact: true }).click();
+      expect((await persisted).ok()).toBeTruthy();
+    };
+
+    const collectionCard = () => page.locator(".kf-provider-card").filter({ hasText: expectedProjectName });
+    const clickCollectionAction = async (label: string) => {
+      const persisted = page.waitForResponse((response) =>
+        response.request().method() === "POST" && response.url().includes("/collection"),
+      );
+      await collectionCard().getByRole("button", { name: label, exact: true }).click();
+      expect((await persisted).ok()).toBeTruthy();
+    };
+
+    await clickAction("Add favorite");
+    await page.locator(".kf-nav").getByRole("button", { name: "Favorites", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Favorites", exact: true })).toBeVisible();
+    await expect(collectionCard()).toBeVisible();
+
+    await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
+    await clickAction("Pin project");
+    await page.locator(".kf-nav").getByRole("button", { name: "Pinned", exact: true }).click();
+    await expect(collectionCard()).toBeVisible();
+
+    await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
+    await clickAction("Archive project");
+    await page.locator(".kf-nav").getByRole("button", { name: "Archive", exact: true }).click();
+    await expect(collectionCard()).toBeVisible();
+    await clickCollectionAction("Restore from archive");
+    await expect(collectionCard()).toHaveCount(0);
+
+    await page.locator(".kf-nav").getByRole("button", { name: "Favorites", exact: true }).click();
+    await expect(collectionCard()).toBeVisible();
+    await clickCollectionAction("Remove favorite");
+    await expect(collectionCard()).toHaveCount(0);
+
+    await page.locator(".kf-nav").getByRole("button", { name: "Pinned", exact: true }).click();
+    await expect(collectionCard()).toBeVisible();
+    await clickCollectionAction("Unpin project");
+    await expect(collectionCard()).toHaveCount(0);
+  });
+});

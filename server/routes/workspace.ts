@@ -786,24 +786,63 @@ async function calculateHealth(project: ProjectSummary, profile: ProjectProfile,
   return { score: totalWeight ? Math.round(measured.reduce((total, entry) => total + (entry.score || 0) * entry.weight, 0) / totalWeight) : null, evidenceCoverage: Math.round((measured.length / metrics.length) * 100), metrics, sources, release, calculatedAt };
 }
 
-export function releaseGateSourceVerdicts(scan: ProjectScan): { readiness: ReleaseGateResult["readiness"]; verdicts: ReleaseGateResult["verdicts"] } {
-  const kinds: ReleaseGateSourceKind[] = ["LOCAL", "GITHUB", "CI", "PREVIEW"];
-  const verdicts = Object.fromEntries(kinds.map((kind) => {
-    const source = scan.health.sources[kind];
-    const verdict: ReleaseGateSourceVerdict = {
-      kind,
-      state: source.state,
-      source: source.source,
-      timestamp: source.timestamp,
-      freshness: source.freshness,
-      evidence: [...source.evidence],
-      blocker: source.blocker,
-      reason: source.error || source.blocker,
-    };
+type LocalReleaseEvidenceKind = "DESKTOP" | "WINDOWS_PACKAGE" | "INSTALLER";
+type LocalReleaseEvidence = Pick<ReleaseGateSourceVerdict, "state" | "source" | "timestamp" | "freshness" | "evidence" | "blocker" | "reason">;
+
+async function readReleaseEvidenceFile(projectPath: string, relativePath: string): Promise<Record<string, unknown> | null> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(path.join(projectPath, relativePath), "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+async function localReleaseEvidence(project: ProjectSummary): Promise<Record<LocalReleaseEvidenceKind, LocalReleaseEvidence>> {
+  const [desktop, packageWindows, installer] = await Promise.all([
+    readReleaseEvidenceFile(project.path, "release/verification/desktop-verification.json"),
+    readReleaseEvidenceFile(project.path, "release/verification/package-windows.json"),
+    readReleaseEvidenceFile(project.path, "release/verification/installer-verification.json"),
+  ]);
+  const desktopPassed = desktop?.startup === "PASS" && desktop.windowLoad === "PASS" && desktop.safeShutdown === "PASS";
+  const packagePassed = packageWindows?.checks && typeof packageWindows.checks === "object" && (packageWindows.checks as Record<string, unknown>).installerExists === true && (packageWindows.checks as Record<string, unknown>).sha256Recorded === true;
+  const installerPassed = installer?.manifestVerified === true && installer.lifecycle === "PASS" && installer.installedRuntime === "PASS" && installer.previewLifecycle === "PASS";
+  const signatureState = typeof packageWindows?.signatureState === "string" ? packageWindows.signatureState : typeof installer?.signatureState === "string" ? installer.signatureState : "UNKNOWN";
+  return {
+    DESKTOP: desktop
+      ? { state: desktopPassed ? "READY" : "ERROR", source: "release/verification/desktop-verification.json", timestamp: typeof desktop.verifiedAt === "string" ? desktop.verifiedAt : null, freshness: "CACHED", evidence: [`startup=${String(desktop.startup || "UNKNOWN")}`, `windowLoad=${String(desktop.windowLoad || "UNKNOWN")}`, `safeShutdown=${String(desktop.safeShutdown || "UNKNOWN")}`], reason: desktopPassed ? undefined : "Desktop verification record is incomplete or reports a failed lifecycle check." }
+      : { state: "UNAVAILABLE", source: "release/verification/desktop-verification.json", timestamp: null, freshness: "NOT_APPLICABLE", evidence: ["No local desktop verification record was found for this project."], reason: "Run the desktop verification gate to produce evidence." },
+    WINDOWS_PACKAGE: packageWindows
+      ? { state: packagePassed && signatureState !== "UNSIGNED" ? "READY" : packagePassed ? "READY_WITH_WARNINGS" : "ERROR", source: "release/verification/package-windows.json", timestamp: typeof packageWindows.verifiedAt === "string" ? packageWindows.verifiedAt : null, freshness: "CACHED", evidence: [`artifact=${String(packageWindows.artifactFilename || "UNKNOWN")}`, `sha256=${String(packageWindows.sha256 || "UNKNOWN")}`, `signature=${signatureState}`], reason: packagePassed ? (signatureState === "UNSIGNED" ? "Package integrity evidence is present, but the local package is unsigned." : undefined) : "Windows package verification record is incomplete or failed." }
+      : { state: "UNAVAILABLE", source: "release/verification/package-windows.json", timestamp: null, freshness: "NOT_APPLICABLE", evidence: ["No local Windows package verification record was found for this project."], reason: "Run Windows packaging verification to produce package identity and digest evidence." },
+    INSTALLER: installer
+      ? { state: installerPassed && signatureState !== "UNSIGNED" ? "READY" : installerPassed ? "READY_WITH_WARNINGS" : "ERROR", source: "release/verification/installer-verification.json", timestamp: typeof installer.verifiedAt === "string" ? installer.verifiedAt : null, freshness: "CACHED", evidence: [`manifestVerified=${String(installer.manifestVerified)}`, `lifecycle=${String(installer.lifecycle || "UNKNOWN")}`, `installedRuntime=${String(installer.installedRuntime || "UNKNOWN")}`, `signature=${signatureState}`], reason: installerPassed ? (signatureState === "UNSIGNED" ? "Installer lifecycle evidence is present, but code signing is not verified." : undefined) : "Installer verification record is incomplete or reports a failed lifecycle check." }
+      : { state: "UNAVAILABLE", source: "release/verification/installer-verification.json", timestamp: null, freshness: "NOT_APPLICABLE", evidence: ["No local installer verification record was found for this project."], reason: "Run the installer verification gate to produce lifecycle evidence." },
+  };
+}
+
+export function releaseGateSourceVerdicts(scan: ProjectScan, localEvidence?: Partial<Record<LocalReleaseEvidenceKind, LocalReleaseEvidence>>): { readiness: ReleaseGateResult["readiness"]; verdicts: ReleaseGateResult["verdicts"] } {
+  const scanSourceKinds: Record<"LOCAL" | "PREVIEW" | "GITHUB" | "CI" | "REMOTE", keyof typeof scan.health.sources> = { LOCAL: "LOCAL", PREVIEW: "PREVIEW", GITHUB: "GITHUB", CI: "CI", REMOTE: "REMOTE_REGISTRY" };
+  const unavailable = (kind: LocalReleaseEvidenceKind): ReleaseGateSourceVerdict => ({ kind, state: "UNAVAILABLE", source: `Local ${kind.toLowerCase().replace(/_/g, " ")} evidence`, timestamp: null, freshness: "NOT_APPLICABLE", evidence: [`No local ${kind.toLowerCase().replace(/_/g, " ")} evidence has been recorded.`], reason: "This evidence source is independent from local source checks and CI." });
+  const sourceVerdict: ReleaseGateSourceVerdict = { kind: "SOURCE", state: "READY", source: "Current local source scan", timestamp: scan.scannedAt, freshness: "CURRENT_SCAN", evidence: [`scan=${scan.scannedAt}`, `health=${scan.health.release.state}`], reason: undefined };
+  const scannedVerdicts = Object.fromEntries(Object.entries(scanSourceKinds).map(([kind, sourceKind]) => {
+    const source = scan.health.sources[sourceKind];
+    const verdict: ReleaseGateSourceVerdict = { kind: kind as ReleaseGateSourceKind, state: source.state, source: source.source, timestamp: source.timestamp, freshness: source.freshness, evidence: [...source.evidence], blocker: source.blocker, reason: source.error || source.blocker };
     return [kind, verdict];
-  })) as ReleaseGateResult["verdicts"];
+  }));
+  const verdicts: ReleaseGateResult["verdicts"] = {
+    SOURCE: sourceVerdict,
+    LOCAL: scannedVerdicts.LOCAL as ReleaseGateSourceVerdict,
+    PREVIEW: scannedVerdicts.PREVIEW as ReleaseGateSourceVerdict,
+    DESKTOP: { kind: "DESKTOP", ...(localEvidence?.DESKTOP || unavailable("DESKTOP")) },
+    WINDOWS_PACKAGE: { kind: "WINDOWS_PACKAGE", ...(localEvidence?.WINDOWS_PACKAGE || unavailable("WINDOWS_PACKAGE")) },
+    INSTALLER: { kind: "INSTALLER", ...(localEvidence?.INSTALLER || unavailable("INSTALLER")) },
+    GITHUB: scannedVerdicts.GITHUB as ReleaseGateSourceVerdict,
+    CI: scannedVerdicts.CI as ReleaseGateSourceVerdict,
+    REMOTE: scannedVerdicts.REMOTE as ReleaseGateSourceVerdict,
+  };
   const states = Object.values(verdicts).map((entry) => entry.state);
-  const readiness: ReleaseGateResult["readiness"] = verdicts.LOCAL.state === "BLOCKED" || verdicts.LOCAL.state === "ERROR"
+  const readiness: ReleaseGateResult["readiness"] = verdicts.LOCAL.state === "BLOCKED" || verdicts.LOCAL.state === "ERROR" || verdicts.SOURCE.state === "ERROR"
     ? "BLOCKED"
     : states.every((state) => state === "READY")
       ? "READY"
@@ -1452,10 +1491,33 @@ router.post("/tasks/:taskId/mission/rollback", async (req, res) => {
   return res.json({ task, restored });
 });
 
+type GitFileChange = { file: string; indexStatus: string; worktreeStatus: string; staged: boolean; unstaged: boolean; untracked: boolean };
+
+function parseGitFileChanges(status: string): GitFileChange[] {
+  return status.split(/\r?\n/)
+    .filter((line) => /^[ MADRCU?!]{2} /.test(line))
+    .map((line) => {
+      const indexStatus = line[0] || " ";
+      const worktreeStatus = line[1] || " ";
+      const file = line.slice(3).trim();
+      return { file, indexStatus, worktreeStatus, staged: indexStatus !== " " && indexStatus !== "?", unstaged: worktreeStatus !== " " || indexStatus === "?", untracked: indexStatus === "?" && worktreeStatus === "?" };
+    })
+    .filter((entry) => Boolean(entry.file));
+}
+
+function safeGitPaths(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) return null;
+  const files = [...new Set(value.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()))];
+  if (files.length !== value.length) return null;
+  if (files.some((file) => !file || path.isAbsolute(file) || file.includes("\0") || file.split(/[\\/]/).some((part) => part === ".."))) return null;
+  return files;
+}
+
 async function gitCenter(project: ProjectSummary) {
-  const [status, diffStat, branches, history, stash, tags] = await Promise.all([
+  const [status, diffStat, stagedDiffStat, branches, history, stash, tags] = await Promise.all([
     run("git", ["status", "--porcelain=v1", "--branch"], project.path),
     run("git", ["diff", "--stat"], project.path),
+    run("git", ["diff", "--cached", "--stat"], project.path),
     run("git", ["branch", "--format=%(refname:short)"], project.path),
     run("git", ["log", "-20", "--pretty=format:%H%x09%h%x09%s%x09%cI"], project.path),
     run("git", ["stash", "list"], project.path),
@@ -1463,7 +1525,9 @@ async function gitCenter(project: ProjectSummary) {
   ]);
   return {
     status: status.output,
+    changes: parseGitFileChanges(status.output),
     diffStat: diffStat.output,
+    stagedDiffStat: stagedDiffStat.output,
     branches: branches.output.split(/\r?\n/).filter(Boolean),
     commits: history.output.split(/\r?\n/).filter(Boolean).map((line) => { const [sha, shortSha, subject, committedAt] = line.split("\t"); return { sha, shortSha, subject, committedAt }; }),
     stashes: stash.output.split(/\r?\n/).filter(Boolean),
@@ -1522,6 +1586,44 @@ router.post("/projects/:id/git/branches", async (req, res) => {
   if (!/^[A-Za-z0-9._/-]+$/.test(name) || name.startsWith("-") || name.includes("..")) return res.status(400).json({ error: "Provide a safe branch name." });
   const result = await run("git", ["switch", "-c", name], project.path);
   return res.status(result.ok ? 201 : 422).json({ ok: result.ok, output: result.output, message: result.ok ? `Branch ${name} created.` : "Branch creation failed." });
+});
+
+router.post("/projects/:id/git/stage", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const files = safeGitPaths(req.body?.files);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Git staging"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Staging local files requires explicit confirmation.", permission: "ask" });
+  if (!files) return res.status(400).json({ error: "Provide 1–100 safe project-relative file paths to stage." });
+  const result = await run("git", ["add", "--", ...files], project.path);
+  const refreshed = await makeProjectSummary(project.path);
+  return res.status(result.ok ? 200 : 422).json({ ok: result.ok, action: "stage", files, output: result.output, git: await gitCenter(refreshed) });
+});
+
+router.post("/projects/:id/git/unstage", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const files = safeGitPaths(req.body?.files);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Git unstage"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Unstaging local files requires explicit confirmation and preserves working-tree contents.", permission: "ask" });
+  if (!files) return res.status(400).json({ error: "Provide 1–100 safe project-relative file paths to unstage." });
+  const result = await run("git", ["restore", "--staged", "--", ...files], project.path);
+  const refreshed = await makeProjectSummary(project.path);
+  return res.status(result.ok ? 200 : 422).json({ ok: result.ok, action: "unstage", files, output: result.output, git: await gitCenter(refreshed) });
+});
+
+router.post("/projects/:id/git/commit", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Local Git commit"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Creating a local Git commit requires explicit confirmation. KForge does not push it to any remote.", permission: "ask" });
+  if (!message || message.length > 240 || message.includes("\0")) return res.status(400).json({ error: "Provide a commit message between 1 and 240 characters." });
+  const staged = await run("git", ["diff", "--cached", "--quiet"], project.path);
+  if (staged.ok) return res.status(409).json({ error: "No staged changes are available for a local commit." });
+  const result = await run("git", ["commit", "-m", message], project.path);
+  const refreshed = await makeProjectSummary(project.path);
+  return res.status(result.ok ? 201 : 422).json({ ok: result.ok, action: "commit", message, output: result.output, remotePush: "NOT_PERFORMED", git: await gitCenter(refreshed) });
 });
 
 router.get("/projects/:id/github", async (req, res) => {
@@ -1658,7 +1760,8 @@ async function releasePreparation(project: ProjectSummary) {
   if (packageManifest) { try { const raw = JSON.parse(await fs.readFile(path.join(project.path, packageManifest), "utf8")); version = typeof raw.version === "string" ? raw.version : undefined; } catch { /* Manifest is reported through profile discovery; malformed JSON is not invented as a version. */ } }
   const artifactNames = ["dist", "build", "out", "target", "release", "artifacts"];
   const artifacts = (await Promise.all(artifactNames.map(async (name) => { const absolute = path.join(project.path, name); try { const stat = await fs.stat(absolute); return stat.isDirectory() ? name : undefined; } catch { return undefined; } }))).filter((entry): entry is string => Boolean(entry));
-  return { generatedAt: new Date().toISOString(), baselineTag: baseline || null, version: version || null, commits, artifacts, notes: commits.length ? commits.map((commit) => `- ${commit.subject} (${commit.shortSha})`).join("\n") : "No commits are available for a release note proposal.", notice: "This is a local preparation preview. It does not create a tag, commit, GitHub release, or remote request." };
+  const localEvidence = await localReleaseEvidence(project);
+  return { generatedAt: new Date().toISOString(), baselineTag: baseline || null, version: version || null, commits, artifacts, localEvidence, notes: commits.length ? commits.map((commit) => `- ${commit.subject} (${commit.shortSha})`).join("\n") : "No commits are available for a release note proposal.", notice: "This is a local preparation preview. It does not create a tag, commit, GitHub release, or remote request. Local artifact digests are never substituted for CI artifact identities." };
 }
 
 router.get("/projects/:id/self-audit", async (req, res) => {
@@ -1699,7 +1802,7 @@ router.post("/projects/:id/release-gate", async (req, res) => {
   const blockers = scan.issues.filter((entry) => (entry.severity === "critical" || entry.severity === "high") && entry.status !== "ignored");
   const warnings = scan.issues.filter((entry) => entry.severity === "medium" || entry.severity === "low");
   const missingChecks = (["typecheck", "test", "build", "runtime"] as WorkspaceAction[]).filter((action) => !verification.some((entry) => entry.action === action));
-  const separated = releaseGateSourceVerdicts(scan);
+  const separated = releaseGateSourceVerdicts(scan, await localReleaseEvidence(freshProject));
   const readiness: ReleaseGateResult["readiness"] = blockers.length || failedVerification.length ? "BLOCKED" : separated.readiness;
   const result: ReleaseGateResult = {
     readiness,

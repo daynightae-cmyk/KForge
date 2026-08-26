@@ -406,7 +406,7 @@
   .kf-table th:first-child, .kf-table td:first-child { width: 43px; padding-left: 20px; }
   .kf-table th:last-child, .kf-table td:last-child { width: 44px; padding-right: 16px; }
   .kf-table td { height: 64px; padding: 8px 10px; border-bottom: 1px solid #f0f1f4; color: #4a5260; vertical-align: middle; }
-  .kf-table tbody tr { transition: background .14s; cursor: pointer; }
+  .kf-table tbody tr { scroll-margin-top: 112px; transition: background .14s; cursor: pointer; }
   .kf-table tbody tr:hover { background: #fafbfe; }
   .kf-table tbody tr.is-active { background: #f7f9ff; box-shadow: inset 3px 0 0 var(--kf-primary); }
   .kf-table tbody tr.is-selected { background: #f1f5ff; }
@@ -431,7 +431,9 @@
   .kf-git-state .is-good { background: var(--kf-success-bg); color: var(--kf-success); }
   .kf-git-state .is-warning, .kf-git-state small { background: var(--kf-warning-bg); color: var(--kf-warning); }
   .kf-date { display: inline-flex; align-items: center; gap: 5px; min-width: 155px; color: #798292; font-size: 10px; white-space: nowrap; }
-  .kf-row-menu summary { width: 27px; height: 27px; justify-content: center; border-radius: 5px; color: #747d8d; }
+  .kf-row-menu { position: relative; z-index: 3; }
+  .kf-row-menu[open] { z-index: 4; }
+  .kf-row-menu summary { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border-radius: 5px; color: #747d8d; cursor: pointer; }
   .kf-row-menu summary:hover { background: #eef1f7; color: #35415a; }
   .kf-row-menu > div { min-width: 135px; }
   .kf-row-menu button, .kf-row-menu a { display: block; padding: 8px; border: 0; border-radius: 5px; background: transparent; color: #485260; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }

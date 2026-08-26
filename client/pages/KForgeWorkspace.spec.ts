@@ -125,7 +125,7 @@ describe("KForge Workspace capability coverage", () => {
     expect(source).toContain('Browser console capture: NOT AVAILABLE');
     expect(source).toContain('/preview/fix-verify');
     expect(source).toContain('Preview → Fix → Verify');
-    expect(source).toContain('Local · GitHub · CI · Preview');
+    expect(source).toContain('Source · Local · Desktop · Package · Installer · Remote');
     expect(source).toContain('["offline", "local-first", "online-optional", "online"]');
     expect(source).toContain("externalMetadataReads");
     expect(source).toContain("remoteTransfers");

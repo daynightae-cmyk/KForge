@@ -249,7 +249,11 @@ describe("KForge Workspace engines", () => {
     const project = await makeProjectSummary(fixture("workspace-clean"));
     const scan = await scanProject(project);
     const release = releaseGateSourceVerdicts(scan);
-    expect(Object.keys(release.verdicts)).toEqual(["LOCAL", "GITHUB", "CI", "PREVIEW"]);
+    expect(Object.keys(release.verdicts)).toEqual(["SOURCE", "LOCAL", "PREVIEW", "DESKTOP", "WINDOWS_PACKAGE", "INSTALLER", "GITHUB", "CI", "REMOTE"]);
+    expect(release.verdicts.SOURCE).toMatchObject({ kind: "SOURCE", state: "READY", timestamp: expect.any(String), evidence: expect.any(Array) });
+    expect(release.verdicts.DESKTOP).toMatchObject({ kind: "DESKTOP", state: "UNAVAILABLE", source: expect.stringContaining("desktop"), freshness: "NOT_APPLICABLE" });
+    expect(release.verdicts.WINDOWS_PACKAGE).toMatchObject({ kind: "WINDOWS_PACKAGE", state: "UNAVAILABLE", source: expect.stringContaining("windows package"), freshness: "NOT_APPLICABLE" });
+    expect(release.verdicts.INSTALLER).toMatchObject({ kind: "INSTALLER", state: "UNAVAILABLE", source: expect.stringContaining("installer"), freshness: "NOT_APPLICABLE" });
     expect(release.verdicts.CI).toMatchObject({ kind: "CI", state: "NOT_CONFIGURED", source: expect.any(String), freshness: expect.any(String), evidence: expect.any(Array) });
     expect(release.verdicts.LOCAL.timestamp).toEqual(expect.any(String));
     expect(release.readiness).toBe("READY WITH WARNINGS");
