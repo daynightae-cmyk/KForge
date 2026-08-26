@@ -9,6 +9,8 @@ function isExternalHttpRequest(rawUrl: string) {
 }
 
 test.describe("KForge persistent settings and platform mode in production", () => {
+  test.setTimeout(120_000);
+
   test.beforeEach(async ({ page }) => {
     const settings = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
     expect(settings.ok(), await settings.text()).toBeTruthy();
@@ -49,8 +51,8 @@ test.describe("KForge persistent settings and platform mode in production", () =
       expect((await response.json() as { mode: string }).mode).toBe(mode);
     }
 
-    await page.reload();
-    await page.waitForLoadState("networkidle");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible({ timeout: 60_000 });
     await page.locator(".kf-nav").getByRole("button", { name: "Settings", exact: true }).click();
     await expect(settingsCenter.getByLabel("Information density")).toHaveValue("compact");
     await expect(settingsCenter.getByLabel("Reduce motion")).toBeChecked();

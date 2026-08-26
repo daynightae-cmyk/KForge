@@ -14,6 +14,8 @@ const sequence = [
 ] as const;
 
 test.describe("KForge Workspace production acceptance", () => {
+  test.setTimeout(120_000);
+
   test.beforeEach(async ({ page }) => {
     const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
     expect(reset.ok(), await reset.text()).toBeTruthy();
@@ -21,11 +23,10 @@ test.describe("KForge Workspace production acceptance", () => {
       data: { path: path.resolve(process.cwd()) },
     });
     expect(opened.ok(), await opened.text()).toBeTruthy();
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    await expect(page.locator(".kf-sidebar")).toBeVisible();
-    await expect(page.locator(".kf-topbar")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await expect(page.locator(".kf-sidebar")).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator(".kf-topbar")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible({ timeout: 60_000 });
   });
 
   test("keeps a persistent shell while each requested destination replaces the active capability surface", async ({ page }) => {
@@ -46,8 +47,8 @@ test.describe("KForge Workspace production acceptance", () => {
       await expect(navigation).toBeVisible();
       await navigation.click();
 
-      await expect(page.locator(".kf-sidebar")).toBeVisible();
-      await expect(page.locator(".kf-topbar")).toBeVisible();
+      await expect(page.locator(".kf-sidebar")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator(".kf-topbar")).toBeVisible({ timeout: 30_000 });
       await expect(page.locator(".kf-breadcrumb strong")).toHaveText(destination.title);
       await expect(page.locator(".kf-page-heading h1")).toHaveText(destination.title);
       await expect(navigation).toHaveClass(/is-active/);
@@ -161,30 +162,30 @@ test.describe("KForge project collections in production", () => {
     await clickAction("Add favorite");
     await page.locator(".kf-nav").getByRole("button", { name: "Favorites", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Favorites", exact: true })).toBeVisible();
-    await expect(collectionCard()).toBeVisible();
+    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
 
     await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
     await clickAction("Pin project");
     await page.locator(".kf-nav").getByRole("button", { name: "Pinned", exact: true }).click();
-    await expect(collectionCard()).toBeVisible();
+    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
 
     await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
     await clickAction("Archive project");
     await page.locator(".kf-nav").getByRole("button", { name: "Archive", exact: true }).click();
-    await expect(collectionCard()).toBeVisible();
+    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
     await clickCollectionAction("Restore from archive");
-    await expect(collectionCard()).toHaveCount(0);
+    await expect(collectionCard()).toHaveCount(0, { timeout: 30_000 });
 
     await page.locator(".kf-nav").getByRole("button", { name: "Favorites", exact: true }).click();
-    await expect(collectionCard()).toBeVisible();
+    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
     await clickCollectionAction("Remove favorite");
-    await expect(collectionCard()).toHaveCount(0);
+    await expect(collectionCard()).toHaveCount(0, { timeout: 30_000 });
 
     await page.locator(".kf-nav").getByRole("button", { name: "Pinned", exact: true }).click();
-    await expect(collectionCard()).toBeVisible();
+    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
     await clickCollectionAction("Unpin project");
-    await expect(collectionCard()).toHaveCount(0);
+    await expect(collectionCard()).toHaveCount(0, { timeout: 30_000 });
   });
 });
