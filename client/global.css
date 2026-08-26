@@ -402,11 +402,12 @@
   .kf-group-header--collapsed { border-bottom: 0; }
   .kf-table-wrap { overflow-x: auto; outline: none; }
   .kf-table { width: 100%; min-width: 940px; border-collapse: separate; border-spacing: 0; }
-  .kf-table th { position: sticky; z-index: 2; top: 62px; height: 38px; padding: 0 10px; border-bottom: 1px solid var(--kf-border); background: #fff; color: #8a92a1; font-size: 10px; font-weight: 700; letter-spacing: .025em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+  .kf-table th { position: relative; z-index: 1; height: 38px; padding: 0 10px; border-bottom: 1px solid var(--kf-border); background: #fff; color: #8a92a1; font-size: 10px; font-weight: 700; letter-spacing: .025em; text-align: left; text-transform: uppercase; white-space: nowrap; }
   .kf-table th:first-child, .kf-table td:first-child { width: 43px; padding-left: 20px; }
   .kf-table th:last-child, .kf-table td:last-child { width: 44px; padding-right: 16px; }
   .kf-table td { height: 64px; padding: 8px 10px; border-bottom: 1px solid #f0f1f4; color: #4a5260; vertical-align: middle; }
-  .kf-table tbody tr { scroll-margin-top: 112px; transition: background .14s; cursor: pointer; }
+  .kf-table tbody tr { scroll-margin-top: 128px; transition: background .14s; cursor: pointer; }
+  .kf-project-cell, .kf-row-menu summary { scroll-margin-top: 128px; }
   .kf-table tbody tr:hover { background: #fafbfe; }
   .kf-table tbody tr.is-active { background: #f7f9ff; box-shadow: inset 3px 0 0 var(--kf-primary); }
   .kf-table tbody tr.is-selected { background: #f1f5ff; }
@@ -777,7 +778,7 @@
 
 /* Persistent shell scroll ownership and live platform settings. */
 .kf-app { height: 100vh; overflow: hidden; }
-.kf-main { height: 100vh; overflow-y: auto; overscroll-behavior: contain; }
+.kf-main { height: 100vh; overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: 128px; }
 [data-kf-density="compact"] .kf-content { padding-top: 24px; padding-bottom: 32px; }
 [data-kf-density="compact"] .kf-nav-item { min-height: 30px; }
 [data-kf-density="compact"] .kf-table td { padding-top: 8px; padding-bottom: 8px; }
