@@ -92,6 +92,22 @@ describe("KForge Workspace engines", () => {
     expect(scan.issues.some((entry) => entry.category === "completeness" && entry.file === "src/index.ts")).toBe(true);
   });
 
+  it("classifies a missing environment template as a deterministic safe local patch", async () => {
+    const projectPath = await fs.mkdtemp(path.join(process.cwd(), "kforge-env-example-"));
+    try {
+      await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "environment-template-fixture", version: "1.0.0", private: true }), "utf8");
+      await fs.writeFile(path.join(projectPath, ".env"), "PUBLIC_API_URL=https://local.invalid\nSERVICE_TOKEN=fixture-value-not-copied\n", "utf8");
+      const scan = await scanProject(await makeProjectSummary(projectPath));
+      expect(scan.issues.find((entry) => entry.id.endsWith(":missing-env-example"))).toMatchObject({
+        category: "completeness",
+        fixability: "automatic",
+        risk: "safe",
+      });
+    } finally {
+      await fs.rm(projectPath, { recursive: true, force: true });
+    }
+  });
+
   it("reports an actual failing test command", async () => {
     const project = await makeProjectSummary(fixture("workspace-failing-test"));
     const result = await executeProjectAction(project, "test");

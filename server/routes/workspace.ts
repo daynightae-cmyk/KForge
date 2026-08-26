@@ -598,7 +598,7 @@ async function completenessIssues(project: ProjectSummary, profile: ProjectProfi
     } catch { /* unreadable source file is not a diagnostic */ }
   }
   if (!(await pathExists(path.join(project.path, "README.md")))) issues.push(issue(project.id, "missing-readme", "low", "completeness", "README is missing", "The project root has no README.md.", { source: "KForge completeness", fixability: "guided", suggestion: "Add concise local-development, test, build, and production instructions." }));
-  if (profile.envFiles.length > 0 && !(await pathExists(path.join(project.path, ".env.example")))) issues.push(issue(project.id, "missing-env-example", "low", "completeness", "Environment example is missing", "Environment files were detected without a .env.example template.", { source: "KForge completeness", fixability: "guided", suggestion: "Provide non-secret variable names and safe example values in .env.example." }));
+  if (profile.envFiles.length > 0 && !(await pathExists(path.join(project.path, ".env.example")))) issues.push(issue(project.id, "missing-env-example", "low", "completeness", "Environment example is missing", "Environment files were detected without a .env.example template.", { source: "KForge completeness", fixability: "automatic", risk: "safe", suggestion: "Preview the deterministic local template, then confirm creation of .env.example with variable names and blank values only." }));
   return { issues, coverage: traversal.coverage };
 }
 

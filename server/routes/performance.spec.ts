@@ -83,9 +83,15 @@ describe("KForge large-project benchmark", () => {
       expect(scan.coverage.completeness).toMatchObject({ state: "LIMIT_REACHED", scannedCount: 5_000, totalOrUnknown: null });
       expect(scan.health.metrics.find((entry) => entry.key === "security")).toMatchObject({ status: "unknown", score: null });
       expect(measurements.repeatedNavigationMemoryDeltaBytes).toBeLessThan(64 * 1024 * 1024);
-      const evidence = await persistBenchmarkEvidence(root, { id: "large-project-5100", createdAt: new Date().toISOString(), fixture: { files: count, packages: 5, sourceFiles: profile.sourceFileCount }, measurements });
+      const report = { id: "large-project-5100", createdAt: new Date().toISOString(), fixture: { files: count, packages: 5, sourceFiles: profile.sourceFileCount }, measurements };
+      const evidence = await persistBenchmarkEvidence(root, report);
       const persisted = JSON.parse(await fs.readFile(evidence.path, "utf8"));
       expect(persisted).toMatchObject({ id: "large-project-5100", fixture: { files: count, packages: 5, sourceFiles: profile.sourceFileCount }, measurements });
+      if (process.env.KFORGE_BENCHMARK_REPORT_PATH) {
+        const reportPath = path.resolve(process.env.KFORGE_BENCHMARK_REPORT_PATH);
+        await fs.mkdir(path.dirname(reportPath), { recursive: true });
+        await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+      }
       console.log(`KFORGE_BENCHMARK ${JSON.stringify({ ...measurements, evidencePath: evidence.path })}`);
     } finally {
       clearProjectCache(root);
