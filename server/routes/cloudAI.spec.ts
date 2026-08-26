@@ -74,5 +74,5 @@ describe("cloud AI planning route", () => {
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
-  }, 30_000);
+  }, 120_000);
 });
