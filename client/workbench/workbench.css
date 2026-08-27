@@ -9,6 +9,20 @@
 .light .kw-shell .kw-surface-heading p,
 .light .kw-shell .kw-table tr.is-selected code,
 .light .kw-shell .kw-brand-mark { color: #00676b; }
+.light .kw-shell .kw-badge--available,
+.light .kw-shell .kw-badge--installed,
+.light .kw-shell .kw-badge--running,
+.light .kw-shell .kw-badge--reachable,
+.light .kw-shell .kw-badge--pass,
+.light .kw-shell .kw-badge--ready,
+.light .kw-shell .kw-badge--trusted,
+.light .kw-shell .kw-badge--healthy,
+.light .kw-shell .kw-badge--compatible { color: #116329; }
+.light .kw-shell .kw-badge--blocked,
+.light .kw-shell .kw-badge--failed,
+.light .kw-shell .kw-badge--unavailable,
+.light .kw-shell .kw-badge--incompatible,
+.light .kw-shell .kw-badge--not-detected { color: #9f1c1c; }
 .kw-shell :focus-visible { outline: 2px solid var(--kw-primary); outline-offset: 2px; }
 .kw-workbench-scroll { overflow: auto; }
 .kw-table-wrap { overflow: visible; }
