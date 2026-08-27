@@ -1,3 +1,9 @@
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
+import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
+import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
+import { viewLabel } from "./navigation";
+
 function OnlineSurface({ view, project }: SurfaceProps) {
   const [market, setMarket] = useState<MarketplaceData>({}); const [control, setControl] = useState<RecordRow | null>(null); const [tasks, setTasks] = useState<TaskRow[]>([]); const [selectedId, setSelectedId] = useState(""); const [query, setQuery] = useState(""); const [message, setMessage] = useState("Loading Online evidence…"); const [operation, setOperation] = useState<RecordRow | null>(null);
   const refresh = async () => { try { const [m, c, t] = await Promise.all([fetchJson<MarketplaceData>(project ? `/api/workspace/projects/${encodeURIComponent(project.id)}/marketplace` : "/api/workspace/marketplace"), fetchJson<RecordRow>("/api/workspace/online/control-center"), fetchJson<{ tasks: TaskRow[] }>("/api/workspace/tasks")]); setMarket(m); setControl(c); setTasks(t.tasks || []); if (!selectedId && m.items?.[0]) setSelectedId(m.items[0].id); setMessage(""); } catch (error) { setMessage(error instanceof Error ? error.message : "Online evidence failed."); } };

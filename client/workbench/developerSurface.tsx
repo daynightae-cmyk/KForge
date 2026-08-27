@@ -1,3 +1,9 @@
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
+import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
+import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
+import { viewLabel } from "./navigation";
+
 function DeveloperSurface({ view, project, onExecution }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail="Developer execution requires explicit project context." />;
   if (view === "terminal") return <CommandTerminal project={project} onExecution={onExecution} />;

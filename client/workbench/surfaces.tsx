@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { KForgeActivity, WorkspaceResponse, ProjectSummary, KForgePlatformSettings, WorkspaceActionDescriptor, WorkspaceResponse } from "@shared/workspace";
+import type { KForgeActivity, WorkspaceResponse, ProjectSummary, KForgePlatformSettings, WorkspaceActionDescriptor } from "@shared/workspace";
 import { ACTIVITIES, KFORGE_ACTIVITY_IDS, ONLINE_EXPLORER_VIEWS, activityDefinition, activityLabel, defaultView, viewLabel } from "./navigation";
 import ProjectsSurface from "./projectsSurface";
 import OnlineSurface from "./onlineSurface";
@@ -11,7 +11,8 @@ import RemoteSurface from "./remoteSurface";
 import ReleaseSurface from "./releaseSurface";
 import SystemSurface from "./systemSurface";
 import { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
-import { EvidenceRows, EvidenceCards, StatusBadge, EmptyState, EvidenceTable, AdvancedEvidence, type RecordRow, type TaskRow, type ExecutionSnapshot, type SurfaceProps } from "./ui";
+import { EvidenceRows, EvidenceCards, StatusBadge, EmptyState, EvidenceTable, AdvancedEvidence } from "./ui";
+import type { SurfaceProps, ExecutionSnapshot, InspectorContext as InspectorContract, RecordRow, TaskRow } from "./surfaceContracts";
 
 export { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
 export type { ProductSurfaceClass } from "./surfaceAudit";
@@ -48,4 +49,5 @@ export function WorkbenchSurface(props: SurfaceProps) {
   return <IntelligenceSurface {...props} />;
 }
 
-export { InspectorContext, CanonicalInspector, WorkbenchSurface };
+export type { InspectorContext };
+export { CanonicalInspector, WorkbenchSurface };

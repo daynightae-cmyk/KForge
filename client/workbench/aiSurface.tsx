@@ -1,3 +1,9 @@
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
+import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
+import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
+import { viewLabel } from "./navigation";
+
 function AISurface(props: SurfaceProps) {
   const { view, project } = props;
   if (view === "agents") return project ? <AgentMissionSurface project={project} /> : <SimpleFetchSurface url="/api/workspace/marketplace" title="Global agent catalog" />;

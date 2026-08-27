@@ -1,3 +1,9 @@
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
+import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
+import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
+import { viewLabel } from "./navigation";
+
 function ReleaseSurface({ view, project, onExecution }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail="Release evidence is project scoped." />;
   if (view === "release-gate") return <ReleaseGate project={project} onExecution={onExecution} />;
