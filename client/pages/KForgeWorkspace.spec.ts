@@ -41,9 +41,9 @@ describe("KForge contextual workbench architecture", () => {
   it("uses explicit authority/runtime/install evidence instead of metadata-only local claims", () => {
     const source = canonicalWorkbenchSource();
     expect(source).toContain("item.authority?.kind");
-    expect(source).toContain("item.runtimeEvidence?.state");
+    expect(source).toContain("selected.runtimeEvidence?.state");
     expect(source).toContain("item.availability");
-    expect(source).toContain('item.installAction !== "NOT_AVAILABLE"');
+    expect(source).toContain('selected.installAction !== "NOT_AVAILABLE"');
     expect(source).toContain(".filter((permission) => permission.required)");
   });
 
