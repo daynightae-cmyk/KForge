@@ -54,7 +54,7 @@ test.describe("KForge product evidence surfaces in contextual workbench", () => 
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/graph|nodes|coverage|evidence/i);
 
     await navigate(page, "Quality", "KForge Sonar");
-    await expect(page.getByRole("heading", { name: "KForge Sonar", exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { level: 1, name: "KForge Sonar", exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/problem|finding|security|scan/i);
 
     expect(externalRequests, `Unexpected external requests in Offline mode:\n${externalRequests.join("\n")}`).toEqual([]);

@@ -41,7 +41,7 @@ export async function selectProjectByPath(page: Page, projectPath: string) {
   await selectExplorerView(page, "Projects", "Workspace");
   const row = page.locator("[data-project-path]").filter({ hasText: projectPath }).first();
   await expect(row).toBeVisible({ timeout: 30_000 });
-  await row.getByRole("button", { name: /Open project context/i }).click();
+  await row.getByRole("button", { name: /Select project/i }).click();
   await expect(row).toHaveClass(/is-selected/);
   const projectId = await row.getAttribute("data-project-id");
   expect(projectId).toBeTruthy();
