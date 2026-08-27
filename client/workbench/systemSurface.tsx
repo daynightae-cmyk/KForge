@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
-import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
-import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
-import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
-import { viewLabel } from "./navigation";
+import { useState, useEffect } from "react";
+import { ShieldCheck } from "lucide-react";
+import type { SurfaceProps, RecordRow } from "./surfaceContracts";
+import type { KForgePlatformSettings, KForgeActivity, KForgeOnlineView, WorkspaceResponse, ProjectSummary } from "@shared/workspace";
+import { fetchJson, fetchEvidence, jsonRequest } from "./api";
+import { EmptyState, StatusBadge, EvidenceRows } from "./ui";
+import { viewLabel, ACTIVITIES, activityDefinition } from "./navigation";
+import { SimpleFetchSurface } from "./surfaceShared";
 
 function SystemSurface(props: SurfaceProps) {
   const { view, project, workspace, settings, onSettings, onRefresh } = props;

@@ -11,6 +11,7 @@ export type SurfaceProps = {
   onSettings: (settings: KForgePlatformSettings) => void;
   onNavigate: (activity: KForgeActivity, view: string) => void;
   onExecution: (execution: ExecutionSnapshot | null) => void;
+  onInspectorContext?: (context: InspectorContext | null) => void;
 };
 
 export type ExecutionSnapshot = {
@@ -68,15 +69,31 @@ export type MarketplaceItem = RecordRow & {
   lifecycle?: Array<{ id: string; label: string; state: string; evidence: string }>;
 };
 
+export type InspectorAction = {
+  id: string;
+  label: string;
+  disabled?: boolean;
+  reason?: string;
+  invoke?: () => void;
+};
+
 export type InspectorContext = {
   kind: "online-item" | "project" | "execution" | null;
-  item?: RecordRow | null;
+  item?: MarketplaceItem | null;
   title?: string;
   view?: string;
   compatibility?: string;
   projectName?: string;
-  action?: string;
+  actions?: InspectorAction[];
   operation?: RecordRow | null;
+};
+
+export type CanonicalInspectorProps = {
+  activity: KForgeActivity;
+  view: string;
+  project?: ProjectSummary;
+  execution: ExecutionSnapshot | null;
+  context: InspectorContext | null;
 };
 
 export type MarketplaceData = {

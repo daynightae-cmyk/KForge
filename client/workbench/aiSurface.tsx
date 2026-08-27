@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
-import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
-import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
-import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
-import { viewLabel } from "./navigation";
+import { useState, useEffect } from "react";
+import type { SurfaceProps, RecordRow, TaskRow } from "./surfaceContracts";
+import type { ProjectSummary } from "@shared/workspace";
+import { fetchJson, jsonRequest } from "./api";
+import { EmptyState, StatusBadge, EvidenceCards, TaskTable } from "./ui";
+import { SimpleFetchSurface } from "./surfaceShared";
 
 function AISurface(props: SurfaceProps) {
   const { view, project } = props;
@@ -32,4 +33,4 @@ function AITasks() {
   return <section className="kw-surface-section"><h2>Task Center</h2><TaskTable tasks={tasks} /></section>;
 }
 
-export default AiSurface;
+export default AISurface;

@@ -1,19 +1,5 @@
 import type { ReactNode } from "react";
-
-export type RecordRow = Record<string, unknown>;
-export type TaskRow = RecordRow & {
-  id: string;
-  projectId: string;
-  kind: string;
-  status: string;
-  progress?: number;
-  startedAt?: string;
-  finishedAt?: string;
-  durationMs?: number;
-  output?: string;
-  error?: string;
-  logs?: Array<{ at?: string; message?: string }>;
-};
+import type { RecordRow, TaskRow } from "./surfaceContracts";
 
 export function StatusBadge({ value }: { value?: unknown }) {
   const normalized = String(value ?? "UNKNOWN").toUpperCase().replace(/\s+/g, "_");

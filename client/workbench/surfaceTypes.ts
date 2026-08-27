@@ -11,7 +11,7 @@ export const SURFACE_AUDIT_MATRIX: Record<KForgeActivity, Record<string, Product
   intelligence: { "project-graph": "SPECIALIZED", dependencies: "SPECIALIZED", "impact-analysis": "SPECIALIZED", "code-understanding": "SPECIALIZED", "ask-kforge": "SPECIALIZED", architecture: "SPECIALIZED" },
   quality: { sonar: "SPECIALIZED", problems: "INTENTIONALLY_SHARED", solutions: "INTENTIONALLY_SHARED", security: "INTENTIONALLY_SHARED", performance: "INTENTIONALLY_SHARED", "technical-debt": "INTENTIONALLY_SHARED", documentation: "SPECIALIZED", snapshots: "INTENTIONALLY_SHARED" },
   release: { "release-gate": "SPECIALIZED", "release-preparation": "SPECIALIZED", artifacts: "SPECIALIZED", versioning: "SPECIALIZED" },
-  "developer-tools": { terminal: "SPECIALIZED", tests: "INTENTIONALLY_SHARED", build: "INTENTIONALLY_SHARED", runtime: "INTENTIONALLY_SHARED", logs: "INTENTIONALLY_SHARED", diagnostics: "INTENTIONALLY_SHARED", preview: "INTENTIONALLY_SHARED" },
+  "developer-tools": { terminal: "SPECIALIZED", tests: "INTENTIONALLY_SHARED", build: "INTENTIONALLY_SHARED", runtime: "INTENTIONALLY_SHARED", lint: "INTENTIONALLY_SHARED", logs: "INTENTIONALLY_SHARED", diagnostics: "INTENTIONALLY_SHARED", preview: "INTENTIONALLY_SHARED" },
   remote: { git: "SPECIALIZED", branches: "SPECIALIZED", commits: "SPECIALIZED", github: "SPECIALIZED", "pull-requests": "SPECIALIZED", issues: "SPECIALIZED", actions: "SPECIALIZED", releases: "SPECIALIZED" },
   system: { settings: "SPECIALIZED", trust: "INTENTIONALLY_SHARED", permissions: "SPECIALIZED", storage: "SPECIALIZED", "online-offline": "INTENTIONALLY_SHARED", "self-audit": "INTENTIONALLY_SHARED", "system-diagnostics": "INTENTIONALLY_SHARED" },
 } as const;

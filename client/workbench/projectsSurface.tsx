@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
-import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
-import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
-import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
-import { viewLabel } from "./navigation";
+import { useState, useEffect, useMemo } from "react";
+import type { SurfaceProps, RecordRow, TaskRow } from "./surfaceContracts";
+import type { ProjectSummary } from "@shared/workspace";
+import { fetchJson, jsonRequest } from "./api";
+import { Search } from "lucide-react";
+import { EmptyState, StatusBadge } from "./ui";
 
 function ProjectsSurface({ view, workspace, project, onProjectSelect, onRefresh }: SurfaceProps) {
   const [query, setQuery] = useState(""); const [sort, setSort] = useState<"activity" | "name" | "health">("activity"); const [selected, setSelected] = useState<string[]>([]);

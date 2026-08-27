@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
-import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
-import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
-import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
+import { useState, useEffect } from "react";
+import { Terminal } from "lucide-react";
+import type { SurfaceProps, RecordRow } from "./surfaceContracts";
+import type { ProjectSummary, WorkspaceAction, WorkspaceActionDescriptor, CommandResult } from "@shared/workspace";
+import { fetchJson, jsonRequest } from "./api";
+import { EmptyState, StatusBadge, EvidenceRows } from "./ui";
 import { viewLabel } from "./navigation";
+import { SimpleFetchSurface } from "./surfaceShared";
 
 function DeveloperSurface({ view, project, onExecution }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail="Developer execution requires explicit project context." />;

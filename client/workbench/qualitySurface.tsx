@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
-import type { SurfaceProps, RecordRow, TaskRow, ExecutionSnapshot, MarketplaceData, MarketplaceItem } from "./surfaceContracts";
+import { useState, useEffect } from "react";
+import type { SurfaceProps, RecordRow, TaskRow } from "./surfaceContracts";
+import type { ProjectSummary } from "@shared/workspace";
 import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
-import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards, TaskTable, EvidenceTable } from "./ui";
+import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards } from "./ui";
 import { viewLabel } from "./navigation";
 
 function QualitySurface({ view, project }: SurfaceProps) {
