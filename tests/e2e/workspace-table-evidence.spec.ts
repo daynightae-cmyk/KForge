@@ -2,42 +2,39 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { openWorkbench, selectProjectByPath } from "./helpers/workbench";
 
-test.describe("KForge Workspace project table in production", () => {
+test.describe("KForge Workspace engineering table", () => {
   let projectRoot = "";
+  test.afterEach(async () => { if (projectRoot) await rm(projectRoot, { recursive: true, force: true, maxRetries: 24, retryDelay: 250 }); projectRoot = ""; });
 
-  test.afterEach(async () => {
-    if (projectRoot) await rm(projectRoot, { recursive: true, force: true, maxRetries: 24, retryDelay: 250 });
-    projectRoot = "";
-  });
-
-  test("filters, sorts, and clears bulk selection through the visible local projects table", async ({ page }) => {
+  test("filters, sorts, selects, clears bulk selection and exposes project health/trust/Git evidence", async ({ page }) => {
     projectRoot = await mkdtemp(path.join(os.tmpdir(), "kforge-table-evidence-"));
     await writeFile(path.join(projectRoot, "package.json"), JSON.stringify({ name: path.basename(projectRoot), private: true, version: "1.0.0" }), "utf8");
-    const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
-    expect(reset.ok(), await reset.text()).toBeTruthy();
-    const opened = await page.request.post("/api/workspace/projects/open", { data: { path: projectRoot } });
-    expect(opened.ok(), await opened.text()).toBeTruthy();
+    expect((await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } })).ok()).toBeTruthy();
+    expect((await page.request.post("/api/workspace/projects/open", { data: { path: projectRoot } })).ok()).toBeTruthy();
+    await openWorkbench(page);
 
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    const rows = page.locator(".kf-table tbody tr");
     const search = page.getByLabel("Search local projects");
     await search.fill(path.basename(projectRoot));
-    await expect(rows).toHaveCount(1);
-    const projectName = (await rows.first().locator(".kf-project-cell strong").textContent())?.trim();
-    expect(projectName).toBe(path.basename(projectRoot));
+    const table = page.getByTestId("project-table");
+    await expect(table.locator("tbody tr")).toHaveCount(1);
+    await expect(table).toContainText(path.basename(projectRoot));
+    await expect(table).toContainText(/Trust|Health|changed|ahead|behind/i);
 
-    const projectSort = page.getByRole("button", { name: "Project", exact: true });
-    await projectSort.click();
-    await expect(projectSort).toHaveClass(/is-active/);
-
+    await page.getByLabel("Sort projects").selectOption("name");
+    await expect(page.getByLabel("Sort projects")).toHaveValue("name");
     const selectAll = page.getByLabel("Select all filtered projects");
     await selectAll.check();
-    await expect(page.locator(".kf-bulk-bar")).toContainText("1 selected");
-    await expect(page.getByRole("button", { name: "Clear", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Clear", exact: true }).click();
-    await expect(page.locator(".kf-bulk-bar")).toHaveCount(0);
+    await expect(page.locator(".kw-bulk-bar")).toContainText("1 selected");
+    await page.getByRole("button", { name: "Clear selection", exact: true }).click();
+    await expect(page.locator(".kw-bulk-bar")).toHaveCount(0);
     await expect(selectAll).not.toBeChecked();
+
+    await search.fill("");
+    await selectProjectByPath(page, projectRoot);
+    await expect(page.getByLabel("Project context")).not.toHaveValue("");
+    const row = page.locator(`[data-project-path="${projectRoot.replace(/\\/g, "\\\\")}"]`);
+    await expect(row).toHaveClass(/is-selected/);
   });
 });

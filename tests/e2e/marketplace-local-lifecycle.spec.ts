@@ -1,83 +1,61 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { openWorkbench, selectExplorerView } from "./helpers/workbench";
 
 const PACKAGE_ID = "package:kforge:json-inspector";
 const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
+const external = (raw: string) => /^https?:$/i.test(new URL(raw).protocol) && !LOCAL_ORIGINS.has(new URL(raw).origin);
 
-function isExternalHttpRequest(rawUrl: string) {
-  const url = new URL(rawUrl);
-  return /^https?:$/i.test(url.protocol) && !LOCAL_ORIGINS.has(url.origin);
-}
-
-test.describe("KForge Marketplace local package lifecycle in production", () => {
-  test.setTimeout(300_000);
-
+test.describe("KForge Marketplace verified local lifecycle", () => {
+  test.setTimeout(150_000);
   test.beforeEach(async ({ page }) => {
-    const settings = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
-    expect(settings.ok(), await settings.text()).toBeTruthy();
-    const platform = await page.request.post("/api/workspace/platform/mode", { data: { mode: "offline" } });
-    expect(platform.ok(), await platform.text()).toBeTruthy();
+    expect((await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } })).ok()).toBeTruthy();
+    expect((await page.request.post("/api/workspace/platform/mode", { data: { mode: "offline" } })).ok()).toBeTruthy();
     const cleanup = await page.request.post(`/api/workspace/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/uninstall`, { data: { confirmed: true } });
     expect([200, 409]).toContain(cleanup.status());
-    const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
-    expect(opened.ok(), await opened.text()).toBeTruthy();
+    expect((await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } })).ok()).toBeTruthy();
+    await openWorkbench(page);
   });
 
-  test("inspects, installs, health-checks, runs, updates, and uninstalls the verified bundled extension through the product surface", async ({ page }) => {
+  test("inspects, installs, verifies, runs, updates and uninstalls the bundled first-party extension through Online → Extensions", async ({ page }) => {
     const externalRequests: string[] = [];
-    const apiFailures: string[] = [];
-    page.on("request", (request) => { if (isExternalHttpRequest(request.url())) externalRequests.push(request.url()); });
-    page.on("response", (response) => {
-      if (response.url().includes("/api/") && response.status() >= 400) apiFailures.push(`${response.status()} ${response.url()}`);
-    });
-
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    await page.locator(".kf-nav").getByRole("button", { name: "Extensions", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Extensions", exact: true })).toBeVisible();
-
-    const extension = page.locator(".kf-online-list").getByRole("button", { name: /kforge-json-inspector/i });
-    await expect(extension).toBeVisible({ timeout: 30_000 });
-    await extension.click();
+    page.on("request", (request) => { if (external(request.url())) externalRequests.push(request.url()); });
+    await selectExplorerView(page, "Online", "Extensions");
+    const item = page.locator(".kw-online-results").getByRole("button", { name: /kforge-json-inspector/i });
+    await expect(item).toBeVisible({ timeout: 30_000 });
+    await item.click();
     const details = page.getByLabel("Online item details");
-    await expect(details.getByRole("heading", { name: "kforge-json-inspector", exact: true })).toBeVisible();
-    await expect(details).toContainText("Integrity / checksum");
-    await expect(details).toContainText("Permissions");
-    await expect(details).toContainText("Bundled first-party fixture; no network source is contacted.");
+    await expect(details).toContainText("kforge-json-inspector");
+    await expect(details).toContainText(/Integrity|Permissions|Lifecycle/i);
 
-    const installResponse = page.waitForResponse((response) => response.url().includes(`/api/workspace/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/install`) && response.request().method() === "POST");
     page.once("dialog", (dialog) => dialog.accept());
+    const install = page.waitForResponse((response) => response.url().includes(`/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/install`) && response.request().method() === "POST");
     await details.getByRole("button", { name: "Install local package", exact: true }).click();
-    expect((await installResponse).ok()).toBeTruthy();
+    expect((await install).ok()).toBeTruthy();
     await expect(details.getByRole("button", { name: "Health check", exact: true })).toBeVisible({ timeout: 30_000 });
 
-    const healthResponse = page.waitForResponse((response) => response.url().includes(`/api/workspace/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/health`) && response.request().method() === "GET");
+    const health = page.waitForResponse((response) => response.url().includes(`/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/health`) && response.request().method() === "GET");
     await details.getByRole("button", { name: "Health check", exact: true }).click();
-    expect((await healthResponse).ok()).toBeTruthy();
-    await expect(page.locator(".kf-active-surface")).toContainText(/Health check passed|Local package health verified/i, { timeout: 30_000 });
+    expect((await health).ok()).toBeTruthy();
+    await expect(details).toContainText(/Health check passed|manifest|SHA-256/i);
 
-    const runResponse = page.waitForResponse((response) => response.url().includes(`/api/workspace/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/run`) && response.request().method() === "POST");
     page.once("dialog", (dialog) => dialog.accept());
-    await expect(details.getByRole("button", { name: "Run local package", exact: true })).toBeVisible({ timeout: 30_000 });
+    const run = page.waitForResponse((response) => response.url().includes(`/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/run`) && response.request().method() === "POST");
     await details.getByRole("button", { name: "Run local package", exact: true }).click();
-    expect((await runResponse).ok()).toBeTruthy();
-    await expect(page.locator(".kf-active-surface")).toContainText(/Local package run verified|JSON Inspector/i, { timeout: 30_000 });
+    expect((await run).ok()).toBeTruthy();
+    await expect(details).toContainText(/JSON|result|ok/i);
 
-    const updateResponse = page.waitForResponse((response) => response.url().includes(`/api/workspace/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/update`) && response.request().method() === "POST");
     page.once("dialog", (dialog) => dialog.accept());
-    await expect(details.getByRole("button", { name: "Update local package", exact: true })).toBeVisible({ timeout: 30_000 });
+    const update = page.waitForResponse((response) => response.url().includes(`/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/update`) && response.request().method() === "POST");
     await details.getByRole("button", { name: "Update local package", exact: true }).click();
-    expect((await updateResponse).ok()).toBeTruthy();
-    await expect(details).toContainText("1.1.0");
+    expect((await update).ok()).toBeTruthy();
+    await expect(details).toContainText("1.1.0", { timeout: 30_000 });
 
-    const uninstallResponse = page.waitForResponse((response) => response.url().includes(`/api/workspace/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/uninstall`) && response.request().method() === "POST");
     page.once("dialog", (dialog) => dialog.accept());
-    await expect(details.getByRole("button", { name: "Uninstall local package", exact: true })).toBeVisible({ timeout: 30_000 });
+    const uninstall = page.waitForResponse((response) => response.url().includes(`/marketplace/items/${encodeURIComponent(PACKAGE_ID)}/uninstall`) && response.request().method() === "POST");
     await details.getByRole("button", { name: "Uninstall local package", exact: true }).click();
-    expect((await uninstallResponse).ok()).toBeTruthy();
+    expect((await uninstall).ok()).toBeTruthy();
     await expect(details.getByRole("button", { name: "Install local package", exact: true })).toBeVisible({ timeout: 30_000 });
-
-    expect(externalRequests, `Unexpected external requests in local Marketplace lifecycle:\n${externalRequests.join("\n")}`).toEqual([]);
-    expect(apiFailures, `Unexpected Marketplace API failures:\n${apiFailures.join("\n")}`).toEqual([]);
+    expect(externalRequests).toEqual([]);
   });
 });

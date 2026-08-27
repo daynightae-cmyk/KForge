@@ -1,0 +1,41 @@
+@import "../pages/KForgeWorkbench.css";
+
+.light .kw-shell { --kw-muted: #475569; --kw-primary: #00676b; }
+.light .kw-shell .kw-badge,
+.light .kw-shell .kw-command-trigger,
+.light .kw-shell kbd,
+.light .kw-shell small,
+.light .kw-shell .kw-muted { color: #475569; }
+.light .kw-shell .kw-surface-heading p,
+.light .kw-shell .kw-table tr.is-selected code,
+.light .kw-shell .kw-brand-mark { color: #00676b; }
+.kw-shell :focus-visible { outline: 2px solid var(--kw-primary); outline-offset: 2px; }
+.kw-workbench-scroll { overflow: auto; }
+.kw-table-wrap { overflow: visible; }
+.kw-table { min-width: 880px; }
+.kw-project-select { width: 100%; min-width: 180px; padding: 0; border: 0 !important; background: transparent !important; color: inherit !important; text-align: left; }
+.kw-project-select strong, .kw-project-select small { display: block; }
+.kw-table tr.is-selected .kw-project-select strong,
+.kw-table tr.is-selected td,
+.kw-table tr.is-selected small,
+.kw-table tr.is-selected code { color: var(--kw-text); }
+.kw-bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; padding: 7px 9px; border: 1px solid var(--kw-border); border-radius: 5px; background: var(--kw-panel-2); }
+.kw-bulk-bar button, .kw-toolbar button, .kw-operation-actions button, .kw-quality-actions button, .kw-agent-actions button, .kw-quality-card button, .kw-snapshot-form button, .kw-self-audit button { min-height: 30px; padding: 5px 10px; border-radius: 5px; }
+.kw-table-toolbar .kw-select-all { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.kw-table-toolbar .kw-select-all input { width: auto; }
+.kw-surface-section, .kw-operation-panel, .kw-quality-card, .kw-system-grid article, .kw-agent-panel { border: 1px solid var(--kw-border); border-radius: 6px; background: var(--kw-panel); padding: 12px; }
+.kw-surface-section h2, .kw-operation-panel h2, .kw-quality-card h2, .kw-agent-panel h2, .kw-inspector h2 { margin: 0 0 8px; font-size: 14px; }
+.kw-surface-section h3, .kw-quality-card h3, .kw-agent-panel h3 { margin: 12px 0 6px; font-size: 12px; }
+.kw-toolbar, .kw-operation-actions, .kw-quality-actions, .kw-agent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.kw-operation-result { margin-top: 10px; padding: 8px; border: 1px solid var(--kw-border); border-radius: 5px; background: var(--kw-panel-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.kw-quality-list, .kw-system-grid, .kw-provider-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.kw-quality-card p, .kw-quality-card small, .kw-system-grid p, .kw-system-grid small { color: var(--kw-muted); }
+.kw-quality-card pre, .kw-operation-result pre, .kw-system-grid pre, .kw-agent-panel pre, .kw-task-detail pre { max-height: 300px; overflow: auto; white-space: pre-wrap; }
+.kw-snapshot-form, .kw-settings-grid { display: grid; gap: 9px; }
+.kw-snapshot-form label, .kw-settings-grid label { display: grid; gap: 4px; }
+.kw-snapshot-form input, .kw-snapshot-form textarea, .kw-settings-grid select { min-height: 32px; padding: 5px 8px; border-radius: 5px; }
+.kw-task-detail summary { cursor: pointer; color: var(--kw-text); }
+.kw-online-inspector .kw-operation-actions { margin-top: 10px; }
+.kw-online-inspector .kw-operation-actions button { flex: 1 1 auto; }
+.kw-inspector h2 { color: var(--kw-muted); letter-spacing: .04em; text-transform: uppercase; font-size: 11px; margin-top: 14px; }
+@media (max-width: 900px) { .kw-table { min-width: 760px; } }
