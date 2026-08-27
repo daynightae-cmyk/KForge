@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import { randomUUID } from "crypto";
 import path from "path";
 
 export interface ProjectCollectionEntry {
@@ -80,7 +81,7 @@ async function writeStore(workspaceRoot: string, store: CollectionStore) {
   const directory = path.join(workspaceRoot, ".kforge");
   const file = path.join(directory, "project-collections.json");
   await fs.mkdir(directory, { recursive: true });
-  const temporary = `${file}.tmp-${process.pid}`;
+  const temporary = `${file}.tmp-${process.pid}-${randomUUID()}`;
   await fs.writeFile(temporary, `${JSON.stringify(store, null, 2)}\n`, "utf8");
   await fs.rename(temporary, file);
 }

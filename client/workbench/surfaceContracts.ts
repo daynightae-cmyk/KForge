@@ -66,6 +66,11 @@ export type MarketplaceItem = RecordRow & {
   unavailableReason?: string;
   integrity?: { state?: string; value?: string; source?: string };
   updateState?: { state?: string; value?: string; source?: string };
+  actionEligibility?: {
+    state?: string;
+    unavailableReason?: string;
+    actions?: Array<{ id: string; enabled: boolean; requiresConfirmation: boolean; reason?: string }>;
+  };
   lifecycle?: Array<{ id: string; label: string; state: string; evidence: string }>;
 };
 

@@ -225,6 +225,23 @@ describe("KForge Workspace engines", () => {
     }
   });
 
+  it("uses a unique atomic temporary file for overlapping project collection writes", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-collections-concurrent-"));
+    const projectPath = path.join(workspaceRoot, "project");
+    try {
+      await fs.mkdir(projectPath);
+      await Promise.all(Array.from({ length: 32 }, () => recordProjectOpened(workspaceRoot, projectPath)));
+      const restored = await getProjectCollectionEntry(workspaceRoot, projectPath);
+      expect(restored).toMatchObject({ path: projectPath });
+      const collectionDirectory = path.join(workspaceRoot, ".kforge");
+      const files = await fs.readdir(collectionDirectory);
+      expect(files).toEqual(["project-collections.json"]);
+      await expect(fs.readFile(path.join(collectionDirectory, "project-collections.json"), "utf8")).resolves.toContain("\"version\": 1");
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
   it("ignores a deleted project path retained in local collections", async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-stale-collection-"));
     const removedProject = path.join(workspaceRoot, "removed-project");
