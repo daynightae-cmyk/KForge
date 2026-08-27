@@ -21,3 +21,5 @@ function AskKForge({ project }: { project: ProjectSummary }) {
   const [question, setQuestion] = useState(""); const [answer, setAnswer] = useState<RecordRow | null>(null); const [message, setMessage] = useState("");
   return <section className="kw-form-surface"><h2>Ask KForge</h2><p>Answers are bounded to redacted project evidence; deterministic rules are used when no local model is available.</p><textarea aria-label="Ask KForge question" value={question} onChange={(e) => setQuestion(e.target.value)} /><button disabled={!question.trim()} onClick={() => void fetchJson<RecordRow>(`/api/workspace/projects/${encodeURIComponent(project.id)}/ask`, jsonRequest({ question })).then(setAnswer).catch((error) => setMessage(error instanceof Error ? error.message : "Ask KForge failed."))}>Analyze project evidence</button>{message && <p className="kw-message">{message}</p>}{answer && <article className="kw-answer"><pre>{JSON.stringify(answer, null, 2)}</pre></article>}</section>;
 }
+
+export default IntelligenceSurface;

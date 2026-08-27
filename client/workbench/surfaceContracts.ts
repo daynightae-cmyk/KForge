@@ -68,6 +68,17 @@ export type MarketplaceItem = RecordRow & {
   lifecycle?: Array<{ id: string; label: string; state: string; evidence: string }>;
 };
 
+export type InspectorContext = {
+  kind: "online-item" | "project" | "execution" | null;
+  item?: RecordRow | null;
+  title?: string;
+  view?: string;
+  compatibility?: string;
+  projectName?: string;
+  action?: string;
+  operation?: RecordRow | null;
+};
+
 export type MarketplaceData = {
   items?: MarketplaceItem[];
   providers?: RecordRow[];

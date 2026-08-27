@@ -35,3 +35,5 @@ function SystemDiagnostics() {
   useEffect(() => { void refresh(); }, []);
   return <section className="kw-surface-section"><div className="kw-toolbar"><h2>System Diagnostics</h2><button onClick={() => void refresh()}>Refresh diagnostics</button></div><p>Missing tools remain UNAVAILABLE / NOT_DETECTED rather than being represented as successful.</p>{message && <p className="kw-message">{message}</p>}<div className="kw-system-grid">{rows.map((row, index) => <article key={String(row.id || row.name || index)}><strong>{String(row.name || row.label || row.id || `Capability ${index + 1}`)}</strong><EvidenceRows value={row} /><details><summary>Diagnostic evidence</summary><pre>{JSON.stringify(row, null, 2)}</pre></details></article>)}</div></section>;
 }
+
+export default SystemSurface;

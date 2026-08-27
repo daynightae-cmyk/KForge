@@ -19,3 +19,5 @@ function OnlineSurface({ view, project }: SurfaceProps) {
 function OnlineContext({ project, control }: { project?: ProjectSummary; control: RecordRow | null }) {
   return <div className="kw-online-context"><div><Cloud size={17} /><strong>Online is global</strong><span>Opening this surface performs no remote catalog refresh.</span></div><div><span>Compatibility</span><StatusBadge value={project ? "PROJECT_CONTEXT" : "NOT_EVALUATED"} /><small>{project ? project.name : "No project selected"}</small></div><div><span>Control Center</span><StatusBadge value={control?.mode || "UNKNOWN"} /><small>{control ? "Policy evidence loaded" : "Loading policy evidence"}</small></div></div>;
 }
+
+export default OnlineSurface;

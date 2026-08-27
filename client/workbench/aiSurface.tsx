@@ -31,3 +31,5 @@ function AITasks() {
   useEffect(() => { let active = true; const refresh = () => void fetchJson<{ tasks: TaskRow[] }>("/api/workspace/tasks").then((data) => { if (active) setTasks((data.tasks || []).filter((task) => task.kind === "agent" || task.projectId === "ai-center")); }).catch(() => undefined); refresh(); const timer = window.setInterval(refresh, 700); return () => { active = false; window.clearInterval(timer); }; }, []);
   return <section className="kw-surface-section"><h2>Task Center</h2><TaskTable tasks={tasks} /></section>;
 }
+
+export default AiSurface;

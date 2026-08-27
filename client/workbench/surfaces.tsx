@@ -12,21 +12,12 @@ import ReleaseSurface from "./releaseSurface";
 import SystemSurface from "./systemSurface";
 import { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
 import { EvidenceRows, EvidenceCards, StatusBadge, EmptyState, EvidenceTable, AdvancedEvidence } from "./ui";
-import type { SurfaceProps, ExecutionSnapshot, InspectorContext as InspectorContract, RecordRow, TaskRow } from "./surfaceContracts";
+import type { SurfaceProps, ExecutionSnapshot, InspectorContext, RecordRow, TaskRow } from "./surfaceContracts";
 
 export { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
 export type { ProductSurfaceClass } from "./surfaceAudit";
 
-export type InspectorContext = {
-  kind: "online-item" | "project" | "execution" | null;
-  item?: RecordRow | null;
-  title?: string;
-  view?: string;
-  compatibility?: string;
-  projectName?: string;
-  action?: string;
-  operation?: RecordRow | null;
-};
+export { InspectorContext } from "./surfaceContracts";
 
 export function CanonicalInspector({ activity, view, project, execution, context }: SurfaceProps & { context?: InspectorContext | null }) {
   if (context?.kind === "online-item" && context.item) {
