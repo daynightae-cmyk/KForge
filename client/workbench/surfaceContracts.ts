@@ -51,6 +51,7 @@ export type MarketplaceItem = RecordRow & {
   source?: string;
   version?: string;
   capabilities?: string[];
+  features?: string[];
   requirements?: string[];
   installed?: boolean;
   enabled?: boolean;

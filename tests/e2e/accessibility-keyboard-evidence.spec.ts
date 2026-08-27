@@ -1,7 +1,7 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { setProjectContext } from "./helpers/workbench";
+import { selectExplorerView, setProjectContext } from "./helpers/workbench";
 
 const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
 
@@ -52,6 +52,60 @@ test.describe("KForge workbench accessibility and keyboard evidence", () => {
     await expectNoAxeViolations(page, "Settings");
 
     expect(externalRequests, `Unexpected external requests during accessibility audit:\n${externalRequests.join("\n")}`).toEqual([]);
+  });
+
+  test("checks all required critical workbench surfaces with Axe", async ({ page }) => {
+    const externalRequests: string[] = [];
+    page.on("request", (request) => { if (isExternalHttpRequest(request.url())) externalRequests.push(request.url()); });
+    const surfaces: Array<[string, string, string]> = [
+      ["Projects Workspace", "Projects", "Workspace"],
+      ["AI Agents", "AI", "Agents"],
+      ["Online Marketplace", "Online", "Marketplace"],
+      ["Quality Sonar", "Quality", "KForge Sonar"],
+      ["Developer Terminal", "Developer Tools", "Terminal"],
+      ["Remote Git", "Remote / Git", "Git"],
+      ["Release Gate", "Release", "Release Gate"],
+      ["System Settings", "System", "Settings"],
+      ["System Permissions", "System", "Permissions"],
+    ];
+    for (const [label, activity, view] of surfaces) {
+      await selectExplorerView(page, activity, view);
+      await expectNoAxeViolations(page, label);
+    }
+    await selectExplorerView(page, "Online", "Extensions");
+    const extension = page.locator(".kw-online-results").getByRole("button", { name: /kforge-json-inspector/i });
+    await expect(extension).toBeVisible();
+    await extension.click();
+    await expect(page.getByLabel("Online item details")).toBeVisible();
+    await expectNoAxeViolations(page, "Online Extensions with canonical Inspector");
+    expect(externalRequests, `Unexpected external requests during critical accessibility audit:\n${externalRequests.join("\n")}`).toEqual([]);
+  });
+
+  test("keeps shell-level content within desktop viewports without horizontal overflow", async ({ page }) => {
+    for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+      await page.setViewportSize(viewport);
+      await selectExplorerView(page, "Online", "Marketplace");
+      await expect(page.locator(".kw-online")).toBeVisible();
+      const onlineMetrics = await page.evaluate(() => ({
+        documentScrollWidth: document.documentElement.scrollWidth,
+        documentClientWidth: document.documentElement.clientWidth,
+        bodyScrollWidth: document.body.scrollWidth,
+        bodyClientWidth: document.body.clientWidth,
+      }));
+      expect(onlineMetrics.documentScrollWidth, `Online overflow at ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(onlineMetrics.documentClientWidth);
+      expect(onlineMetrics.bodyScrollWidth, `Online body overflow at ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(onlineMetrics.bodyClientWidth);
+
+      await selectExplorerView(page, "System", "Settings");
+      await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+      const settingsMetrics = await page.evaluate(() => ({
+        documentScrollWidth: document.documentElement.scrollWidth,
+        documentClientWidth: document.documentElement.clientWidth,
+        bodyScrollWidth: document.body.scrollWidth,
+        bodyClientWidth: document.body.clientWidth,
+      }));
+      expect(settingsMetrics.documentScrollWidth, `Settings overflow at ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(settingsMetrics.documentClientWidth);
+      expect(settingsMetrics.bodyScrollWidth, `Settings body overflow at ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(settingsMetrics.bodyClientWidth);
+    }
   });
 
   test("supports keyboard Activity navigation, command palette focus, Escape dismissal and settings controls", async ({ page }) => {

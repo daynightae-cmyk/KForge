@@ -242,6 +242,41 @@ describe("KForge Workspace engines", () => {
     }
   });
 
+  it("serializes heterogeneous project collection mutations without losing independent fields", async () => {
+    for (let iteration = 0; iteration < 10; iteration += 1) {
+      const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-collections-mixed-concurrent-"));
+      const projectPath = path.join(workspaceRoot, "project");
+      try {
+        await fs.mkdir(projectPath);
+        await Promise.all([
+          recordProjectOpened(workspaceRoot, projectPath),
+          recordProjectScanned(workspaceRoot, projectPath),
+          recordProjectTask(workspaceRoot, projectPath),
+          updateProjectCollection(workspaceRoot, projectPath, { favorite: true }),
+          updateProjectCollection(workspaceRoot, projectPath, { pinned: true }),
+          updateProjectCollection(workspaceRoot, projectPath, { archived: true }),
+          updateProjectCollection(workspaceRoot, projectPath, { tags: ["concurrent", "local first"] }),
+        ]);
+        const restored = await getProjectCollectionEntry(workspaceRoot, projectPath);
+        expect(restored).toMatchObject({
+          path: projectPath,
+          favorite: true,
+          pinned: true,
+          archived: true,
+          tags: ["concurrent", "local first"],
+          lastOpenedAt: expect.any(String),
+          lastScannedAt: expect.any(String),
+          lastTaskAt: expect.any(String),
+        });
+        const collectionDirectory = path.join(workspaceRoot, ".kforge");
+        expect(await fs.readdir(collectionDirectory)).toEqual(["project-collections.json"]);
+        await expect(fs.readFile(path.join(collectionDirectory, "project-collections.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({ version: 1 });
+      } finally {
+        await fs.rm(workspaceRoot, { recursive: true, force: true });
+      }
+    }
+  }, 30_000);
+
   it("ignores a deleted project path retained in local collections", async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-stale-collection-"));
     const removedProject = path.join(workspaceRoot, "removed-project");

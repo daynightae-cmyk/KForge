@@ -76,6 +76,7 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
 
   const items = useMemo(() => {
     let list = market.items || [];
+    if (view === "discover") list = list.filter((item) => (item.features || []).includes("recommended"));
     if (view === "extensions") list = list.filter((item) => item.taxonomy?.includes("extensions"));
     if (view === "models") list = list.filter((item) => item.category === "models");
     if (view === "agents") list = list.filter((item) => item.category === "agents");
@@ -87,7 +88,10 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     return list.filter((item) => `${item.name} ${item.description || ""} ${item.source || ""} ${(item.capabilities || []).join(" ")}`.toLowerCase().includes(query.toLowerCase()));
   }, [market, view, query]);
 
-  const selected = useMemo(() => (market.items || []).find((item) => item.id === selectedId) || items[0] || null, [market.items, selectedId, items]);
+  // The visible semantic view is the sole authority for selection. A retained id
+  // may be valid in the global catalog but must not keep a hidden prior-view item
+  // authoritative in the canonical Inspector.
+  const selected = useMemo(() => items.find((item) => item.id === selectedId) || items[0] || null, [items, selectedId]);
   const catalogView = !["providers", "remote-sources", "downloads", "activity"].includes(view);
 
   const operate = useCallback(async (kind: LifecycleActionKind) => {
@@ -130,7 +134,8 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     return <section className="kw-online"><OnlineContext project={project} control={control} /><TaskTable tasks={list} /></section>;
   }
 
-  return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Online catalog" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span>{items.length} result(s)</span><button onClick={() => void refresh()}>Refresh local evidence</button></div>{message && <p className="kw-message">{message}</p>}{items.length ? <div className="kw-online-layout"><div className="kw-online-results">{items.map((item) => <button key={item.id} className={selected?.id === item.id ? "is-selected" : ""} onClick={() => { selectItem(item); }}><div><strong>{item.name}</strong><span>{item.category} · {item.version || "version UNKNOWN"}</span></div><p>{item.description || item.overview || "No description supplied."}</p><div className="kw-row-badges"><StatusBadge value={item.authority?.kind} /><StatusBadge value={item.availability} /><StatusBadge value={project ? item.projectCompatibility?.state || "UNKNOWN" : "NOT_EVALUATED"} /></div></button>)}</div></div> : <EmptyState title={view === "updates" ? "No verified update evidence" : `No ${viewLabel("online", view).toLowerCase()} evidence`} detail={view === "updates" ? "Updates require installedVersion, verifiedLatestVersion and version comparison." : "No verified source item matches this view."} />}</section>;
+  const resultLabel = view === "discover" ? "recommended item(s)" : "result(s)";
+  return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Online catalog" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span>{items.length} {resultLabel}</span><button onClick={() => void refresh()}>Refresh local evidence</button></div>{message && <p className="kw-message">{message}</p>}{items.length ? <div className="kw-online-layout"><div className="kw-online-results">{items.map((item) => <button key={item.id} className={selected?.id === item.id ? "is-selected" : ""} onClick={() => { selectItem(item); }}><div><strong>{item.name}</strong><span>{item.category} · {item.version || "version UNKNOWN"}</span></div><p>{item.description || item.overview || "No description supplied."}</p><div className="kw-row-badges"><StatusBadge value={item.authority?.kind} /><StatusBadge value={item.availability} /><StatusBadge value={project ? item.projectCompatibility?.state || "UNKNOWN" : "NOT_EVALUATED"} /></div></button>)}</div></div> : <EmptyState title={view === "updates" ? "No verified update evidence" : view === "discover" ? "No verified recommendations" : `No ${viewLabel("online", view).toLowerCase()} evidence`} detail={view === "updates" ? "Updates require installedVersion, verifiedLatestVersion and version comparison." : view === "discover" ? "Discover shows only items marked recommended by verified local catalog evidence." : "No verified source item matches this view."} />}</section>;
 }
 
 function OnlineContext({ project, control }: { project?: ProjectSummary; control: RecordRow | null }) {
