@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { openWorkbench, selectExplorerView, selectProjectByPath } from "./helpers/workbench";
+import { openWorkbench, selectExplorerView, selectProjectByPath, setProjectContext } from "./helpers/workbench";
 
 const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
 const external = (raw: string) => /^https?:$/i.test(new URL(raw).protocol) && !LOCAL_ORIGINS.has(new URL(raw).origin);
@@ -51,7 +51,7 @@ test.describe("KForge agent mission evidence in contextual workbench", () => {
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/agent/i);
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByLabel("Project context").selectOption(project.id);
+    await setProjectContext(page, project.id);
     await selectExplorerView(page, "AI", "Tasks");
     await expect(page.locator(".kw-workbench-scroll")).toContainText(payload.task.id, { timeout: 30_000 });
     expect(externalRequests).toEqual([]);

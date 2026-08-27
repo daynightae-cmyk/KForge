@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { openWorkbench, selectProjectByPath } from "./helpers/workbench";
+import { openWorkbench, projectContext, selectProjectByPath } from "./helpers/workbench";
 
 test.describe("KForge Workspace engineering table", () => {
   let projectRoot = "";
@@ -33,8 +33,8 @@ test.describe("KForge Workspace engineering table", () => {
 
     await search.fill("");
     await selectProjectByPath(page, projectRoot);
-    await expect(page.getByLabel("Project context")).not.toHaveValue("");
-    const row = page.locator(`[data-project-path="${projectRoot.replace(/\\/g, "\\\\")}"]`);
-    await expect(row).toHaveClass(/is-selected/);
+    await expect(projectContext(page)).not.toHaveValue("");
+    const selectedRow = page.locator("[data-project-path]").filter({ hasText: projectRoot }).first();
+    await expect(selectedRow).toHaveClass(/is-selected/);
   });
 });

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { clearProjectContext } from "./helpers/workbench";
 
 const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
 
@@ -19,7 +20,7 @@ test.describe("KForge Online Control Center in contextual workbench", () => {
     const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
     expect(opened.ok(), await opened.text()).toBeTruthy();
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
-    await page.getByLabel("Project context").selectOption("");
+    await clearProjectContext(page);
   });
 
   test("renders global policy/source evidence and projectless compatibility without implicit network contact", async ({ page }) => {

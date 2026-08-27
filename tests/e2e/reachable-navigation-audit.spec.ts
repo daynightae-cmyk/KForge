@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { clearProjectContext } from "./helpers/workbench";
 
 const ACTIVITY_LABELS = ["Projects", "AI", "Online", "Intelligence", "Quality", "Developer Tools", "Remote / Git", "Release", "System"] as const;
 const ONLINE_VIEWS = ["Discover", "Marketplace", "Extensions", "Models", "Agents", "Tools", "Integrations", "Installed", "Updates", "Downloads", "Providers", "Remote Sources", "Security", "Activity"] as const;
@@ -56,7 +57,7 @@ test.describe("KForge contextual navigation audit", () => {
   });
 
   test("supports projectless Online discovery without turning compatibility into INCOMPATIBLE", async ({ page }) => {
-    await page.getByLabel("Project context").selectOption("");
+    await clearProjectContext(page);
     await page.locator(".kw-activity-bar").getByRole("button", { name: "Online", exact: true }).click();
     const explorer = page.getByRole("complementary", { name: "Online Explorer", exact: true });
     await explorer.getByRole("button", { name: "Discover", exact: true }).click();

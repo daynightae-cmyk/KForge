@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { setProjectContext } from "./helpers/workbench";
 
 async function prepareWorkspace(page: import("@playwright/test").Page) {
   const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
@@ -59,8 +60,10 @@ test.describe("KForge Workbench production acceptance", () => {
     const reduceMotion = page.getByLabel("Reduce motion");
     if (!(await reduceMotion.isChecked())) await reduceMotion.check();
     await page.getByLabel("Remote context policy").selectOption("blocked");
+    const saving = page.waitForResponse((response) => response.url().endsWith("/api/workspace/settings") && response.request().method() === "PATCH");
     await page.getByRole("button", { name: "Save settings", exact: true }).click();
-    await expect(page.getByText(/Settings saved locally at/)).toBeVisible();
+    expect((await saving).ok()).toBeTruthy();
+    await expect(page.getByText("Settings v3 saved locally.", { exact: true })).toBeVisible();
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator(".kw-activity-bar").getByRole("button", { name: "Online", exact: true })).toHaveClass(/is-active/);
@@ -73,13 +76,13 @@ test.describe("KForge Workbench production acceptance", () => {
     await expect(page.getByLabel("Information density")).toHaveValue("compact");
     await expect(page.getByLabel("Reduce motion")).toBeChecked();
     await expect(page.getByLabel("Remote context policy")).toHaveValue("blocked");
-    await expect(page.getByText("secretRedaction = true · confirmRemoteWrites = true", { exact: true })).toBeVisible();
+    await expect(page.getByText("secretRedaction = true · confirmRemoteWrites = true · Git mutation remains confirmation-gated", { exact: true })).toBeVisible();
   });
 
   test("uses server action descriptors to disable execution that lacks project evidence", async ({ page }) => {
     const project = await prepareWorkspace(page);
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
-    await page.getByLabel("Project context").selectOption(project.project.id);
+    await setProjectContext(page, project.project.id);
     await selectActivityAndView(page, "Developer Tools", "Terminal");
     await expect(page.getByText("KForge Command Terminal", { exact: true })).toBeVisible();
     await expect(page.getByText("Only registered KForge actions are executable. There is no unrestricted shell input.", { exact: true })).toBeVisible();
@@ -90,7 +93,7 @@ test.describe("KForge Workbench production acceptance", () => {
   test("renders structured artifact columns rather than raw JSON as the primary artifact UX", async ({ page }) => {
     const project = await prepareWorkspace(page);
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
-    await page.getByLabel("Project context").selectOption(project.project.id);
+    await setProjectContext(page, project.project.id);
     await selectActivityAndView(page, "Release", "Artifacts");
     await expect(page.getByRole("columnheader", { name: "Artifact", exact: true })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "SHA-256", exact: true })).toBeVisible();

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { setProjectContext } from "./helpers/workbench";
 
 const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
 
@@ -27,7 +28,7 @@ test.describe("KForge project intelligence in contextual workbench", () => {
     expect(opened.ok(), await opened.text()).toBeTruthy();
     const project = await opened.json() as { project: { id: string } };
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
-    await page.getByLabel("Project context").selectOption(project.project.id);
+    await setProjectContext(page, project.project.id);
   });
 
   test("uses bounded local source evidence for graph, impact, dependencies, architecture and project questions", async ({ page }) => {

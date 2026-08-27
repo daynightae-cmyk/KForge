@@ -5,6 +5,22 @@ export async function openWorkbench(page: Page) {
   await expect(page.locator("[data-workbench='kforge']")).toBeVisible({ timeout: 60_000 });
 }
 
+export function projectContext(page: Page) {
+  return page.getByRole("combobox", { name: "Project context", exact: true });
+}
+
+export async function setProjectContext(page: Page, projectId: string) {
+  const control = projectContext(page);
+  await control.selectOption(projectId);
+  await expect(control).toHaveValue(projectId);
+}
+
+export async function clearProjectContext(page: Page) {
+  const control = projectContext(page);
+  await control.selectOption("");
+  await expect(control).toHaveValue("");
+}
+
 export async function selectActivity(page: Page, activity: string) {
   const button = page.getByRole("complementary", { name: "KForge activities" }).getByRole("button", { name: activity, exact: true });
   await button.click();
@@ -27,6 +43,9 @@ export async function selectProjectByPath(page: Page, projectPath: string) {
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.getByRole("button", { name: /Open project context/i }).click();
   await expect(row).toHaveClass(/is-selected/);
+  const projectId = await row.getAttribute("data-project-id");
+  expect(projectId).toBeTruthy();
+  await expect(projectContext(page)).toHaveValue(projectId!);
 }
 
 export async function expectActiveSurface(page: Page, title: string) {

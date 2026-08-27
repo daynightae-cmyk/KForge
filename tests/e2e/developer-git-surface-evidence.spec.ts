@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
+import { setProjectContext } from "./helpers/workbench";
 
 const execFile = promisify(execFileCallback);
 
@@ -63,7 +64,7 @@ test.describe("KForge developer workbench and Git evidence", () => {
     expect(trusted.ok(), await trusted.text()).toBeTruthy();
 
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
-    await page.getByLabel("Project context").selectOption(project.id);
+    await setProjectContext(page, project.id);
 
     await navigate(page, "Developer Tools", "Terminal");
     await expect(page.getByText("KForge Command Terminal", { exact: true })).toBeVisible();

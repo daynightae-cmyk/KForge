@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { KFORGE_ACTIVITY_IDS, ONLINE_EXPLORER_VIEWS } from "./KForgeWorkbench";
 
+const canonicalWorkbenchSource = () => readFileSync(new URL("../workbench/KForgeWorkbench.tsx", import.meta.url), "utf8");
+
 describe("KForge contextual workbench architecture", () => {
   it("publishes only the nine high-level Activity Bar domains", () => {
     expect(KFORGE_ACTIVITY_IDS).toEqual([
@@ -18,9 +20,9 @@ describe("KForge contextual workbench architecture", () => {
   });
 
   it("renders a persistent Activity Bar, contextual Explorer, one Workbench owner, Inspector, and developer bottom panel", () => {
-    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    const source = canonicalWorkbenchSource();
     expect(source).toContain('className="kw-activity-bar"');
-    expect(source).toContain('aria-label={`${currentActivity.label} Explorer`}');
+    expect(source).toContain('aria-label={`${current.label} Explorer`}');
     expect(source).toContain('className="kw-workbench"');
     expect(source).toContain('className="kw-inspector"');
     expect(source).toContain('className="kw-bottom-panel"');
@@ -28,7 +30,7 @@ describe("KForge contextual workbench architecture", () => {
   });
 
   it("keeps Online global and explicitly reports projectless compatibility as NOT_EVALUATED", () => {
-    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    const source = canonicalWorkbenchSource();
     expect(source).toContain('"/api/workspace/online/control-center"');
     expect(source).toContain('"/api/workspace/marketplace"');
     expect(source).toContain('"NOT_EVALUATED"');
@@ -37,39 +39,41 @@ describe("KForge contextual workbench architecture", () => {
   });
 
   it("uses explicit authority/runtime/install evidence instead of metadata-only local claims", () => {
-    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    const source = canonicalWorkbenchSource();
     expect(source).toContain("item.authority?.kind");
     expect(source).toContain("item.runtimeEvidence?.state");
     expect(source).toContain("item.availability");
-    expect(source).toContain('item.installAction === "NOT_AVAILABLE"');
-    expect(source).toContain("No required permission was declared by verified metadata.");
+    expect(source).toContain('item.installAction !== "NOT_AVAILABLE"');
+    expect(source).toContain(".filter((permission) => permission.required)");
   });
 
   it("keeps Downloads distinct from broader Online Activity", () => {
-    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
-    expect(source).toContain("const downloadTasks = tasks.filter");
-    expect(source).toContain("const onlineTasks = tasks.filter");
-    expect(source).toContain("Downloads contains transfer, staging and installation-transfer tasks only");
+    const source = canonicalWorkbenchSource();
+    expect(source).toContain('view === "downloads" ? /download|pull|install|update/i.test');
+    expect(source).toContain('/online|marketplace|download|install|update|provider/i.test');
+    expect(ONLINE_EXPLORER_VIEWS).toContain("downloads");
+    expect(ONLINE_EXPLORER_VIEWS).toContain("activity");
   });
 
   it("implements a safe KForge terminal rather than unrestricted shell input", () => {
-    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    const source = canonicalWorkbenchSource();
     expect(source).toContain("KForge Command Terminal");
     expect(source).toContain("Only registered KForge actions are executable. There is no unrestricted shell input.");
     expect(source).toContain("/actions");
     expect(source).toContain("descriptor.enabled");
   });
 
-  it("keeps artifacts structured and raw evidence secondary", () => {
-    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+  it("keeps artifacts structured with explicit verification columns", () => {
+    const source = canonicalWorkbenchSource();
     expect(source).toContain("<th>Artifact</th>");
     expect(source).toContain("<th>SHA-256</th>");
     expect(source).toContain("<th>Signature</th>");
-    expect(source).toContain("Advanced · Raw release evidence");
+    expect(source).toContain("<th>Verification</th>");
+    expect(source).toContain("Raw JSON is not treated as a verified artifact.");
   });
 
   it("uses Settings v3 hierarchical startup navigation and enforced security invariants", () => {
-    const source = readFileSync(new URL("./KForgeWorkbench.tsx", import.meta.url), "utf8");
+    const source = canonicalWorkbenchSource();
     expect(source).toContain("startupActivity");
     expect(source).toContain("startupOnlineView");
     expect(source).toContain("version: 3");
@@ -84,11 +88,13 @@ describe("KForge contextual workbench architecture", () => {
   });
 
   it("uses one inherited KNOuX theme for shell and Online surfaces", () => {
-    const css = readFileSync(new URL("./KForgeWorkbench.css", import.meta.url), "utf8");
-    expect(css).toContain("hsl(var(--background))");
-    expect(css).toContain("hsl(var(--card))");
-    expect(css).toContain("hsl(var(--foreground))");
-    expect(css).not.toContain("--kf-online-bg");
-    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    const css = readFileSync(new URL("../workbench/workbench.css", import.meta.url), "utf8");
+    const inheritedCss = readFileSync(new URL("./KForgeWorkbench.css", import.meta.url), "utf8");
+    expect(css).toContain('@import "../pages/KForgeWorkbench.css"');
+    expect(inheritedCss).toContain("hsl(var(--background))");
+    expect(inheritedCss).toContain("hsl(var(--card))");
+    expect(inheritedCss).toContain("hsl(var(--foreground))");
+    expect(inheritedCss).not.toContain("--kf-online-bg");
+    expect(inheritedCss).toContain("@media (prefers-reduced-motion: reduce)");
   });
 });

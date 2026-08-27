@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { setProjectContext } from "./helpers/workbench";
 
 const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
 
@@ -26,7 +27,7 @@ test.describe("KForge product evidence surfaces in contextual workbench", () => 
     const project = await opened.json() as { project: { id: string } };
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
     await expect(page.locator(".kw-shell")).toBeVisible({ timeout: 60_000 });
-    await page.getByLabel("Project context").selectOption(project.project.id);
+    await setProjectContext(page, project.project.id);
   });
 
   test("loads Online, AI, graph and quality evidence without silent external requests", async ({ page }) => {
@@ -53,8 +54,8 @@ test.describe("KForge product evidence surfaces in contextual workbench", () => 
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/graph|nodes|coverage|evidence/i);
 
     await navigate(page, "Quality", "KForge Sonar");
-    await expect(page.locator(".kw-simple-surface")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator(".kw-workbench-scroll")).toContainText(/problem|health|coverage|security/i);
+    await expect(page.getByRole("heading", { name: "KForge Sonar", exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(/problem|finding|security|scan/i);
 
     expect(externalRequests, `Unexpected external requests in Offline mode:\n${externalRequests.join("\n")}`).toEqual([]);
     expect(apiFailures, `Unexpected API failures while loading product evidence surfaces:\n${apiFailures.join("\n")}`).toEqual([]);
