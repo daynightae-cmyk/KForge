@@ -100,7 +100,7 @@ test.describe("KForge Workbench production acceptance", () => {
     await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
   });
 
-  test("verifies full capability card lifecycle sequence (install, health, run, update, uninstall) with item-explicit actions", async ({ page }) => {
+  test("verifies full capability card lifecycle sequence through card actions (install, health, run, update, uninstall)", async ({ page }) => {
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
     await selectActivityAndView(page, "Online", "Marketplace");
     await expect(page.locator(".kw-capability-card")).toBeVisible({ timeout: 15_000 });
@@ -109,7 +109,6 @@ test.describe("KForge Workbench production acceptance", () => {
     const firstName = await cards.first().locator("h3").innerText();
     await cards.first().click();
     await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
-    // Verify Inspector reflects selected item by checking the title includes the card name.
     await expect(page.locator(".kw-inspector")).toContainText(firstName);
   });
 
