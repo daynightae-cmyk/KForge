@@ -28,7 +28,7 @@ export function KForgeInspector({ context, operation }: { context: InspectorCont
         </div>
         <p className="text-xs text-muted-foreground mt-1">{item.category} · {item.version ? `v${item.version}` : "version UNKNOWN"}</p>
         <div className="flex items-center gap-2 mt-3 text-[11px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1"><Shield size={10} /> Trust: {item.trust || "UNTRUSTED"}</span>
+          <span className="inline-flex items-center gap-1"><Shield size={10} /> Trust: {item.trust === "TRUSTED" ? "TRUSTED" : item.trust === "UNTRUSTED" ? "UNTRUSTED" : item.trust === "PARTIALLY_TRUSTED" ? "PARTIALLY_TRUSTED" : item.trust ? String(item.trust) : "NOT_EVALUATED"}</span>
           <span>·</span>
           <span>Integrity: {item.integrity?.state || "UNKNOWN"}</span>
           <span>·</span>

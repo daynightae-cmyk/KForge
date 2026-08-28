@@ -80,7 +80,7 @@ export const KForgeCapabilityCard: React.FC<CapabilityCardProps> = ({
       </div>
       <div className="px-4 pb-3">
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1"><Shield size={10} /> Trust: {item.trust || "UNTRUSTED"}</span>
+          <span className="inline-flex items-center gap-1"><Shield size={10} /> Trust: {item.trust === "TRUSTED" ? "TRUSTED" : item.trust === "UNTRUSTED" ? "UNTRUSTED" : item.trust === "PARTIALLY_TRUSTED" ? "PARTIALLY_TRUSTED" : item.trust ? item.trust : "NOT_EVALUATED"}</span>
           <span>·</span>
           <span>Compatibility: {item.projectCompatibility?.state || (item.projectCompatibility ? item.projectCompatibility.state : "NOT_EVALUATED")}</span>
           <span>·</span>
