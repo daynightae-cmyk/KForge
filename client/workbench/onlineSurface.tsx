@@ -4,9 +4,10 @@ import type { ProjectSummary } from "@shared/workspace";
 import { fetchEvidence, fetchJson, jsonRequest } from "./api";
 import { Cloud, Search } from "lucide-react";
 import { EmptyState, EvidenceCards, EvidenceRows, StatusBadge, TaskTable } from "./ui";
+import { KForgeCapabilityCard } from "@/components/ui/KForgeCapabilityCard";
 import { viewLabel } from "./navigation";
 
-type LifecycleActionKind = "install" | "health" | "run" | "update" | "uninstall";
+type LifecycleActionKind = "install" | "health" | "run" | "update" | "uninstall" | "manage";
 
 const lifecycleLabels: Record<LifecycleActionKind, string> = {
   install: "Install local package",
@@ -14,6 +15,7 @@ const lifecycleLabels: Record<LifecycleActionKind, string> = {
   run: "Run local package",
   update: "Update local package",
   uninstall: "Uninstall local package",
+  manage: "Manage package",
 };
 
 function actionEligibility(item: MarketplaceItem, id: "install" | "manage") {
@@ -135,7 +137,21 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   }
 
   const resultLabel = view === "discover" ? "recommended item(s)" : "result(s)";
-  return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Online catalog" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span>{items.length} {resultLabel}</span><button onClick={() => void refresh()}>Refresh local evidence</button></div>{message && <p className="kw-message">{message}</p>}{items.length ? <div className="kw-online-layout"><div className="kw-online-results">{items.map((item) => <button key={item.id} className={selected?.id === item.id ? "is-selected" : ""} onClick={() => { selectItem(item); }}><div><strong>{item.name}</strong><span>{item.category} · {item.version || "version UNKNOWN"}</span></div><p>{item.description || item.overview || "No description supplied."}</p><div className="kw-row-badges"><StatusBadge value={item.authority?.kind} /><StatusBadge value={item.availability} /><StatusBadge value={project ? item.projectCompatibility?.state || "UNKNOWN" : "NOT_EVALUATED"} /></div></button>)}</div></div> : <EmptyState title={view === "updates" ? "No verified update evidence" : view === "discover" ? "No verified recommendations" : `No ${viewLabel("online", view).toLowerCase()} evidence`} detail={view === "updates" ? "Updates require installedVersion, verifiedLatestVersion and version comparison." : view === "discover" ? "Discover shows only items marked recommended by verified local catalog evidence." : "No verified source item matches this view."} />}</section>;
+  return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Online catalog" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span>{items.length} {resultLabel}</span><button onClick={() => void refresh()}>Refresh local evidence</button></div>{message && <p className="kw-message">{message}</p>}{items.length ? <div className="kw-online-layout"><div className="kw-online-results">{items.map((item) => (
+  <KForgeCapabilityCard
+    key={item.id}
+    item={item}
+    selected={selected?.id === item.id}
+    onSelect={() => selectItem(item)}
+    onInstall={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "install")?.enabled) void operate("install"); }}
+    onUpdate={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "update")?.enabled) void operate("update"); }}
+    onHealth={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "health")?.enabled) void operate("health"); }}
+    onRun={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "run")?.enabled) void operate("run"); }}
+    onManage={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "manage")?.enabled) void operate("manage"); }}
+    onUninstall={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "uninstall")?.enabled) void operate("uninstall"); }}
+    actionsDisabled={operation !== null}
+  />
+))}</div></div> : <EmptyState title={view === "updates" ? "No verified update evidence" : view === "discover" ? "No verified recommendations" : `No ${viewLabel("online", view).toLowerCase()} evidence`} detail={view === "updates" ? "Updates require installedVersion, verifiedLatestVersion and version comparison." : view === "discover" ? "Discover shows only items marked recommended by verified local catalog evidence." : "No verified source item matches this view."} />}</section>;
 }
 
 function OnlineContext({ project, control }: { project?: ProjectSummary; control: RecordRow | null }) {

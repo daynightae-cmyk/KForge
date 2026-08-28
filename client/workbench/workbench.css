@@ -52,4 +52,19 @@
 .kw-online-inspector .kw-operation-actions { margin-top: 10px; }
 .kw-online-inspector .kw-operation-actions button { flex: 1 1 auto; }
 .kw-inspector h2 { color: var(--kw-muted); letter-spacing: .04em; text-transform: uppercase; font-size: 11px; margin-top: 14px; }
+.kw-online-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; padding: 8px; }
+.kw-capability-card { border-radius: 12px; background: var(--kw-panel); border: 1px solid var(--kw-border); padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04); transition: box-shadow .15s ease, border-color .15s ease; }
+.kw-capability-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); border-color: var(--kw-border-hover, var(--kw-border)); }
+.kw-capability-card .kw-card-header { display: flex; align-items: flex-start; gap: 10px; }
+.kw-capability-card .kw-card-header h3 { font-size: 15px; font-weight: 600; line-height: 1.25; letter-spacing: -.01em; margin: 0 0 2px; }
+.kw-capability-card .kw-card-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.kw-capability-card .kw-card-badges span { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; letter-spacing: .02em; text-transform: uppercase; }
+.kw-capability-card .kw-card-desc { color: var(--kw-muted); font-size: 12px; line-height: 1.4; margin-top: 6px; }
+.kw-capability-card .kw-card-evidence { display: flex; gap: 10px; font-size: 11px; color: var(--kw-muted); margin-top: 6px; }
+.kw-capability-card .kw-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; border-top: 1px solid var(--kw-border-subtle, var(--kw-border)); padding-top: 10px; }
+.kw-capability-card .kw-card-actions button { min-height: 30px; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; border: 1px solid var(--kw-border); background: transparent; color: var(--kw-text); transition: background .15s ease, color .15s ease; }
+.kw-capability-card .kw-card-actions button:hover:not(:disabled) { background: var(--kw-accent); border-color: var(--kw-accent); }
+.kw-capability-card .kw-card-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.kw-capability-card .kw-card-actions button.kw-action-primary { background: var(--kw-primary); color: var(--kw-primary-foreground); border-color: var(--kw-primary); }
+.kw-capability-card .kw-card-actions button.kw-action-primary:hover:not(:disabled) { background: var(--kw-primary-hover, var(--kw-primary)); }
 @media (max-width: 900px) { .kw-table { min-width: 760px; } }
