@@ -78,9 +78,14 @@ describe("KForge agent tool status semantics", () => {
     it("lexical boundary rejects absolute external paths", async () => {
       const root = await fs.mkdtemp(path.join(fixturesDir, "security-abs-"));
       await fs.mkdir(root, { recursive: true });
-      const result = await executeAgentTool(root, { typecheck: async () => ({}), lint: async () => ({}), test: async () => ({}), build: async () => ({}), start: async () => ({}), health: async () => ({}), logs: async () => ({}), gitStatus: async () => ({}), gitDiff: async () => ({}), scan: async () => ({}), sonar: async () => ({}), graph: async () => ({}), dependencyAudit: async () => ({}) }, "read_file", { path: "C:\\outside\\secret.txt" });
+      // Create a REAL absolute external file outside the project root for platform portability.
+      const outsideDir = await fs.mkdtemp(path.join(fixturesDir, "security-abs-outside-"));
+      await fs.writeFile(path.join(outsideDir, "secret.txt"), "KFORGE_EXTERNAL_SENTINEL", "utf8");
+      const absoluteExternalPath = path.join(outsideDir, "secret.txt");
+      const result = await executeAgentTool(root, { typecheck: async () => ({}), lint: async () => ({}), test: async () => ({}), build: async () => ({}), start: async () => ({}), health: async () => ({}), logs: async () => ({}), gitStatus: async () => ({}), gitDiff: async () => ({}), scan: async () => ({}), sonar: async () => ({}), graph: async () => ({}), dependencyAudit: async () => ({}) }, "read_file", { path: absoluteExternalPath });
       expect(result.ok).toBe(false);
       expect(result.message).toContain("escapes");
+      await fs.rm(outsideDir, { recursive: true, force: true });
       await fs.rm(root, { recursive: true, force: true });
     });
 
