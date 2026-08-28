@@ -45,6 +45,18 @@ export function KForgeInspector({ context, operation }: { context: InspectorCont
           {item.authority?.kind && <p className="text-xs text-muted-foreground">Authority: {item.authority.kind}</p>}
         </section>
 
+        {/* Freshness */}
+        {context.item?.freshness && (
+          <section aria-label="Freshness">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Freshness</h3>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <StatusBadge value={context.item.freshness.state || "UNKNOWN"} />
+              <span>·</span>
+              <span>Checked: {context.item.freshness.at ? new Date(context.item.freshness.at).toLocaleString() : "UNKNOWN"}</span>
+            </div>
+          </section>
+        )}
+
         {/* Lifecycle */}
         <section aria-label="Lifecycle">
           <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Lifecycle</h3>
