@@ -1,18 +1,13 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Check, AlertCircle, Clock, Shield, Zap, Wrench, Package, Plug, Cloud } from "lucide-react";
-import type { MarketplaceItem } from "../../workbench/surfaceContracts";
+import type { MarketplaceItem, InspectorAction } from "../../workbench/surfaceContracts";
 
 export type CapabilityCardProps = {
   item: MarketplaceItem;
   selected?: boolean;
   onSelect?: () => void;
-  onInstall?: () => void;
-  onUpdate?: () => void;
-  onHealth?: () => void;
-  onRun?: () => void;
-  onManage?: () => void;
-  onUninstall?: () => void;
+  actions?: InspectorAction[];
   actionsDisabled?: boolean;
   className?: string;
 };
@@ -40,20 +35,13 @@ export const KForgeCapabilityCard: React.FC<CapabilityCardProps> = ({
   item,
   selected,
   onSelect,
-  onInstall,
-  onUpdate,
-  onHealth,
-  onRun,
-  onManage,
-  onUninstall,
+  actions,
   actionsDisabled,
   className,
 }) => {
   const installed = item.installed === true;
   const updateAvailable = item.updateState?.state === "VERIFIED" && /^UPDATE_AVAILABLE\b/i.test(item.updateState.value || "");
-  const hasManage = item.actionEligibility?.actions?.some((a) => a.id === "manage" && a.enabled);
-  const hasHealth = item.actionEligibility?.actions?.some((a) => a.id === "health" && a.enabled);
-  const hasRun = item.actionEligibility?.actions?.some((a) => a.id === "run" && a.enabled);
+
 
   return (
     <article
@@ -100,24 +88,21 @@ export const KForgeCapabilityCard: React.FC<CapabilityCardProps> = ({
         </div>
       </div>
       <div className="flex items-center gap-2 px-4 py-3 border-t bg-muted/20">
-        {!installed && item.actionEligibility?.actions?.some((a) => a.id === "install" && a.enabled) && (
-          <button disabled={actionsDisabled} onClick={(e) => { e.stopPropagation(); onInstall?.(); }} className="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Install</button>
-        )}
-        {installed && hasManage && (
-          <>
-            <button disabled={actionsDisabled} onClick={(e) => { e.stopPropagation(); onHealth?.(); }} className="inline-flex items-center justify-center rounded-md border border-border hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs font-medium transition-colors disabled:opacity-50">Health</button>
-            {hasRun && <button disabled={actionsDisabled} onClick={(e) => { e.stopPropagation(); onRun?.(); }} className="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3 text-xs font-medium transition-colors disabled:opacity-50">Run</button>}
-          </>
-        )}
-        {updateAvailable && (
-          <button disabled={actionsDisabled} onClick={(e) => { e.stopPropagation(); onUpdate?.(); }} className="inline-flex items-center justify-center rounded-md bg-amber-600 text-white hover:bg-amber-700 h-8 px-3 text-xs font-medium transition-colors disabled:opacity-50">Update</button>
-        )}
-        {installed && hasManage && (
-          <button disabled={actionsDisabled} onClick={(e) => { e.stopPropagation(); onManage?.(); }} className="inline-flex items-center justify-center rounded-md border border-border hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs font-medium transition-colors disabled:opacity-50">Manage</button>
-        )}
-        {installed && item.actionEligibility?.actions?.some((a) => a.id === "uninstall" && a.enabled) && (
-          <button disabled={actionsDisabled} onClick={(e) => { e.stopPropagation(); onUninstall?.(); }} className="inline-flex items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 h-8 px-3 text-xs font-medium transition-colors disabled:opacity-50">Uninstall</button>
-        )}
+        {(actions || []).map((action) => (
+          <button
+            key={action.id}
+            disabled={actionsDisabled || action.disabled}
+            title={action.reason || action.label}
+            onClick={(e) => { e.stopPropagation(); if (!action.disabled && action.invoke) action.invoke(); }}
+            className={cn(
+              "inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+              action.id === "install" || action.id === "run" || action.id === "update" ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90" : "border-border hover:bg-accent hover:text-accent-foreground",
+              (actionsDisabled || action.disabled) ? "opacity-45 cursor-not-allowed" : ""
+            )}
+          >
+            {action.label}
+          </button>
+        ))}
       </div>
     </article>
   );

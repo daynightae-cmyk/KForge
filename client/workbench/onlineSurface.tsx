@@ -143,13 +143,8 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     item={item}
     selected={selected?.id === item.id}
     onSelect={() => selectItem(item)}
-    onInstall={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "install")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "install"); } }}
-    onUpdate={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "update")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "update"); } }}
-    onHealth={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "health")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "health"); } }}
-    onRun={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "run")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "run"); } }}
-    onManage={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "manage")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "manage"); } }}
-    onUninstall={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "uninstall")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "uninstall"); } }}
-    actionsDisabled={operation && operation.itemId === item.id && operation.state === "RUNNING"}
+    actions={selected?.id === item.id ? actions : undefined}
+    actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"}
   />
 ))}</div></div> : <EmptyState title={view === "updates" ? "No verified update evidence" : view === "discover" ? "No verified recommendations" : `No ${viewLabel("online", view).toLowerCase()} evidence`} detail={view === "updates" ? "Updates require installedVersion, verifiedLatestVersion and version comparison." : view === "discover" ? "Discover shows only items marked recommended by verified local catalog evidence." : "No verified source item matches this view."} />}</section>;
 }
