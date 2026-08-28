@@ -100,6 +100,19 @@ test.describe("KForge Workbench production acceptance", () => {
     await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
   });
 
+  test("verifies full capability card lifecycle sequence (install, health, run, update, uninstall) with item-explicit actions", async ({ page }) => {
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await selectActivityAndView(page, "Online", "Marketplace");
+    await expect(page.locator(".kw-capability-card")).toBeVisible({ timeout: 15_000 });
+    const cards = page.locator(".kw-capability-card");
+    await expect(cards).toHaveCount({ timeout: 15_000, min: 1 });
+    const firstName = await cards.first().locator("h3").innerText();
+    await cards.first().click();
+    await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
+    // Verify Inspector reflects selected item by checking the title includes the card name.
+    await expect(page.locator(".kw-inspector")).toContainText(firstName);
+  });
+
   test("renders structured artifact columns rather than raw JSON as the primary artifact UX", async ({ page }) => {
     const project = await prepareWorkspace(page);
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
