@@ -76,11 +76,51 @@ const definitions: AgentToolDefinition[] = [
   { name: "dependency_audit", permission: "safe", description: "Run the supported dependency-audit operation." },
 ];
 
-function safePath(root: string, relative = ".") {
+function lexicalBoundaryCheck(root: string, relative: string): { absolute: string; relative: string } {
   const resolved = path.resolve(root, relative);
   const outside = path.relative(root, resolved);
-  if (outside.startsWith("..") || path.isAbsolute(outside)) throw new Error("The requested path escapes the project root.");
+  if (path.isAbsolute(outside) || outside.startsWith("..") || outside === "..") {
+    throw new Error("The requested path escapes the project root (lexical).");
+  }
   return { absolute: resolved, relative: outside.split(path.sep).join("/") || "." };
+}
+
+function isInsideRealPath(realRoot: string, realTarget: string): boolean {
+  const rel = path.relative(realRoot, realTarget);
+  if (rel === "") return true;
+  if (path.isAbsolute(rel)) return false;
+  const parts = rel.split(path.sep);
+  if (parts[0] === "..") return false;
+  return true;
+}
+
+async function resolveProjectPath(root: string, relative: string) {
+  const lexical = lexicalBoundaryCheck(root, relative);
+  const realRoot = await fs.realpath(root).catch((err) => {
+    if (err && (err as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error("The project root does not exist.");
+    }
+    throw err;
+  });
+  const lexicalTarget = path.resolve(root, relative);
+  let realTarget: string;
+  try {
+    realTarget = await fs.realpath(lexicalTarget);
+  } catch (err) {
+    if (err && (err as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error("The requested path does not exist.");
+    }
+    throw err;
+  }
+  if (!isInsideRealPath(realRoot, realTarget)) {
+    throw new Error("The requested path resolves outside the project root.");
+  }
+  return { lexicalTarget, realTarget, realRoot, lexical, relative };
+}
+
+function safePath(root: string, relative = ".") {
+  const lexical = lexicalBoundaryCheck(root, relative);
+  return { absolute: lexical.absolute, relative: lexical.relative };
 }
 
 async function collectFiles(root: string, max = 750) {
@@ -90,11 +130,13 @@ async function collectFiles(root: string, max = 750) {
     const rows = await fs.readdir(directory, { withFileTypes: true }).catch(() => [] as Dirent[]);
     for (const row of rows) {
       if (items.length >= max) return;
+      // Policy: do not follow symlinked files or directories during recursive search.
+      if (row.isSymbolicLink()) continue;
       if (row.isDirectory() && ignored.has(row.name)) continue;
       const full = path.join(directory, row.name);
-      const relative = path.relative(root, full).split(path.sep).join("/");
+      const relativePath = path.relative(root, full).split(path.sep).join("/");
       if (row.isDirectory()) await walk(full);
-      else items.push(relative);
+      else items.push(relativePath);
     }
   }
   await walk(root);
@@ -102,13 +144,13 @@ async function collectFiles(root: string, max = 750) {
 }
 
 async function textFile(root: string, relative: string, limit = 24_000) {
-  const target = safePath(root, relative);
-  const stat = await fs.stat(target.absolute);
+  const resolved = await resolveProjectPath(root, relative);
+  const stat = await fs.stat(resolved.realTarget);
   if (!stat.isFile()) throw new Error("The requested path is not a file.");
   if (stat.size > limit * 4) throw new Error("The requested file exceeds the agent read-size limit.");
-  const content = await fs.readFile(target.absolute, "utf8");
-  const redacted = redactProjectText(target.relative, content.slice(0, limit));
-  return { path: target.relative, content: redacted.content, redacted: redacted.redacted, truncated: content.length > limit, sizeBytes: stat.size };
+  const content = await fs.readFile(resolved.realTarget, "utf8");
+  const redacted = redactProjectText(resolved.relative, content.slice(0, limit));
+  return { path: resolved.relative, content: redacted.content, redacted: redacted.redacted, truncated: content.length > limit, sizeBytes: stat.size };
 }
 
 function definition(name: AgentToolName) { return definitions.find((entry) => entry.name === name) as AgentToolDefinition; }
@@ -186,9 +228,9 @@ export async function executeAgentTool(root: string, handlers: ProjectToolHandle
   try {
     if (name === "list_files") {
       const directory = typeof input.directory === "string" ? input.directory : ".";
-      const location = safePath(root, directory);
-      const rows = await fs.readdir(location.absolute, { withFileTypes: true });
-      const entries = rows.filter((row) => !ignored.has(row.name)).slice(0, 300).map((row) => ({ name: row.name, path: path.posix.join(location.relative === "." ? "" : location.relative, row.name), kind: row.isDirectory() ? "directory" : "file" }));
+      const resolved = await resolveProjectPath(root, directory);
+      const rows = await fs.readdir(resolved.realTarget, { withFileTypes: true });
+      const entries = rows.filter((row) => !ignored.has(row.name) && !row.isSymbolicLink()).slice(0, 300).map((row) => ({ name: row.name, path: path.posix.join(resolved.relative === "." ? "" : resolved.relative, row.name), kind: row.isDirectory() ? "directory" : "file" }));
       return { ok: true, tool: name, permission: tool.permission, output: entries, message: `${entries.length} entry(s) listed.` };
     }
     if (name === "read_file") {
@@ -211,7 +253,17 @@ export async function executeAgentTool(root: string, handlers: ProjectToolHandle
       const matches: Array<{ path: string; line: number; text: string }> = [];
       for (const file of files) {
         if (matches.length >= 120) break;
-        const content = await fs.readFile(path.join(root, file), "utf8").catch(() => "");
+        const filePath = path.join(root, file);
+        // Validate the discovered file remains inside the real project root.
+        let realFile: string;
+        try {
+          realFile = await fs.realpath(filePath);
+        } catch {
+          realFile = filePath;
+        }
+        const realRootPath = await fs.realpath(root).catch(() => root);
+        if (!isInsideRealPath(realRootPath, realFile)) continue;
+        const content = await fs.readFile(filePath, "utf8").catch(() => "");
         content.split(/\r?\n/).forEach((line, index) => { if (matches.length < 120 && expression.test(line)) matches.push({ path: file, line: index + 1, text: line.trim().slice(0, 400) }); });
       }
       return { ok: true, tool: name, permission: tool.permission, output: matches, message: `${matches.length} match(es) found.` };
