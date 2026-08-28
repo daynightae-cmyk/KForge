@@ -22,7 +22,7 @@ function actionEligibility(item: MarketplaceItem, id: "install" | "manage") {
   return item.actionEligibility?.actions?.find((action) => action.id === id);
 }
 
-function lifecycleActions(item: MarketplaceItem, operate: (kind: LifecycleActionKind) => Promise<void>): InspectorAction[] {
+function lifecycleActions(item: MarketplaceItem, operate: (targetItem: MarketplaceItem, kind: LifecycleActionKind) => Promise<void>): InspectorAction[] {
   const isLocalPackage = item.id.startsWith("package:");
   const installed = item.installed === true;
   const installEligibility = actionEligibility(item, "install");
@@ -36,7 +36,7 @@ function lifecycleActions(item: MarketplaceItem, operate: (kind: LifecycleAction
     label: lifecycleLabels[id],
     disabled: !enabled,
     reason: enabled ? undefined : reason,
-    invoke: enabled ? () => { void operate(id); } : undefined,
+    invoke: enabled ? () => { void operate(item, id); } : undefined,
   });
 
   return [
@@ -96,21 +96,21 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || items[0] || null, [items, selectedId]);
   const catalogView = !["providers", "remote-sources", "downloads", "activity"].includes(view);
 
-  const operate = useCallback(async (kind: LifecycleActionKind) => {
-    if (!selected) return;
+  const operate = useCallback(async (targetItem: MarketplaceItem, kind: LifecycleActionKind) => {
+    if (!targetItem) return;
     const destructive = ["install", "run", "update", "uninstall"].includes(kind);
-    if (destructive && !window.confirm(`${kind} ${selected.name}? Review the displayed authority, integrity, permissions and trust evidence first.`)) return;
-    setOperation({ state: "RUNNING", operation: kind, itemId: selected.id });
+    if (destructive && !window.confirm(`${kind} ${targetItem.name}? Review the displayed authority, integrity, permissions and trust evidence first.`)) return;
+    setOperation({ state: "RUNNING", operation: kind, itemId: targetItem.id });
     try {
-      const url = `/api/workspace/marketplace/items/${encodeURIComponent(selected.id)}/${kind}`;
+      const url = `/api/workspace/marketplace/items/${encodeURIComponent(targetItem.id)}/${kind}`;
       const result = kind === "health" ? await fetchEvidence(url) : await fetchEvidence(url, jsonRequest({ confirmed: true }));
       if (!result.ok) throw new Error(String(result.data.error || result.data.message || `${kind} failed with HTTP ${result.status}.`));
-      setOperation({ state: "SUCCESS", operation: kind, status: result.status, itemId: selected.id, ...result.data });
+      setOperation({ state: "SUCCESS", operation: kind, status: result.status, itemId: targetItem.id, ...result.data });
       await refresh();
     } catch (error) {
-      setOperation({ state: "FAILED", operation: kind, itemId: selected.id, error: error instanceof Error ? error.message : "Operation failed" });
+      setOperation({ state: "FAILED", operation: kind, itemId: targetItem.id, error: error instanceof Error ? error.message : "Operation failed" });
     }
-  }, [refresh, selected]);
+  }, [refresh]);
 
   const actions = useMemo(() => selected ? lifecycleActions(selected, operate) : [], [operate, selected]);
 
@@ -143,13 +143,13 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     item={item}
     selected={selected?.id === item.id}
     onSelect={() => selectItem(item)}
-    onInstall={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "install")?.enabled) void operate("install"); }}
-    onUpdate={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "update")?.enabled) void operate("update"); }}
-    onHealth={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "health")?.enabled) void operate("health"); }}
-    onRun={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "run")?.enabled) void operate("run"); }}
-    onManage={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "manage")?.enabled) void operate("manage"); }}
-    onUninstall={() => { if (item.actionEligibility?.actions?.find((a) => a.id === "uninstall")?.enabled) void operate("uninstall"); }}
-    actionsDisabled={operation !== null}
+    onInstall={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "install")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "install"); } }}
+    onUpdate={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "update")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "update"); } }}
+    onHealth={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "health")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "health"); } }}
+    onRun={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "run")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "run"); } }}
+    onManage={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "manage")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "manage"); } }}
+    onUninstall={() => { const el = item.actionEligibility?.actions?.find((a) => a.id === "uninstall")?.enabled ? item : null; if (el) { setSelectedId(item.id); void operate(item, "uninstall"); } }}
+    actionsDisabled={operation && operation.itemId === item.id && operation.state === "RUNNING"}
   />
 ))}</div></div> : <EmptyState title={view === "updates" ? "No verified update evidence" : view === "discover" ? "No verified recommendations" : `No ${viewLabel("online", view).toLowerCase()} evidence`} detail={view === "updates" ? "Updates require installedVersion, verifiedLatestVersion and version comparison." : view === "discover" ? "Discover shows only items marked recommended by verified local catalog evidence." : "No verified source item matches this view."} />}</section>;
 }
