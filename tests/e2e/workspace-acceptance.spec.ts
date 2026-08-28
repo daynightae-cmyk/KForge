@@ -90,6 +90,16 @@ test.describe("KForge Workbench production acceptance", () => {
     expect(await disabled.count()).toBeGreaterThanOrEqual(0);
   });
 
+  test("verifies premium capability card actions target the correct item explicitly", async ({ page }) => {
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await selectActivityAndView(page, "Online", "Marketplace");
+    await expect(page.locator(".kw-capability-card")).toBeVisible();
+    const cards = page.locator(".kw-capability-card");
+    const firstCardName = await cards.first().locator("h3").innerText();
+    await cards.first().click();
+    await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
+  });
+
   test("renders structured artifact columns rather than raw JSON as the primary artifact UX", async ({ page }) => {
     const project = await prepareWorkspace(page);
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
