@@ -4,6 +4,7 @@ import type { SurfaceProps, RecordRow } from "./surfaceContracts";
 import type { ProjectSummary, WorkspaceAction, WorkspaceActionDescriptor, CommandResult } from "@shared/workspace";
 import { fetchJson, jsonRequest } from "./api";
 import { EmptyState, StatusBadge, EvidenceRows } from "./ui";
+import { KForgeServiceCard } from "@/components/ui/KForgeServiceCard";
 import { viewLabel } from "./navigation";
 import { SimpleFetchSurface } from "./surfaceShared";
 
@@ -28,18 +29,56 @@ function ActionSurface({ project, action, onExecution }: { project: ProjectSumma
   useEffect(() => { void fetchJson<{ actions: WorkspaceActionDescriptor[] }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/actions`).then((data) => setDescriptor(data.actions.find((entry) => entry.id === action) || null)); }, [project.id, action]);
   if (!descriptor) return <p className="kw-message">Loading action eligibility…</p>;
   const run = async () => { if (!descriptor.enabled) return; onExecution({ label: descriptor.label, command: descriptor.command, state: "RUNNING", source: descriptor.source }); try { const data = await fetchJson<CommandResult>(`/api/workspace/projects/${encodeURIComponent(project.id)}/actions`, jsonRequest({ action })); onExecution({ label: descriptor.label, command: descriptor.command, state: data.ok ? "PASS" : "FAILED", source: descriptor.source, output: data.output, message: data.message, exitCode: data.exitCode }); } catch (error) { onExecution({ label: descriptor.label, state: "FAILED", source: descriptor.source, message: error instanceof Error ? error.message : "Action failed." }); } };
-  return <section className="kw-action-surface"><div><h2>{descriptor.label}</h2><StatusBadge value={descriptor.state} /></div><EvidenceRows value={descriptor as unknown as RecordRow} />{descriptor.unavailableReason && <p className="kw-warning">{descriptor.unavailableReason}</p>}<button disabled={!descriptor.enabled} onClick={() => void run()}>Run verified {action}</button></section>;
+  return (
+    <KForgeServiceCard
+      title={descriptor.label}
+      subtitle={descriptor.command ? `Detected executable` : descriptor.source || "Project profile evidence"}
+      status={String(descriptor.enabled ? (descriptor.state || "AVAILABLE") : "UNAVAILABLE")}
+      command={String(descriptor.command || "No executable evidence detected")}
+      lastRun={undefined}
+      durationMs={undefined}
+      available={descriptor.enabled}
+      reason={descriptor.unavailableReason || (!descriptor.enabled ? descriptor.unavailableReason || "Not available for current project profile." : undefined)}
+      disabled={!descriptor.enabled}
+      onRun={descriptor.enabled ? () => void run() : undefined}
+      onHealth={descriptor.enabled ? () => void onExecution?.({ label: descriptor.label + " Health", state: "RUNNING", source: descriptor.source }) : undefined}
+      onConfigure={undefined}
+    />
+  );
 }
 
 function LintSurface({ project, onExecution }: { project: ProjectSummary; onExecution: SurfaceProps["onExecution"] }) {
   const [tool, setTool] = useState<RecordRow | null>(null); useEffect(() => { void fetchJson<{ tools: RecordRow[] }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/agent/tools`).then((data) => setTool(data.tools.find((entry) => entry.name === "lint") || null)); }, [project.id]); const enabled = ["AVAILABLE", "AVAILABLE_WITH_CONFIRMATION"].includes(String(tool?.status));
   const run = async () => { onExecution({ label: "Lint", state: "RUNNING", source: "Agent tool registry" }); try { const data = await fetchJson<{ ok: boolean; message: string; output: unknown }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/agent/tools/lint`, jsonRequest({})); onExecution({ label: "Lint", state: data.ok ? "PASS" : "FAILED", source: "Agent tool registry", message: data.message, output: typeof data.output === "string" ? data.output : JSON.stringify(data.output, null, 2) }); } catch (error) { onExecution({ label: "Lint", state: "FAILED", source: "Agent tool registry", message: error instanceof Error ? error.message : "Lint failed." }); } };
-  return <section className="kw-action-surface"><div><h2>Lint</h2><StatusBadge value={tool?.status} /></div><EvidenceRows value={tool} /><button disabled={!enabled} onClick={() => void run()}>Run detected lint command</button></section>;
+  return (
+    <KForgeServiceCard
+      title="Lint"
+      subtitle={String(tool?.command || "No lint command detected")}
+      status={String(tool ? (tool.status || "NOT_EVALUATED") : "NOT_EVALUATED")}
+      command={String(tool?.command || "No executable evidence")}
+      available={enabled}
+      reason={!enabled ? (String(tool?.unavailableReason || "No lint script found in package.json")) : undefined}
+      disabled={!enabled}
+      onRun={enabled ? () => void run() : undefined}
+    />
+  );
 }
 
 function PreviewSurface({ project, onExecution }: { project: ProjectSummary; onExecution: SurfaceProps["onExecution"] }) {
   const [data, setData] = useState<RecordRow | null>(null); const refresh = () => fetchJson<{ preview: RecordRow }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/preview`).then((result) => setData(result.preview)); useEffect(() => { void refresh(); }, [project.id]); const op = async (name: string) => { onExecution({ label: `Preview ${name}`, state: "RUNNING", source: "Shared Preview runtime" }); try { const result = await fetchJson<{ preview: RecordRow }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/preview/${name}`, { method: "POST" }); setData(result.preview); onExecution({ label: `Preview ${name}`, state: String(result.preview.state || "COMPLETED"), source: "Shared Preview runtime", output: String(result.preview.stdout || result.preview.output || "") }); } catch (error) { onExecution({ label: `Preview ${name}`, state: "FAILED", source: "Shared Preview runtime", message: error instanceof Error ? error.message : "Preview failed." }); } };
-  return <section className="kw-preview"><h2>KNOuX Forge Preview Engine</h2><p>One shared Preview runtime. No second engine is created by this surface.</p><EvidenceRows value={data} /><div className="kw-inline-actions">{["start", "health", "restart", "stop"].map((name) => <button key={name} onClick={() => void op(name)}>{name}</button>)}</div>{data && <pre>{JSON.stringify(data, null, 2)}</pre>}</section>;
+  return (
+    <KForgeServiceCard
+      title="KNOuX Forge Preview Engine"
+      subtitle="Shared preview runtime. One engine. No second engine created."
+      status={data ? String(data.state || "READY") : "NOT_EVALUATED"}
+      command="Shared Preview runtime"
+      available={true}
+      disabled={false}
+      onRun={() => void op("start")}
+      onHealth={() => void op("health")}
+      onConfigure={undefined}
+    />
+  );
 }
 
 export default DeveloperSurface;
