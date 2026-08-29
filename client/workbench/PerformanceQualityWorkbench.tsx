@@ -58,7 +58,7 @@ export default function PerformanceQualityWorkbench({ project }: { project: Proj
       ]);
       setProfile(profileData.profile);
       setCacheEntries(Array.isArray(cacheData.entries) ? cacheData.entries : []);
-      setPerformanceFindings((problemData.problems || []).filter((issue) => issue.category === ("performance" as ScanIssue["category"])));
+      setPerformanceFindings((problemData.problems || []).filter((issue) => String(issue.category) === "performance"));
       setProblemCoverage(problemData.coverage || {});
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Performance evidence unavailable.");
@@ -104,8 +104,8 @@ export default function PerformanceQualityWorkbench({ project }: { project: Proj
         return;
       }
       const removed = typeof response.data.removed === "number" ? response.data.removed : 0;
-      setMessage(`CACHE_CLEARED: ${removed} local analysis cache entr${removed === 1 ? "y" : "ies"} removed. Source files were not modified.`);
       await refreshBaseEvidence(false);
+      setMessage(`CACHE_CLEARED: ${removed} local analysis cache entr${removed === 1 ? "y" : "ies"} removed. Source files were not modified.`);
     } catch (error) {
       setReviewedClear(false);
       setMessage(error instanceof Error ? error.message : "Local analysis cache could not be cleared.");
