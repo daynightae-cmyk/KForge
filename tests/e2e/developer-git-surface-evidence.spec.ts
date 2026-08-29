@@ -28,7 +28,7 @@ test.describe("KForge developer workbench and Git evidence", () => {
     repository = "";
   });
 
-  test("runs only detected project commands and keeps Git as explicit local evidence", async ({ page }) => {
+  test("runs only detected project commands and keeps Git as explicit structured local evidence", async ({ page }) => {
     repository = await mkdtemp(path.join(os.tmpdir(), "kforge-developer-workbench-"));
     await git(repository, ["init"]);
     await git(repository, ["config", "user.name", "KForge Workbench Acceptance"]);
@@ -95,7 +95,10 @@ test.describe("KForge developer workbench and Git evidence", () => {
     await expect(page.locator(".kw-bottom-panel")).toContainText("HTTP 200", { timeout: 60_000 });
 
     await navigate(page, "Remote / Git", "Git");
-    await expect(page.locator(".kw-simple-surface")).toContainText("tracked.txt", { timeout: 30_000 });
-    await expect(page.locator(".kw-simple-surface")).toContainText(/branch/i);
+    const gitWorkbench = page.locator('section[aria-label="KForge Git Workbench"]');
+    await expect(gitWorkbench).toBeVisible({ timeout: 30_000 });
+    await expect(gitWorkbench.locator('[data-git-file="tracked.txt"]')).toBeVisible();
+    await expect(gitWorkbench).toContainText("Working tree");
+    await expect(gitWorkbench).toContainText("TRUSTED");
   });
 });
