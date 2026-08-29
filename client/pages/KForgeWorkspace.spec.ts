@@ -97,13 +97,15 @@ describe("KForge contextual workbench architecture", () => {
     expect(ui).toMatch(/import\s+type\s*\{[^}]*RecordRow[^}]*\}\s+from\s+"\.\/surfaceContracts"/);
   });
 
-  it("uses surfaceShared as the canonical owner of SimpleFetchSurface", () => {
+  it("uses surfaceShared as the canonical owner of SimpleFetchSurface without forcing specialized workbenches through it", () => {
     const shared = sharedHelperSource();
     expect(shared).toMatch(/export\s+function\s+SimpleFetchSurface\b/);
     const developer = developerSurfaceSource();
     expect(developer).toMatch(/import\s*\{[^}]*SimpleFetchSurface[^}]*\}\s*from\s*"\.\/surfaceShared"/);
     const remote = remoteSurfaceSource();
-    expect(remote).toMatch(/import\s*\{[^}]*SimpleFetchSurface[^}]*\}\s*from\s*"\.\/surfaceShared"/);
+    expect(remote).not.toMatch(/function\s+SimpleFetchSurface\b/);
+    expect(remote).toMatch(/import\s+GitHubRemoteWorkbench\s+from\s+"\.\/GitHubRemoteWorkbench"/);
+    expect(remote).toContain('"pull-requests", "issues", "actions", "releases"');
     const shell = workbenchSource();
     expect(shell).not.toMatch(/function\s+SimpleFetchSurface\b/);
   });
