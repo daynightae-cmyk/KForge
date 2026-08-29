@@ -7,12 +7,14 @@ import { viewLabel } from "./navigation";
 import QualityTriageWorkbench from "./QualityTriageWorkbench";
 import DocumentationConsistencyWorkbench from "./DocumentationConsistencyWorkbench";
 import SnapshotRecoveryWorkbench from "./SnapshotRecoveryWorkbench";
+import SecurityQualityWorkbench from "./SecurityQualityWorkbench";
 
 function QualitySurface({ view, project, onNavigate }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail={`${viewLabel("quality", view)} needs project context.`} />;
   if (view === "problems" || view === "solutions") return <QualityTriageWorkbench project={project} view={view} onNavigate={onNavigate} />;
   if (view === "snapshots") return <SnapshotRecoveryWorkbench project={project} />;
   if (view === "documentation") return <DocumentationConsistencyWorkbench project={project} />;
+  if (view === "security") return <SecurityQualityWorkbench project={project} />;
   return <QualityEvidence project={project} view={view} />;
 }
 
@@ -65,13 +67,11 @@ function QualityEvidence({ project, view }: { project: ProjectSummary; view: str
     await refresh();
   };
 
-  const visible = view === "security"
-    ? problems.filter((issue) => issue.category === "security")
-    : view === "performance"
-      ? problems.filter((issue) => issue.category === "performance")
-      : view === "technical-debt"
-        ? problems.filter((issue) => ["completeness", "mock", "documentation"].includes(String(issue.category)))
-        : problems;
+  const visible = view === "performance"
+    ? problems.filter((issue) => issue.category === "performance")
+    : view === "technical-debt"
+      ? problems.filter((issue) => ["completeness", "mock", "documentation"].includes(String(issue.category)))
+      : problems;
 
   return (
     <section className="kw-surface-section">
@@ -81,7 +81,7 @@ function QualityEvidence({ project, view }: { project: ProjectSummary; view: str
         <button onClick={() => void refresh()}>Refresh evidence</button>
       </div>
       {view === "sonar" && <p>No tool is downloaded or run silently. Security tools and scanner findings keep UNAVAILABLE/BLOCKED states when evidence is absent.</p>}
-      {view === "sonar" || view === "security" ? <><h3>Security Tool Manager</h3><EvidenceCards rows={tools} /></> : null}
+      {view === "sonar" ? <><h3>Security Tool Manager</h3><EvidenceCards rows={tools} /></> : null}
       <h3>Current normalized findings</h3>
       {visible.length ? (
         <div className="kw-quality-list">
