@@ -85,13 +85,43 @@ test.describe("KForge quality scan and deterministic solution evidence", () => {
     await expect(operation).toHaveAttribute("data-apply-state", "SUCCEEDED");
 
     await selectExplorerView(page, "Quality", "Documentation");
-    const doc = page.locator(".kw-quality-card").filter({ hasText: "npm run obsolete" }).first();
+    const documentationWorkbench = page.getByRole("region", { name: "KForge Documentation Consistency", exact: true });
+    await expect(documentationWorkbench).toBeVisible();
+    await expect(documentationWorkbench.getByRole("heading", { name: "Documentation Consistency Workbench", exact: true })).toBeVisible();
+    const doc = documentationWorkbench.locator(".kw-quality-card").filter({ hasText: "npm run obsolete" }).first();
     await expect(doc).toBeVisible({ timeout: 30_000 });
+    await doc.getByRole("button", { name: "Select documentation finding", exact: true }).click();
+    const readmeBeforePreview = await readFile(path.join(projectRoot, "README.md"), "utf8");
+
+    const docPreview = page.waitForResponse((response) => /\/documentation\/[^/]+\/preview$/.test(new URL(response.url()).pathname) && response.request().method() === "POST");
+    await documentationWorkbench.getByRole("button", { name: "Check safe documentation fix", exact: true }).click();
+    expect((await docPreview).ok()).toBeTruthy();
+    expect(await readFile(path.join(projectRoot, "README.md"), "utf8")).toBe(readmeBeforePreview);
+    const docFixEvidence = documentationWorkbench.getByRole("region", { name: "Documentation fix evidence", exact: true });
+    await expect(docFixEvidence).toHaveAttribute("data-fix-state", "AVAILABLE");
+    await expect(docFixEvidence).toContainText("npm run obsolete");
+    await expect(docFixEvidence).toContainText("npm run test");
+    await expect(documentationWorkbench.getByRole("button", { name: "Apply verified documentation fix", exact: true })).toBeVisible();
+
+    const refreshedAudit = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/documentation`) && response.request().method() === "GET");
+    await documentationWorkbench.getByRole("button", { name: "Refresh documentation audit", exact: true }).click();
+    expect((await refreshedAudit).ok()).toBeTruthy();
+    await expect(docFixEvidence).toHaveAttribute("data-fix-state", "NOT_EVALUATED");
+    await expect(documentationWorkbench.getByRole("button", { name: "Apply verified documentation fix", exact: true })).toHaveCount(0);
+    expect(await readFile(path.join(projectRoot, "README.md"), "utf8")).toBe(readmeBeforePreview);
+
+    const docPreviewAgain = page.waitForResponse((response) => /\/documentation\/[^/]+\/preview$/.test(new URL(response.url()).pathname) && response.request().method() === "POST");
+    await documentationWorkbench.getByRole("button", { name: "Check safe documentation fix", exact: true }).click();
+    expect((await docPreviewAgain).ok()).toBeTruthy();
+    await expect(docFixEvidence).toHaveAttribute("data-fix-state", "AVAILABLE");
+
     page.once("dialog", (dialog) => dialog.accept());
     const docApply = page.waitForResponse((response) => /\/documentation\/[^/]+\/apply$/.test(new URL(response.url()).pathname) && response.request().method() === "POST");
-    await doc.getByRole("button", { name: "Preview + Apply + Verify", exact: true }).click();
+    await documentationWorkbench.getByRole("button", { name: "Apply verified documentation fix", exact: true }).click();
     expect((await docApply).ok()).toBeTruthy();
     await expect.poll(() => readFile(path.join(projectRoot, "README.md"), "utf8")).toContain("npm run test");
+    const docOperation = documentationWorkbench.getByRole("region", { name: "Documentation fix operation", exact: true });
+    await expect(docOperation).toHaveAttribute("data-apply-state", "SUCCEEDED");
 
     await selectExplorerView(page, "Quality", "Technical Debt");
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/placeholder|Implementation marker|mock/i);
