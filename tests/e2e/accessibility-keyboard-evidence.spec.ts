@@ -73,10 +73,10 @@ test.describe("KForge workbench accessibility and keyboard evidence", () => {
       await expectNoAxeViolations(page, label);
     }
     await selectExplorerView(page, "Online", "Extensions");
-    const extension = page.locator(".kw-online-results").getByRole("button", { name: /kforge-json-inspector/i });
+    const extension = page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]');
     await expect(extension).toBeVisible();
     await extension.click();
-    await expect(page.getByLabel("Online item details")).toBeVisible();
+    await expect(page.locator(".kw-inspector").first()).toBeVisible();
     await expectNoAxeViolations(page, "Online Extensions with canonical Inspector");
     expect(externalRequests, `Unexpected external requests during critical accessibility audit:\n${externalRequests.join("\n")}`).toEqual([]);
   });

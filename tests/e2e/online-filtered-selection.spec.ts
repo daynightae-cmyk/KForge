@@ -1,11 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { openWorkbench, selectExplorerView } from "./helpers/workbench";
 
-async function selectedOnlineRow(page: import("@playwright/test").Page) {
-  const row = page.locator(".kw-online-results > button.is-selected");
-  await expect(row).toHaveCount(1);
-  await expect(row).toBeVisible();
-  return row;
+function selectedOnlineRow(page: import("@playwright/test").Page) {
+  return page.locator('.kw-capability-card[data-selected="true"]');
 }
 
 test.describe("KForge Online semantic selection", () => {
@@ -17,30 +14,33 @@ test.describe("KForge Online semantic selection", () => {
 
   test("keeps the canonical Inspector synchronized with the visible semantic view", async ({ page }) => {
     await selectExplorerView(page, "Online", "Extensions");
-    const extension = page.locator(".kw-online-results").getByRole("button", { name: /kforge-json-inspector/i });
-    await expect(extension).toBeVisible();
-    await extension.click();
-    const details = page.getByLabel("Online item details");
-    await expect(details).toContainText("kforge-json-inspector");
+    const card = page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]');
+    await expect(card).toBeVisible();
+    await card.click();
+    const inspector = page.locator(".kw-inspector");
+    await expect(inspector).toBeVisible();
+    await expect(inspector).toContainText("kforge-json-inspector");
 
     await selectExplorerView(page, "Online", "Models");
-    const model = await selectedOnlineRow(page);
-    const modelName = await model.locator("strong").innerText();
-    await expect(details).toContainText(modelName);
-    await expect(details).not.toContainText("kforge-json-inspector");
+    const modelRow = await selectedOnlineRow(page);
+    await expect(modelRow).toHaveCount(1);
+    await expect(modelRow).toBeVisible();
+    const modelName = await modelRow.locator("h2").innerText();
+    await expect(inspector).toContainText(modelName);
+    await expect(inspector).not.toContainText("kforge-json-inspector");
   });
 
   test("clears Marketplace inspector authority when search hides the selected item", async ({ page }) => {
     await selectExplorerView(page, "Online", "Marketplace");
-    const item = page.locator(".kw-online-results").getByRole("button", { name: /kforge-json-inspector/i });
-    await expect(item).toBeVisible();
-    await item.click();
-    const details = page.getByLabel("Online item details");
-    await expect(details).toContainText("kforge-json-inspector");
+    const card = page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]');
+    await expect(card).toBeVisible();
+    await card.click();
+    const inspector = page.locator(".kw-inspector");
+    await expect(inspector).toContainText("kforge-json-inspector");
 
     await page.getByRole("textbox", { name: "Search Online catalog", exact: true }).fill("no-matching-kforge-catalog-entry");
-    await expect(page.locator(".kw-online-results > button")).toHaveCount(0);
-    await expect(page.getByLabel("Online item details")).toHaveCount(0);
-    await expect(page.locator(".kw-online-results > button.is-selected")).toHaveCount(0);
+    await expect(page.locator(".kw-capability-card")).toHaveCount(0);
+    await expect(inspector).toHaveCount(0);
+    await expect(page.locator('.kw-capability-card[data-selected="true"]')).toHaveCount(0);
   });
 });

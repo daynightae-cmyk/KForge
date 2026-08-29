@@ -61,9 +61,9 @@ export const KForgeCapabilityCard: React.FC<CapabilityCardProps> = ({
       data-item-id={item.id}
       data-selected={selected ? "true" : "false"}
       onClick={onSelect}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect?.(); } }}
+      onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && e.currentTarget === e.target) { e.preventDefault(); onSelect?.(); } }}
       className={cn(
-        "group relative rounded-xl border bg-card text-card-foreground shadow-sm transition-all",
+        "group relative rounded-xl border bg-card text-card-foreground shadow-sm transition-all kw-capability-card",
         "hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected ? "ring-2 ring-primary/40 border-primary/60" : "border-border",
         className
@@ -72,7 +72,7 @@ export const KForgeCapabilityCard: React.FC<CapabilityCardProps> = ({
       <div className="flex items-start gap-3 p-4">
         <div className="mt-0.5 text-muted-foreground"><CategoryIcon category={item.category} /></div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-tight tracking-tight truncate">{item.name}</h3>
+          <h2 className="text-sm font-semibold leading-tight tracking-tight truncate">{item.name}</h2>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <span>{item.category}</span>
             <span>·</span>

@@ -70,7 +70,8 @@ test.describe("KForge Marketplace verified local lifecycle via Card", () => {
     // Backend verification
     const afterInstall = await backendItem(page, PACKAGE_ID);
     expect(afterInstall.installed).toBe(true);
-    await expect(insp.getByText("Operation")).toContainText(/install/i);
+    await expect(insp.locator('section[aria-label="Operation Status"]')).toContainText(PACKAGE_ID);
+    await expect(insp.locator('section[aria-label="Operation Status"]')).toContainText(/install/i);
     // Ensure other cards not permanently disabled (check at least inspector operation success leaves actions usable)
     await expect(targetCard.getByRole("button", { name: "Health check", exact: true })).toBeVisible({ timeout: 10_000 });
 
@@ -86,7 +87,7 @@ test.describe("KForge Marketplace verified local lifecycle via Card", () => {
     await expect(targetCard.getByRole("button", { name: "Health check", exact: true })).toBeEnabled({ timeout: 10_000 });
     await expect(targetCard.getByRole("button", { name: "Run local package", exact: true })).toBeEnabled();
     await expect(insp).toContainText(/Health check passed|manifest|SHA-256/i);
-    const healthItemId = String((healthBody as Record<string, unknown>).itemId || (healthBody as Record<string, unknown>).id || "") || String((insp.locator("text=Operation").first().textContent) || "");
+    const healthItemId = String((healthBody as Record<string, unknown>).itemId || (healthBody as Record<string, unknown>).id || "") || String((insp.locator('section[aria-label="Operation Status"]').first().textContent()) || "");
     // operation evidence itemId equals target id is captured via inspector Operation section
     await expect(insp.locator('[aria-label="Operation Status"]')).toContainText(PACKAGE_ID);
     const afterHealth = await backendItem(page, PACKAGE_ID);

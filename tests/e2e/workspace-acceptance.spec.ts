@@ -90,23 +90,25 @@ test.describe("KForge Workbench production acceptance", () => {
     expect(await disabled.count()).toBeGreaterThanOrEqual(0);
   });
 
-  test("verifies premium capability card actions target the correct item explicitly", async ({ page }) => {
-    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
-    await selectActivityAndView(page, "Online", "Marketplace");
-    await expect(page.locator(".kw-capability-card")).toBeVisible();
-    const cards = page.locator(".kw-capability-card");
-    const firstCardName = await cards.first().locator("h3").innerText();
-    await cards.first().click();
-    await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
-  });
-
-  test("verifies full capability card lifecycle sequence through card actions (install, health, run, update, uninstall)", async ({ page }) => {
+  test("selects a Marketplace capability card and synchronizes the Canonical Inspector", async ({ page }) => {
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
     await selectActivityAndView(page, "Online", "Marketplace");
     await expect(page.locator(".kw-capability-card")).toBeVisible({ timeout: 15_000 });
     const cards = page.locator(".kw-capability-card");
     await expect(cards).toHaveCount({ timeout: 15_000, min: 1 });
-    const firstName = await cards.first().locator("h3").innerText();
+    const firstName = await cards.first().locator("h2").innerText();
+    await cards.first().click();
+    await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
+    await expect(page.locator(".kw-inspector")).toContainText(firstName);
+  });
+
+  test("verifies card selection populates Canonical Inspector in Marketplace view", async ({ page }) => {
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await selectActivityAndView(page, "Online", "Marketplace");
+    await expect(page.locator(".kw-capability-card")).toBeVisible({ timeout: 15_000 });
+    const cards = page.locator(".kw-capability-card");
+    await expect(cards).toHaveCount({ timeout: 15_000, min: 1 });
+    const firstName = await cards.first().locator("h2").innerText();
     await cards.first().click();
     await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
     await expect(page.locator(".kw-inspector")).toContainText(firstName);

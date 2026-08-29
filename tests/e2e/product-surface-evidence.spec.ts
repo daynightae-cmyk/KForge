@@ -43,9 +43,9 @@ test.describe("KForge product evidence surfaces in contextual workbench", () => 
     await navigate(page, "Online", "Marketplace");
     await expect(page.locator(".kw-online")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".kw-online-results")).toBeVisible({ timeout: 30_000 });
-    const onlineInspector = page.getByLabel("Online item details");
-    await expect(onlineInspector).toBeVisible({ timeout: 30_000 });
-    await expect(onlineInspector).toContainText(/authority|availability|runtime evidence/i);
+    const inspector = page.locator(".kw-inspector").first();
+    await expect(inspector).toBeVisible({ timeout: 30_000 });
+    await expect(inspector).toContainText(/authority|availability|runtime evidence/i);
 
     await navigate(page, "AI", "Providers");
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/ollama|lm studio|llama\.cpp|provider/i, { timeout: 30_000 });
@@ -55,7 +55,7 @@ test.describe("KForge product evidence surfaces in contextual workbench", () => 
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/graph|nodes|coverage|evidence/i);
 
     await navigate(page, "Quality", "KForge Sonar");
-    await expect(page.getByRole("heading", { level: 1, name: "KForge Sonar", exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { level: 2, name: "KForge Sonar", exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/problem|finding|security|scan/i);
 
     expect(externalRequests, `Unexpected external requests in Offline mode:\n${externalRequests.join("\n")}`).toEqual([]);

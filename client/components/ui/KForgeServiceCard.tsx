@@ -41,7 +41,7 @@ export const KForgeServiceCard: React.FC<ServiceCardProps> = ({
           {title.toLowerCase().includes("lint") ? <Wrench size={18} /> : title.toLowerCase().includes("test") ? <Play size={18} /> : title.toLowerCase().includes("build") ? <Settings size={18} /> : <Terminal size={18} />}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-tight tracking-tight truncate">{title}</h3>
+          <h2 className="text-sm font-semibold leading-tight tracking-tight truncate">{title}</h2>
           {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
         </div>
         <StatusBadge value={isAvailable ? (status || "AVAILABLE") : (status === "NOT_DETECTED" ? "NOT_DETECTED" : available === false ? "UNAVAILABLE" : "UNKNOWN")} />

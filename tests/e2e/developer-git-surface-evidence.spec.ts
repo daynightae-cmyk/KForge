@@ -78,19 +78,19 @@ test.describe("KForge developer workbench and Git evidence", () => {
 
     await navigate(page, "Developer Tools", "Tests");
     const testResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/actions`) && response.request().method() === "POST");
-    await page.getByRole("button", { name: "Run verified test", exact: true }).click();
+    await page.getByRole("button", { name: "Run", exact: true }).click();
     expect((await testResponse).ok()).toBeTruthy();
     await expect(page.locator(".kw-bottom-panel")).toContainText("KFORGE_TEST_OK", { timeout: 60_000 });
 
     await navigate(page, "Developer Tools", "Build");
     const buildResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/actions`) && response.request().method() === "POST");
-    await page.getByRole("button", { name: "Run verified build", exact: true }).click();
+    await page.getByRole("button", { name: "Run", exact: true }).click();
     expect((await buildResponse).ok()).toBeTruthy();
     await expect(page.locator(".kw-bottom-panel")).toContainText("KFORGE_BUILD_OK", { timeout: 60_000 });
 
     await navigate(page, "Developer Tools", "Runtime");
     const runtimeResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/actions`) && response.request().method() === "POST");
-    await page.getByRole("button", { name: "Run verified runtime", exact: true }).click();
+    await page.getByRole("button", { name: "Run", exact: true }).click();
     expect((await runtimeResponse).ok()).toBeTruthy();
     await expect(page.locator(".kw-bottom-panel")).toContainText("HTTP 200", { timeout: 60_000 });
 
