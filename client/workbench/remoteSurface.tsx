@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileCode2, GitBranch, GitCommit, RefreshCw, ShieldCheck, Tag, Archive, Plus, Minus } from "lucide-react";
 import type { SurfaceProps } from "./surfaceContracts";
 import { EmptyState, StatusBadge } from "./ui";
-import { viewLabel } from "./navigation";
-import { SimpleFetchSurface } from "./surfaceShared";
+import GitHubRemoteWorkbench from "./GitHubRemoteWorkbench";
 import { fetchJson, jsonRequest } from "./api";
 
 type GitFileChange = {
@@ -50,7 +49,8 @@ const primaryButtonClass = `${buttonClass} border-primary bg-primary text-primar
 function RemoteSurface({ view, project, onExecution, onRefresh }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail="Git and GitHub evidence requires project context." />;
   if (["git", "branches", "commits"].includes(view)) return <GitWorkbench view={view} project={project} onExecution={onExecution} onRefresh={onRefresh} />;
-  return <SimpleFetchSurface url={`/api/workspace/projects/${encodeURIComponent(project.id)}/github`} title={viewLabel("remote", view)} onError={(text) => onExecution({ label: viewLabel("remote", view), state: "UNAVAILABLE", source: "GitHub read-only adapter", message: text })} />;
+  if (["github", "pull-requests", "issues", "actions", "releases"].includes(view)) return <GitHubRemoteWorkbench view={view} project={project} onExecution={onExecution} />;
+  return <EmptyState title="Unknown Remote / Git view" detail={`No verified Remote / Git surface is registered for '${view}'.`} />;
 }
 
 function GitWorkbench({ view, project, onExecution, onRefresh }: Pick<SurfaceProps, "view" | "project" | "onExecution" | "onRefresh">) {
