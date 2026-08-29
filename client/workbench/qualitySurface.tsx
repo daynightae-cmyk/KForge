@@ -1,46 +1,106 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { SurfaceProps, RecordRow, TaskRow } from "./surfaceContracts";
 import type { ProjectSummary } from "@shared/workspace";
 import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
-import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards } from "./ui";
+import { EmptyState, StatusBadge, EvidenceCards } from "./ui";
 import { viewLabel } from "./navigation";
 import QualityTriageWorkbench from "./QualityTriageWorkbench";
 import DocumentationConsistencyWorkbench from "./DocumentationConsistencyWorkbench";
+import SnapshotRecoveryWorkbench from "./SnapshotRecoveryWorkbench";
 
 function QualitySurface({ view, project, onNavigate }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail={`${viewLabel("quality", view)} needs project context.`} />;
   if (view === "problems" || view === "solutions") return <QualityTriageWorkbench project={project} view={view} onNavigate={onNavigate} />;
-  if (view === "snapshots") return <SnapshotSurface project={project} />;
+  if (view === "snapshots") return <SnapshotRecoveryWorkbench project={project} />;
   if (view === "documentation") return <DocumentationConsistencyWorkbench project={project} />;
   return <QualityEvidence project={project} view={view} />;
 }
 
 function QualityEvidence({ project, view }: { project: ProjectSummary; view: string }) {
-  const [problems, setProblems] = useState<RecordRow[]>([]); const [tools, setTools] = useState<RecordRow[]>([]); const [message, setMessage] = useState(""); const [result, setResult] = useState<RecordRow | null>(null);
-  const refresh = async () => { try { const [p, s] = await Promise.all([fetchJson<{ problems: RecordRow[] }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/problems`), fetchJson<{ tools: RecordRow[] }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/security/tools`)]); setProblems(p.problems || []); setTools(s.tools || []); } catch (error) { setMessage(error instanceof Error ? error.message : "Quality evidence unavailable."); } };
-  useEffect(() => { void refresh(); }, [project.id]);
-  const runScan = async () => { setMessage("Running bounded KForge scan…"); try { const started = await fetchJson<{ task: TaskRow }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/tasks`, jsonRequest({ action: "scan" })); const task = await waitForTask(started.task.id); setResult({ task }); await refresh(); setMessage("Current scan evidence loaded."); } catch (error) { setMessage(error instanceof Error ? error.message : "Scan failed."); } };
-  const applyIssue = async (issue: RecordRow) => { const id = String(issue.id || ""); if (!id) return; const preview = await fetchEvidence(`/api/workspace/projects/${encodeURIComponent(project.id)}/problems/${encodeURIComponent(id)}/preview`, jsonRequest({})); if (!preview.ok) { setResult({ issue: issue.title, previewState: "NOT_AVAILABLE", ...preview.data }); return; } setResult({ issue: issue.title, preview: preview.data }); if (!window.confirm(`Apply the reviewed deterministic fix for ${String(issue.title || id)} and verify it?`)) return; const applied = await fetchEvidence(`/api/workspace/projects/${encodeURIComponent(project.id)}/problems/${encodeURIComponent(id)}/apply`, jsonRequest({ confirmed: true, verify: true })); setResult({ issue: issue.title, preview: preview.data, applied: applied.data, status: applied.status }); await refresh(); };
-  const visible = view === "security" ? problems.filter((issue) => issue.category === "security") : view === "performance" ? problems.filter((issue) => issue.category === "performance") : view === "technical-debt" ? problems.filter((issue) => ["completeness", "mock", "documentation"].includes(String(issue.category))) : problems;
-  return <section className="kw-surface-section"><div className="kw-toolbar"><h2>{view === "sonar" ? "KForge Sonar" : viewLabel("quality", view)}</h2>{view === "sonar" && <button onClick={() => void runScan()}>Run current scan</button>}<button onClick={() => void refresh()}>Refresh evidence</button></div>{view === "sonar" && <p>No tool is downloaded or run silently. Security tools and scanner findings keep UNAVAILABLE/BLOCKED states when evidence is absent.</p>}{view === "sonar" || view === "security" ? <><h3>Security Tool Manager</h3><EvidenceCards rows={tools} /></> : null}<h3>{view === "solutions" ? "Solutions Engine · current evidence" : "Current normalized findings"}</h3>{visible.length ? <div className="kw-quality-list">{visible.map((issue, index) => <article className="kw-quality-card" key={String(issue.id || index)}><h2>{String(issue.title || `Finding ${index + 1}`)}</h2><div className="kw-row-badges"><StatusBadge value={issue.severity} /><StatusBadge value={issue.category} /></div><p>{String(issue.description || issue.risk || "No description")}</p><small>{String(issue.file || issue.source || "Local scanner evidence")}</small>{["problems", "solutions"].includes(view) && <div className="kw-quality-actions"><button onClick={() => void applyIssue(issue)}>Preview verified fix</button></div>}<details><summary>Finding evidence</summary><pre>{JSON.stringify(issue, null, 2)}</pre></details></article>)}</div> : <EmptyState title="No matching scan evidence" detail="The current local scan produced no finding for this view; KForge does not invent one." />}{message && <p className="kw-message" role="status">{message}</p>}{result && <div className="kw-operation-result"><pre>{JSON.stringify(result, null, 2)}</pre></div>}</section>;
-}
+  const [problems, setProblems] = useState<RecordRow[]>([]);
+  const [tools, setTools] = useState<RecordRow[]>([]);
+  const [message, setMessage] = useState("");
+  const [result, setResult] = useState<RecordRow | null>(null);
 
-function DocumentationSurface({ project }: { project: ProjectSummary }) {
-  const [data, setData] = useState<RecordRow | null>(null); const [message, setMessage] = useState(""); const [result, setResult] = useState<RecordRow | null>(null);
-  const refresh = () => fetchJson<RecordRow>(`/api/workspace/projects/${encodeURIComponent(project.id)}/documentation`).then(setData).catch((error) => setMessage(error instanceof Error ? error.message : "Documentation evidence unavailable."));
-  useEffect(() => { void refresh(); }, [project.id]);
-  const audit = (data?.audit || {}) as RecordRow; const findings = (audit.findings || []) as RecordRow[];
-  const apply = async (finding: RecordRow) => { const id = String(finding.id || ""); const preview = await fetchEvidence(`/api/workspace/projects/${encodeURIComponent(project.id)}/documentation/${encodeURIComponent(id)}/preview`, jsonRequest({})); setResult({ preview: preview.data }); if (!preview.ok || !window.confirm(`Apply and verify the reviewed documentation fix for ${String(finding.sourceDocument || id)}?`)) return; const applied = await fetchEvidence(`/api/workspace/projects/${encodeURIComponent(project.id)}/documentation/${encodeURIComponent(id)}/apply`, jsonRequest({ confirmed: true })); setResult({ preview: preview.data, applied: applied.data }); await refresh(); };
-  return <section className="kw-surface-section"><h2>Documentation Audit</h2><p>Local documentation claims are compared with detected manifests and commands. Source edits require explicit confirmation and re-audit.</p>{findings.length ? <div className="kw-quality-list">{findings.map((finding, index) => <article className="kw-quality-card" key={String(finding.id || index)}><h2>{String(finding.sourceDocument || finding.claim || `Finding ${index + 1}`)}</h2><p>{String(finding.claim || "")}</p><small>Actual: {String(finding.actualState || "UNKNOWN")}</small><button onClick={() => void apply(finding)}>Preview + Apply + Verify</button><details><summary>Documentation evidence</summary><pre>{JSON.stringify(finding, null, 2)}</pre></details></article>)}</div> : <EmptyState title="No semantic contradictions" detail="No documentation finding exists in the current local evidence." />}{message && <p className="kw-message">{message}</p>}{result && <div className="kw-operation-result"><pre>{JSON.stringify(result, null, 2)}</pre></div>}</section>;
-}
+  const refresh = async () => {
+    try {
+      const [p, s] = await Promise.all([
+        fetchJson<{ problems: RecordRow[] }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/problems`),
+        fetchJson<{ tools: RecordRow[] }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/security/tools`),
+      ]);
+      setProblems(p.problems || []);
+      setTools(s.tools || []);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Quality evidence unavailable.");
+    }
+  };
 
-function SnapshotSurface({ project }: { project: ProjectSummary }) {
-  const [snapshots, setSnapshots] = useState<RecordRow[]>([]); const [files, setFiles] = useState(""); const [reason, setReason] = useState(""); const [message, setMessage] = useState("");
-  const refresh = () => fetchJson<{ snapshots: RecordRow[] }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/snapshots`).then((data) => setSnapshots(data.snapshots || [])).catch((error) => setMessage(error instanceof Error ? error.message : "Snapshot evidence unavailable."));
   useEffect(() => { void refresh(); }, [project.id]);
-  const create = async () => { if (!window.confirm("Create this explicit local snapshot?")) return; try { const data = await fetchJson<RecordRow>(`/api/workspace/projects/${encodeURIComponent(project.id)}/snapshots`, jsonRequest({ files: files.split(/[\n,]/).map((entry) => entry.trim()).filter(Boolean), reason: reason.trim() || "KForge manual snapshot", confirmed: true })); setMessage(`Snapshot created: ${String((data.snapshot as RecordRow | undefined)?.id || "recorded")}`); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Snapshot failed."); } };
-  const restore = async (snapshot: RecordRow) => { if (!window.confirm(`Restore snapshot ${String(snapshot.id)}?`)) return; try { await fetchJson(`/api/workspace/projects/${encodeURIComponent(project.id)}/snapshots/${encodeURIComponent(String(snapshot.id))}/restore`, jsonRequest({ confirmed: true })); setMessage(`Snapshot ${String(snapshot.id)} restored.`); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Restore failed."); } };
-  return <section className="kw-surface-section"><h2>Snapshot & Recovery</h2><div className="kw-snapshot-form"><label>Files to snapshot<input aria-label="Files to snapshot" value={files} onChange={(e) => setFiles(e.target.value)} placeholder="src/file.ts, config.txt" /></label><label>Snapshot reason<input aria-label="Snapshot reason" value={reason} onChange={(e) => setReason(e.target.value)} /></label><button onClick={() => void create()}>Create snapshot</button></div>{message && <p className="kw-message" role="status">{message}</p>}<div className="kw-quality-list">{snapshots.map((snapshot, index) => <article className="kw-quality-card" key={String(snapshot.id || index)}><h2>{String(snapshot.reason || snapshot.id || `Snapshot ${index + 1}`)}</h2><EvidenceRows value={snapshot} /><button onClick={() => void restore(snapshot)}>Restore snapshot</button><details><summary>Snapshot evidence</summary><pre>{JSON.stringify(snapshot, null, 2)}</pre></details></article>)}</div></section>;
+
+  const runScan = async () => {
+    setMessage("Running bounded KForge scan…");
+    try {
+      const started = await fetchJson<{ task: TaskRow }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/tasks`, jsonRequest({ action: "scan" }));
+      const task = await waitForTask(started.task.id);
+      setResult({ task });
+      await refresh();
+      setMessage("Current scan evidence loaded.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Scan failed.");
+    }
+  };
+
+  const applyIssue = async (issue: RecordRow) => {
+    const id = String(issue.id || "");
+    if (!id) return;
+    const preview = await fetchEvidence(`/api/workspace/projects/${encodeURIComponent(project.id)}/problems/${encodeURIComponent(id)}/preview`, jsonRequest({}));
+    if (!preview.ok) {
+      setResult({ issue: issue.title, previewState: "NOT_AVAILABLE", ...preview.data });
+      return;
+    }
+    setResult({ issue: issue.title, preview: preview.data });
+    if (!window.confirm(`Apply the reviewed deterministic fix for ${String(issue.title || id)} and verify it?`)) return;
+    const applied = await fetchEvidence(`/api/workspace/projects/${encodeURIComponent(project.id)}/problems/${encodeURIComponent(id)}/apply`, jsonRequest({ confirmed: true, verify: true }));
+    setResult({ issue: issue.title, preview: preview.data, applied: applied.data, status: applied.status });
+    await refresh();
+  };
+
+  const visible = view === "security"
+    ? problems.filter((issue) => issue.category === "security")
+    : view === "performance"
+      ? problems.filter((issue) => issue.category === "performance")
+      : view === "technical-debt"
+        ? problems.filter((issue) => ["completeness", "mock", "documentation"].includes(String(issue.category)))
+        : problems;
+
+  return (
+    <section className="kw-surface-section">
+      <div className="kw-toolbar">
+        <h2>{view === "sonar" ? "KForge Sonar" : viewLabel("quality", view)}</h2>
+        {view === "sonar" && <button onClick={() => void runScan()}>Run current scan</button>}
+        <button onClick={() => void refresh()}>Refresh evidence</button>
+      </div>
+      {view === "sonar" && <p>No tool is downloaded or run silently. Security tools and scanner findings keep UNAVAILABLE/BLOCKED states when evidence is absent.</p>}
+      {view === "sonar" || view === "security" ? <><h3>Security Tool Manager</h3><EvidenceCards rows={tools} /></> : null}
+      <h3>Current normalized findings</h3>
+      {visible.length ? (
+        <div className="kw-quality-list">
+          {visible.map((issue, index) => (
+            <article className="kw-quality-card" key={String(issue.id || index)}>
+              <h2>{String(issue.title || `Finding ${index + 1}`)}</h2>
+              <div className="kw-row-badges"><StatusBadge value={issue.severity} /><StatusBadge value={issue.category} /></div>
+              <p>{String(issue.description || issue.risk || "No description")}</p>
+              <small>{String(issue.file || issue.source || "Local scanner evidence")}</small>
+              {["problems", "solutions"].includes(view) && <div className="kw-quality-actions"><button onClick={() => void applyIssue(issue)}>Preview verified fix</button></div>}
+              <details><summary>Finding evidence</summary><pre>{JSON.stringify(issue, null, 2)}</pre></details>
+            </article>
+          ))}
+        </div>
+      ) : <EmptyState title="No matching scan evidence" detail="The current local scan produced no finding for this view; KForge does not invent one." />}
+      {message && <p className="kw-message" role="status">{message}</p>}
+      {result && <div className="kw-operation-result"><pre>{JSON.stringify(result, null, 2)}</pre></div>}
+    </section>
+  );
 }
 
 export default QualitySurface;
