@@ -57,6 +57,7 @@ export default function QualityTriageWorkbench({
       const next = payload.problems || [];
       setFindings(next);
       setSelectedId((current) => current && next.some((item) => String(item.id || "") === current) ? current : String(next[0]?.id || ""));
+      setPreview({ state: "NOT_EVALUATED" });
       setMessage("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Quality findings are unavailable.");
