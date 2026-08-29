@@ -84,7 +84,7 @@ test.describe("KForge specialized quality performance evidence", () => {
     await expect(clear).toBeEnabled();
     page.once("dialog", async (dialog) => dialog.accept());
     await clear.click();
-    await expect(performance.getByRole("status")).toContainText("CACHE_CLEARED");
+    await expect(performance.locator(".kw-message").filter({ hasText: "CACHE_CLEARED" })).toBeVisible();
     expect(clearRequests).toHaveLength(1);
     await expect(graphRegion).toContainText("Graph evidence not collected in this session");
 
