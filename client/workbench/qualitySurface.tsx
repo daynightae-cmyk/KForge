@@ -5,12 +5,13 @@ import { fetchJson, fetchEvidence, jsonRequest, waitForTask } from "./api";
 import { EmptyState, StatusBadge, EvidenceRows, EvidenceCards } from "./ui";
 import { viewLabel } from "./navigation";
 import QualityTriageWorkbench from "./QualityTriageWorkbench";
+import DocumentationConsistencyWorkbench from "./DocumentationConsistencyWorkbench";
 
 function QualitySurface({ view, project, onNavigate }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail={`${viewLabel("quality", view)} needs project context.`} />;
   if (view === "problems" || view === "solutions") return <QualityTriageWorkbench project={project} view={view} onNavigate={onNavigate} />;
   if (view === "snapshots") return <SnapshotSurface project={project} />;
-  if (view === "documentation") return <DocumentationSurface project={project} />;
+  if (view === "documentation") return <DocumentationConsistencyWorkbench project={project} />;
   return <QualityEvidence project={project} view={view} />;
 }
 
