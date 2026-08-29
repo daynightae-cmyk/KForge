@@ -186,10 +186,11 @@ function PreviewSurface({ project, onExecution, onInspectorContext }: {
     try { return new URL(activeRoute, baseUrl).toString(); }
     catch { return baseUrl; }
   }, [activeRoute, baseUrl]);
-  const frameUrl = currentUrl ? `${currentUrl}${currentUrl.includes("?") ? "&" : "?"}__kforge_reload=${frameVersion}` : "";
+  const frameKey = currentUrl ? `${currentUrl}::${frameVersion}` : `preview-frame::${frameVersion}`;
   const profile = PREVIEW_VIEWPORTS[viewport];
   const canMutate = project.trust === "trusted";
   const canStart = Boolean(capability?.available && canMutate && data && !["starting", "running"].includes(data.state));
+  const canHealth = Boolean(data?.url && data && ["starting", "running"].includes(data.state));
   const canStop = Boolean(canMutate && data && ["starting", "running"].includes(data.state));
   const canRestart = Boolean(canMutate && data && ["starting", "running", "failed", "stopped"].includes(data.state) && capability?.available);
   const embedBlocked = data?.embedding?.state === "BLOCKED";
@@ -245,7 +246,7 @@ function PreviewSurface({ project, onExecution, onInspectorContext }: {
       <span>{data?.checkedAt ? `Checked ${new Date(data.checkedAt).toLocaleTimeString()}` : "Never checked"}</span>
       <div className="kw-preview-runtime-actions">
         <button disabled={!canStart || Boolean(busy)} title={!canMutate ? "Trust the project before starting Preview." : capability?.reason} onClick={() => void perform("start")}><Play size={14} />Run</button>
-        <button disabled={!data || Boolean(busy)} onClick={() => void perform("health")}><HeartPulse size={14} />Health</button>
+        <button disabled={!canHealth || Boolean(busy)} onClick={() => void perform("health")}><HeartPulse size={14} />Health</button>
         <button disabled={!canRestart || Boolean(busy)} onClick={() => void perform("restart")}><RefreshCcw size={14} />Restart</button>
         <button disabled={!canStop || Boolean(busy)} onClick={() => void perform("stop")}><CircleStop size={14} />Stop</button>
       </div>
@@ -254,7 +255,7 @@ function PreviewSurface({ project, onExecution, onInspectorContext }: {
     {notice && <div className="kw-preview-notice" role="alert">{notice}</div>}
 
     <div className="kw-preview-canvas" data-viewport={viewport}>
-      {liveFrame ? <div className="kw-preview-frame-stage" tabIndex={0} aria-label="Scrollable live Preview canvas"><div className="kw-preview-frame-size" style={profile.width ? { width: profile.width, height: profile.height, transform: `scale(${zoom / 100})` } : { width: "100%", height: "100%" }}><iframe key={frameUrl} title={`${project.name} live Preview`} aria-label="Preview application frame" src={frameUrl} sandbox="allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts" referrerPolicy="no-referrer" /></div></div>
+      {liveFrame ? <div className="kw-preview-frame-stage" tabIndex={0} aria-label="Scrollable live Preview canvas"><div className="kw-preview-frame-size" style={profile.width ? { width: profile.width, height: profile.height, transform: `scale(${zoom / 100})` } : { width: "100%", height: "100%" }}><iframe key={frameKey} title={`${project.name} live Preview`} aria-label="Preview application frame" src={currentUrl} sandbox="allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts" referrerPolicy="no-referrer" /></div></div>
         : embedBlocked && data?.state === "running" ? <div className="kw-preview-state is-error"><strong>PREVIEW_EMBED_BLOCKED</strong><code>{currentUrl}</code><span>{data.embedding.reason || "The Preview response blocks framing."}</span><small>The runtime remains healthy. Use Open external to view the exact current URL.</small></div>
         : data?.state === "starting" ? <div className="kw-preview-state"><RefreshCcw className="kw-spin" size={22} /><strong>Starting detected Preview runtime</strong><code>{data.command || capability?.command}</code><span>{data.port ? `Local port ${data.port} allocated` : "Allocating a local port"}</span><small>{data.health?.detail || "Waiting for the first health probe…"}</small></div>
           : ["failed", "blocked"].includes(data?.state || "") ? <div className="kw-preview-state is-error"><strong>Preview failed</strong><code>{data?.command || capability?.command || "No command"}</code><span>{data?.error || data?.health?.detail || "The runtime did not produce healthy evidence."}</span><small>Use Restart after reviewing the process logs below.</small></div>

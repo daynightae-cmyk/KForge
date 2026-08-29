@@ -67,7 +67,9 @@ test.describe("KForge canonical Preview Workbench", () => {
     await expect(preview.locator(".kw-preview-status")).toContainText("RUNNING", { timeout: 30_000 });
     await expect(preview.locator(".kw-preview-status")).toContainText("HEALTHY");
     const frame = preview.locator('iframe[aria-label="Preview application frame"]');
+    const frameContent = page.frameLocator('iframe[aria-label="Preview application frame"]');
     await expect(frame).toBeVisible();
+    await expect(frameContent.locator("p")).toHaveText("/");
     await expect(preview.locator(".kw-preview-logs")).toContainText("PREVIEW_LISTENING");
     await expect(page.getByRole("complementary", { name: "Preview runtime Inspector" })).toContainText("package.json#scripts.dev", { timeout: 30_000 });
 
@@ -77,6 +79,7 @@ test.describe("KForge canonical Preview Workbench", () => {
     expect(await frame.evaluate((element) => (element as HTMLIFrameElement).clientWidth)).toBe(390);
     await preview.getByLabel("Reload preview frame").click();
     await expect(frame).toBeVisible();
+    await expect(frameContent.locator("p")).toHaveText("/");
 
     await selectExplorerView(page, "Developer Tools", "Terminal");
     await selectExplorerView(page, "Developer Tools", "Preview");
@@ -133,7 +136,9 @@ test.describe("KForge canonical Preview Workbench", () => {
     const stopResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${projectA.id}/preview/stop`) && response.request().method() === "POST");
     await page.getByRole("region", { name: "KForge Preview Workbench" }).getByRole("button", { name: "Stop", exact: true }).click();
     expect((await stopResponse).ok()).toBeTruthy();
-    await expect(page.getByRole("region", { name: "KForge Preview Workbench" })).toContainText("Preview is stopped");
+    const stoppedPreview = page.getByRole("region", { name: "KForge Preview Workbench" });
+    await expect(stoppedPreview).toContainText("Preview is stopped");
+    await expect(stoppedPreview.getByRole("button", { name: "Health", exact: true })).toBeDisabled();
     await expect(page.locator('iframe[aria-label="Preview application frame"]')).toHaveCount(0);
 
     await clearProjectContext(page);
