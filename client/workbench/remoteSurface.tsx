@@ -154,7 +154,7 @@ function GitWorkbench({ view, project, onExecution, onRefresh }: Pick<SurfacePro
             <p className="text-xs text-muted-foreground">Creates a local commit only. KForge never pushes from this action.</p>
             <textarea aria-label="Git commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} rows={4} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="feat(scope): describe the verified change" />
             <button className={`${primaryButtonClass} w-full`} disabled={!trusted || stagedCount === 0 || !commitMessage.trim() || Boolean(busy)} onClick={() => void mutate("commit")}><GitCommit size={13} />Commit staged</button>
-            {!trusted && <p className="flex items-start gap-1.5 text-xs text-amber-600"><ShieldCheck size={13} className="mt-0.5 shrink-0" />Trust the selected project before staging, unstaging, or committing.</p>}
+            {!trusted && <p className="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300"><ShieldCheck size={13} className="mt-0.5 shrink-0" />Trust the selected project before staging, unstaging, or committing.</p>}
             <div className="rounded-md bg-muted/50 p-2"><strong className="text-[11px] uppercase tracking-wide">Staged diff</strong><pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{data.stagedDiffStat || "No staged diff."}</pre></div>
           </aside>
         </div>
