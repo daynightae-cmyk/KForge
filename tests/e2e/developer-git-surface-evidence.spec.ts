@@ -94,15 +94,21 @@ test.describe("KForge developer workbench and Git evidence", () => {
     expect((await runtimeResponse).ok()).toBeTruthy();
     await expect(page.locator(".kw-bottom-panel")).toContainText("HTTP 200", { timeout: 60_000 });
 
+    const missionResponse = await page.request.post(`/api/workspace/projects/${project.id}/agent/missions`, { data: { mission: "prepare-github" } });
+    expect(missionResponse.status(), await missionResponse.text()).toBe(202);
+    const missionPayload = await missionResponse.json() as { task: { id: string; kind: string } };
+    expect(missionPayload.task.kind).toBe("agent");
+
     const logsRead = page.waitForResponse((response) => response.url().includes("/api/workspace/tasks?projectId=") && response.request().method() === "GET");
     await navigate(page, "Developer Tools", "Logs");
     expect((await logsRead).ok()).toBeTruthy();
     const logsWorkbench = page.getByRole("region", { name: "KForge Developer Logs", exact: true });
     await expect(logsWorkbench).toBeVisible();
     await expect(logsWorkbench.getByText("Developer Logs", { exact: true })).toBeVisible();
-    await expect(logsWorkbench.locator('[data-task-kind="test"]')).toBeVisible();
-    await expect(logsWorkbench.locator('[data-task-kind="build"]')).toBeVisible();
-    await expect(logsWorkbench.locator('[data-task-kind="runtime"]')).toBeVisible();
+    const persistedAgentTask = logsWorkbench.locator('[data-task-kind="agent"]').filter({ hasText: "agent" }).first();
+    await expect(persistedAgentTask).toBeVisible();
+    await persistedAgentTask.getByRole("button", { name: "Inspect agent task", exact: true }).click();
+    await expect(logsWorkbench.getByRole("complementary", { name: "Selected task evidence", exact: true })).toContainText(missionPayload.task.id);
     await expect(logsWorkbench).toContainText("Persisted local task evidence");
 
     const diagnosticsRead = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/problems`) && response.request().method() === "GET");
