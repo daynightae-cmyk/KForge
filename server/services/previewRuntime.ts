@@ -24,7 +24,7 @@ export interface PreviewStatus {
   routes: Array<{ path: string; source: "root" | "html-link"; checkedAt: string }>;
   history: Array<{ at: string; event: "start" | "health" | "stop" | "exit" | "error"; detail: string }>;
   runtime: { execution: "LOCAL"; network: "NOT_REQUIRED"; source: "detected-project-script"; projectSourceSent: false };
-  telemetry: { console: "process-stdout-stderr"; network: "health-probe-only"; browserConsoleCaptured: false };
+  telemetry: { console: "process-stdout-stderr"; network: "loopback-health-probe-only"; browserConsoleCaptured: false };
   embedding: { state: "ALLOWED" | "BLOCKED" | "UNKNOWN"; reason?: string };
   logs: string[];
   error?: string;
@@ -47,6 +47,7 @@ const previewRecords = new Map<string, PreviewStatus>();
 const MAX_LOG_LINES = 300;
 const MAX_LOG_LINE_LENGTH = 1_500;
 const MAX_HISTORY_ITEMS = 100;
+const MAX_HEALTH_REDIRECTS = 3;
 
 function baseStatus(projectId: string): PreviewStatus {
   return {
@@ -57,7 +58,7 @@ function baseStatus(projectId: string): PreviewStatus {
     routes: [],
     history: [],
     runtime: { execution: "LOCAL", network: "NOT_REQUIRED", source: "detected-project-script", projectSourceSent: false },
-    telemetry: { console: "process-stdout-stderr", network: "health-probe-only", browserConsoleCaptured: false },
+    telemetry: { console: "process-stdout-stderr", network: "loopback-health-probe-only", browserConsoleCaptured: false },
     embedding: { state: "UNKNOWN", reason: "Preview response headers have not been inspected." },
     health: { ok: false, detail: "No Preview process has been started in this KForge server session." },
   };
@@ -108,30 +109,66 @@ function reserveLocalPort() {
   });
 }
 
+function isLoopbackHostname(hostname: string) {
+  const normalized = hostname.toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1" || normalized === "[::1]";
+}
+
+async function fetchLoopbackOnly(value: string) {
+  const initial = new URL(value);
+  if (initial.protocol !== "http:" || !isLoopbackHostname(initial.hostname)) throw new Error(`Preview health probe refused non-loopback URL ${initial.origin}.`);
+  const origin = initial.origin;
+  let current = initial;
+  for (let redirectCount = 0; redirectCount <= MAX_HEALTH_REDIRECTS; redirectCount += 1) {
+    const response = await fetch(current, { signal: AbortSignal.timeout(3_000), redirect: "manual" });
+    if (response.status < 300 || response.status >= 400) return { response, finalUrl: current.toString(), redirects: redirectCount };
+    const location = response.headers.get("location");
+    if (!location) return { response, finalUrl: current.toString(), redirects: redirectCount };
+    const next = new URL(location, current);
+    if (next.origin !== origin || next.protocol !== "http:" || !isLoopbackHostname(next.hostname)) {
+      throw new Error(`Preview health probe blocked cross-origin redirect from ${origin} to ${next.origin}.`);
+    }
+    current = next;
+  }
+  throw new Error(`Preview health probe exceeded ${MAX_HEALTH_REDIRECTS} same-origin redirects.`);
+}
+
+export function evaluatePreviewEmbedding(headers: Headers): PreviewStatus["embedding"] {
+  const xFrameOptions = (headers.get("x-frame-options") || "").trim();
+  if (/\bdeny\b/i.test(xFrameOptions)) return { state: "BLOCKED", reason: `X-Frame-Options: ${xFrameOptions}` };
+  if (/\bsameorigin\b/i.test(xFrameOptions)) return { state: "BLOCKED", reason: `X-Frame-Options: ${xFrameOptions}; the allocated Preview port is a distinct origin from the KForge shell.` };
+
+  const contentSecurityPolicy = headers.get("content-security-policy") || "";
+  const frameAncestors = contentSecurityPolicy.match(/(?:^|;)\s*frame-ancestors\s+([^;]+)/i)?.[1]?.trim();
+  if (!frameAncestors) return { state: "ALLOWED", reason: "No X-Frame-Options or CSP frame-ancestors restriction was reported by the Preview response." };
+
+  const tokens = frameAncestors.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.includes("'none'")) return { state: "BLOCKED", reason: `Content-Security-Policy frame-ancestors ${frameAncestors}` };
+  if (tokens.includes("'self'")) return { state: "BLOCKED", reason: `Content-Security-Policy frame-ancestors ${frameAncestors}; Preview and KForge use different loopback ports/origins.` };
+  if (tokens.includes("*") || tokens.includes("http://127.0.0.1:*") || tokens.includes("http://localhost:*")) return { state: "ALLOWED", reason: `Content-Security-Policy frame-ancestors ${frameAncestors}` };
+  return { state: "UNKNOWN", reason: `Content-Security-Policy frame-ancestors ${frameAncestors} is an explicit allowlist that KForge cannot prove contains the current shell origin. Inline embedding stays disabled; opening the local app externally remains available.` };
+}
+
 async function probe(status: PreviewStatus) {
   status.checkedAt = new Date().toISOString();
   if (!status.url) return { ok: false, detail: "No local preview URL is available." };
   const started = performance.now();
   try {
-    const response = await fetch(status.url, { signal: AbortSignal.timeout(3_000) });
+    const { response, finalUrl, redirects } = await fetchLoopbackOnly(status.url);
     const latencyMs = Math.max(0, Math.round(performance.now() - started));
-    const detail = `HTTP ${response.status} ${response.statusText}`;
+    const detail = `HTTP ${response.status} ${response.statusText}${redirects ? ` · ${redirects} same-origin redirect(s)` : ""}`;
     status.health = { ok: response.ok, status: response.status, latencyMs, detail };
-    const xFrameOptions = (response.headers.get("x-frame-options") || "").trim();
-    const contentSecurityPolicy = response.headers.get("content-security-policy") || "";
-    const frameAncestors = contentSecurityPolicy.match(/(?:^|;)\s*frame-ancestors\s+([^;]+)/i)?.[1]?.trim();
-    if (/^(deny|sameorigin)$/i.test(xFrameOptions)) status.embedding = { state: "BLOCKED", reason: `X-Frame-Options: ${xFrameOptions}` };
-    else if (frameAncestors && (/^'none'$/i.test(frameAncestors) || /^'self'$/i.test(frameAncestors))) status.embedding = { state: "BLOCKED", reason: `Content-Security-Policy frame-ancestors ${frameAncestors}` };
-    else status.embedding = { state: "ALLOWED", reason: frameAncestors ? `frame-ancestors ${frameAncestors}` : "No blocking frame policy was reported by the Preview response." };
+    status.embedding = evaluatePreviewEmbedding(response.headers);
     status.healthHistory = [...status.healthHistory, { checkedAt: status.checkedAt, ...status.health }].slice(-MAX_HISTORY_ITEMS);
     const contentType = response.headers.get("content-type") || "";
     const routes = new Set<string>(["/"]);
     if (contentType.includes("text/html")) {
       const html = await response.text();
+      const previewOrigin = new URL(status.url).origin;
       for (const match of html.matchAll(/href=["']([^"'#?]+)["']/gi)) {
         try {
-          const linked = new URL(match[1], status.url);
-          if (linked.origin === new URL(status.url).origin) routes.add(linked.pathname || "/");
+          const linked = new URL(match[1], finalUrl);
+          if (linked.origin === previewOrigin) routes.add(linked.pathname || "/");
         } catch { /* Ignore malformed document links. */ }
         if (routes.size >= 25) break;
       }
@@ -139,11 +176,13 @@ async function probe(status: PreviewStatus) {
     status.routes = [...routes].map((route, index) => ({ path: route, source: index === 0 ? "root" : "html-link", checkedAt: status.checkedAt! }));
     recordEvent(status, "health", detail);
     if (!response.ok && status.state === "running") status.error = detail;
+    else if (response.ok && status.error?.startsWith("HTTP ")) status.error = undefined;
     return status.health;
   } catch (error: unknown) {
     const latencyMs = Math.max(0, Math.round(performance.now() - started));
     const detail = error instanceof Error ? error.message : String(error);
     status.health = { ok: false, latencyMs, detail };
+    if (/blocked cross-origin redirect|refused non-loopback/i.test(detail)) status.embedding = { state: "BLOCKED", reason: detail };
     status.healthHistory = [...status.healthHistory, { checkedAt: status.checkedAt, ...status.health }].slice(-MAX_HISTORY_ITEMS);
     recordEvent(status, "health", detail);
     return status.health;
