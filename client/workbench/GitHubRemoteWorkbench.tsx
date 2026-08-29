@@ -64,7 +64,9 @@ function rows(value: unknown): JsonRecord[] {
 }
 
 function text(value: unknown, fallback = "UNKNOWN") {
-  return typeof value === "string" && value.trim() ? value : fallback;
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return fallback;
 }
 
 function numberValue(value: unknown) {
