@@ -8,6 +8,7 @@ import QualitySurface from "./qualitySurface";
 import DeveloperSurface from "./developerSurface";
 import DeveloperObservabilityWorkbench from "./DeveloperObservabilityWorkbench";
 import DeveloperTestsWorkbench from "./DeveloperTestsWorkbench";
+import DeveloperBuildWorkbench from "./DeveloperBuildWorkbench";
 import RemoteSurface from "./remoteSurface";
 import ReleaseSurface from "./releaseSurface";
 import SystemSurface from "./systemSurface";
@@ -58,6 +59,7 @@ export function WorkbenchSurface(props: SurfaceProps) {
   if (props.activity === "ai") return <AISurface {...props} />;
   if (props.activity === "quality") return <QualitySurface {...props} />;
   if (props.activity === "developer-tools" && props.view === "tests" && props.project) return <DeveloperTestsWorkbench project={props.project} onExecution={props.onExecution} />;
+  if (props.activity === "developer-tools" && props.view === "build" && props.project) return <DeveloperBuildWorkbench project={props.project} onExecution={props.onExecution} />;
   if (props.activity === "developer-tools" && ["logs", "diagnostics"].includes(props.view)) return <DeveloperObservabilityWorkbench {...props} />;
   if (props.activity === "developer-tools") return <DeveloperSurface {...props} />;
   if (props.activity === "remote") return <RemoteSurface {...props} />;
