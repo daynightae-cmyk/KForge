@@ -22,7 +22,7 @@ function project(remoteUrl?: string): ProjectSummary {
 }
 
 function preview(): PreviewStatus {
-  return { projectId: "project", state: "idle", logs: [], healthHistory: [], routes: [], history: [], runtime: { execution: "LOCAL", network: "NOT_REQUIRED", source: "detected-project-script", projectSourceSent: false }, telemetry: { console: "process-stdout-stderr", network: "health-probe-only", browserConsoleCaptured: false }, embedding: { state: "UNKNOWN" } };
+  return { projectId: "project", state: "idle", logs: [], healthHistory: [], routes: [], history: [], runtime: { execution: "LOCAL", network: "NOT_REQUIRED", source: "detected-project-script", projectSourceSent: false }, telemetry: { console: "process-stdout-stderr", network: "loopback-health-probe-only", browserConsoleCaptured: false }, embedding: { state: "UNKNOWN" } };
 }
 
 afterEach(async () => {
