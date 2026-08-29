@@ -337,12 +337,12 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
               <StatusBadge value="STOPPED" />
               <h3 className="mt-4 text-base font-semibold">Preview is stopped</h3>
               <p className="mt-2 text-sm text-muted-foreground">The previous session has ended. Start a new canonical Preview session when you want the live app again.</p>
-              <button className="mt-4" disabled={!canStart} onClick={() => void perform("start")}><Play size={14} /> Run</button>
+              <button className="mt-4" aria-label="Start Preview from canvas" disabled={!canStart} onClick={() => void perform("start")}><Play size={14} /> Run</button>
             </> : <>
               <StatusBadge value={data.state.toUpperCase()} />
               <h3 className="mt-4 text-base font-semibold">{data.state === "starting" ? "Starting local app…" : "Preview Studio is ready"}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{data.state === "starting" ? data.health?.detail || "Waiting for loopback health." : "Start the detected local HTTP runtime. KForge allocates the port and never contacts a remote host for core Preview."}</p>
-              {data.state !== "starting" ? <button className="mt-4" disabled={!canStart} onClick={() => void perform("start")}><Play size={14} /> Run</button> : null}
+              {data.state !== "starting" ? <button className="mt-4" aria-label="Start Preview from canvas" disabled={!canStart} onClick={() => void perform("start")}><Play size={14} /> Run</button> : null}
             </>}
           </div>}
         </div>
