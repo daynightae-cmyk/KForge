@@ -95,22 +95,26 @@ test.describe("KForge Workbench production acceptance", () => {
     await selectActivityAndView(page, "Online", "Marketplace");
     await expect(page.locator(".kw-capability-card")).toBeVisible({ timeout: 15_000 });
     const cards = page.locator(".kw-capability-card");
-    await expect(cards).toHaveCount({ timeout: 15_000, min: 1 });
+    const count = await cards.count();
+    expect(count, "Marketplace must show at least one verified capability card").toBeGreaterThanOrEqual(1);
     const firstName = await cards.first().locator("h2").innerText();
     await cards.first().click();
     await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
     await expect(page.locator(".kw-inspector")).toContainText(firstName);
   });
 
-  test("verifies card selection populates Canonical Inspector in Marketplace view", async ({ page }) => {
+  test("verifies keyboard card selection updates Canonical Inspector without triggering nested actions", async ({ page }) => {
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
     await selectActivityAndView(page, "Online", "Marketplace");
     await expect(page.locator(".kw-capability-card")).toBeVisible({ timeout: 15_000 });
     const cards = page.locator(".kw-capability-card");
-    await expect(cards).toHaveCount({ timeout: 15_000, min: 1 });
-    const firstName = await cards.first().locator("h2").innerText();
-    await cards.first().click();
-    await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
+    const count = await cards.count();
+    expect(count, "Marketplace must show at least one verified capability card").toBeGreaterThanOrEqual(1);
+    const firstCard = cards.first();
+    await firstCard.focus();
+    await page.keyboard.press("Enter");
+    await expect(firstCard).toHaveAttribute("data-selected", "true");
+    const firstName = await firstCard.locator("h2").innerText();
     await expect(page.locator(".kw-inspector")).toContainText(firstName);
   });
 

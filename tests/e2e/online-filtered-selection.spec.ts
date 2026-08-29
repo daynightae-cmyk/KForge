@@ -40,7 +40,7 @@ test.describe("KForge Online semantic selection", () => {
 
     await page.getByRole("textbox", { name: "Search Online catalog", exact: true }).fill("no-matching-kforge-catalog-entry");
     await expect(page.locator(".kw-capability-card")).toHaveCount(0);
-    await expect(inspector).toHaveCount(0);
+    await expect(inspector).toBeVisible();
     await expect(page.locator('.kw-capability-card[data-selected="true"]')).toHaveCount(0);
   });
 });

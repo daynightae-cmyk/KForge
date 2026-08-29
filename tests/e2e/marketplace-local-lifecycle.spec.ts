@@ -152,7 +152,7 @@ test.describe("KForge Marketplace verified local lifecycle via Card", () => {
 
     await expect(targetCard.getByText("Installed")).toHaveCount(0, { timeout: 30_000 });
     await expect(targetCard.getByRole("button", { name: "Install", exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect(insp).not.toContainText("INSTALLED");
+    await expect(insp.locator('section[aria-label="Operation Status"]')).toContainText("UNINSTALLED", { timeout: 10_000 });
     const afterUninstall = await backendItem(page, PACKAGE_ID);
     expect(afterUninstall.installed).toBe(false);
     expect(externalRequests).toEqual([]);

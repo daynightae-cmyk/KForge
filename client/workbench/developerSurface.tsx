@@ -41,7 +41,6 @@ function ActionSurface({ project, action, onExecution }: { project: ProjectSumma
       reason={descriptor.unavailableReason || (!descriptor.enabled ? descriptor.unavailableReason || "Not available for current project profile." : undefined)}
       disabled={!descriptor.enabled}
       onRun={descriptor.enabled ? () => void run() : undefined}
-      onHealth={descriptor.enabled ? () => void onExecution?.({ label: descriptor.label + " Health", state: "RUNNING", source: descriptor.source }) : undefined}
       onConfigure={undefined}
     />
   );
