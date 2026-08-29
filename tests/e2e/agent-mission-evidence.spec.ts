@@ -2,88 +2,58 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { openWorkbench, selectExplorerView, selectProjectByPath, setProjectContext } from "./helpers/workbench";
 
 const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
+const external = (raw: string) => /^https?:$/i.test(new URL(raw).protocol) && !LOCAL_ORIGINS.has(new URL(raw).origin);
 
-function isExternalHttpRequest(rawUrl: string) {
-  const url = new URL(rawUrl);
-  return /^https?:$/i.test(url.protocol) && !LOCAL_ORIGINS.has(url.origin);
-}
-
-test.describe("KForge agent mission evidence in production", () => {
-  test.setTimeout(90_000);
+test.describe("KForge agent mission evidence in contextual workbench", () => {
+  test.setTimeout(120_000);
   let untrustedFixturePath = "";
+  test.afterEach(async () => { if (untrustedFixturePath) await rm(untrustedFixturePath, { recursive: true, force: true, maxRetries: 24, retryDelay: 250 }); untrustedFixturePath = ""; });
 
-  test.afterEach(async () => {
-    if (untrustedFixturePath) await rm(untrustedFixturePath, { recursive: true, force: true, maxRetries: 24, retryDelay: 250 });
-    untrustedFixturePath = "";
-  });
-
-  test.beforeEach(async ({ page }) => {
-    const settings = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
-    expect(settings.ok(), await settings.text()).toBeTruthy();
-    const platform = await page.request.post("/api/workspace/platform/mode", { data: { mode: "offline" } });
-    expect(platform.ok(), await platform.text()).toBeTruthy();
-    const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
-    expect(opened.ok(), await opened.text()).toBeTruthy();
-  });
-
-  test("enforces project trust, records a typed audit mission, and keeps its evidence after reload", async ({ page }) => {
+  test("enforces trust, starts a typed audit mission, and preserves task evidence across reload", async ({ page }) => {
     const externalRequests: string[] = [];
-    page.on("request", (request) => { if (isExternalHttpRequest(request.url())) externalRequests.push(request.url()); });
+    page.on("request", (request) => { if (external(request.url())) externalRequests.push(request.url()); });
+    expect((await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } })).ok()).toBeTruthy();
+    expect((await page.request.post("/api/workspace/platform/mode", { data: { mode: "offline" } })).ok()).toBeTruthy();
 
     untrustedFixturePath = await mkdtemp(path.join(os.tmpdir(), "kforge-agent-untrusted-"));
     await writeFile(path.join(untrustedFixturePath, "package.json"), JSON.stringify({ name: "kforge-agent-untrusted-fixture", private: true, version: "1.0.0" }), "utf8");
     const untrustedOpened = await page.request.post("/api/workspace/projects/open", { data: { path: untrustedFixturePath } });
-    expect(untrustedOpened.ok(), await untrustedOpened.text()).toBeTruthy();
-    const untrustedProject = (await untrustedOpened.json() as { project: { id: string; trust: string } }).project;
-    expect(untrustedProject.trust).toBe("untrusted");
-
-    const blocked = await page.request.post(`/api/workspace/projects/${untrustedProject.id}/agent/missions`, { data: { mission: "audit" } });
+    const untrusted = (await untrustedOpened.json() as { project: { id: string; trust: string } }).project;
+    expect(untrusted.trust).toBe("untrusted");
+    const blocked = await page.request.post(`/api/workspace/projects/${untrusted.id}/agent/missions`, { data: { mission: "audit" } });
     expect(blocked.status()).toBe(428);
-    await expect(blocked.json()).resolves.toMatchObject({ trust: "untrusted", permission: "ask", error: expect.stringMatching(/UNTRUSTED PROJECT/) });
 
-    const selectedOpened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
-    expect(selectedOpened.ok(), await selectedOpened.text()).toBeTruthy();
-    const project = (await selectedOpened.json() as { project: { id: string } }).project;
-    const trusted = await page.request.post(`/api/workspace/projects/${project.id}/trust`, { data: { confirmed: true } });
-    expect(trusted.ok(), await trusted.text()).toBeTruthy();
+    const projectPath = path.resolve(process.cwd());
+    const opened = await page.request.post("/api/workspace/projects/open", { data: { path: projectPath } });
+    const project = (await opened.json() as { project: { id: string } }).project;
+    expect((await page.request.post(`/api/workspace/projects/${project.id}/trust`, { data: { confirmed: true } })).ok()).toBeTruthy();
 
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    const selectedRow = page.locator(".kf-table tbody tr").filter({ hasText: path.resolve(process.cwd()) }).first();
-    await expect(selectedRow).toBeVisible();
-    await selectedRow.locator(".kf-project-cell").click();
-    await expect(selectedRow).toHaveClass(/is-active/);
-    await page.locator(".kf-nav").getByRole("button", { name: "Agents", exact: true }).click();
-    const agentCenter = page.locator(".kf-active-surface");
-    await expect(agentCenter.getByRole("heading", { name: "KForge Engineer missions", exact: true })).toBeVisible();
-    await expect(agentCenter).toContainText("Agent permissions");
-    await expect(agentCenter).toContainText("Read · Plan · Patch · Verify");
+    await openWorkbench(page);
+    await selectProjectByPath(page, projectPath);
+    await selectExplorerView(page, "AI", "Agents");
+    const center = page.locator(".kw-agent-panel");
+    await expect(center.getByRole("heading", { name: "KForge Engineer missions", exact: true })).toBeVisible();
+    await expect(center).toContainText("Read · Plan · Patch · Verify");
+    await expect(center).toContainText(/typecheck|scan|graph/i);
 
-    const started = page.waitForResponse((response) => /\/api\/workspace\/projects\/[^/]+\/agent\/missions$/.test(new URL(response.url()).pathname) && response.request().method() === "POST");
-    await agentCenter.getByRole("button", { name: "Start mission", exact: true }).click();
-    const startedResponse = await started;
-    expect(startedResponse.url()).toContain(`/api/workspace/projects/${project.id}/agent/missions`);
-    expect(startedResponse.status()).toBe(202);
-    await expect(agentCenter).toContainText(/Mission task .* started\. Open Tasks to follow its event log\./);
+    const missionResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/agent/missions`) && response.request().method() === "POST");
+    await center.getByRole("button", { name: "Start mission", exact: true }).click();
+    const mission = await missionResponse;
+    expect(mission.status()).toBe(202);
+    const payload = await mission.json() as { task: { id: string } };
+    await expect(center).toContainText(payload.task.id);
 
-    await page.locator(".kf-nav").getByRole("button", { name: "Tasks", exact: true }).click();
-    const taskCenter = page.locator(".kf-active-surface");
-    await expect(taskCenter.getByRole("heading", { name: "Task Center v2", exact: true })).toBeVisible();
-    await expect(taskCenter).toContainText(/agent · (success|error|blocked|running)/i, { timeout: 60_000 });
-    await expect(taskCenter).toContainText(/All planned mission steps completed with recorded evidence|Mission audit (succeeded|blocked|failed)/i, { timeout: 60_000 });
-    await expect(taskCenter).toContainText(/Summarize evidence|Scan source and project profile/i);
+    await selectExplorerView(page, "AI", "Tasks");
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(payload.task.id, { timeout: 60_000 });
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(/agent/i);
 
-    await page.reload();
-    await page.waitForLoadState("networkidle");
-    await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
-    const reselectedRow = page.locator(".kf-table tbody tr").filter({ hasText: path.resolve(process.cwd()) }).first();
-    await expect(reselectedRow).toBeVisible();
-    await reselectedRow.locator(".kf-project-cell").click();
-    await expect(reselectedRow).toHaveClass(/is-active/);
-    await page.locator(".kf-nav").getByRole("button", { name: "Tasks", exact: true }).click();
-    await expect(page.locator(".kf-active-surface")).toContainText(/agent · (success|error|blocked|running)/i);
-    expect(externalRequests, `Unexpected external requests in agent mission flow:\n${externalRequests.join("\n")}`).toEqual([]);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await setProjectContext(page, project.id);
+    await selectExplorerView(page, "AI", "Tasks");
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(payload.task.id, { timeout: 30_000 });
+    expect(externalRequests).toEqual([]);
   });
 });

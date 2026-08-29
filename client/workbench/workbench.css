@@ -1,0 +1,74 @@
+@import "../pages/KForgeWorkbench.css";
+
+.light .kw-shell { --kw-muted: #475569; --kw-primary: #00676b; }
+.light .kw-shell .kw-badge,
+.light .kw-shell .kw-command-trigger,
+.light .kw-shell kbd,
+.light .kw-shell small,
+.light .kw-shell .kw-muted { color: #475569; }
+.light .kw-shell .kw-surface-heading p,
+.light .kw-shell .kw-table tr.is-selected code,
+.light .kw-shell .kw-brand-mark { color: #00676b; }
+.light .kw-shell .kw-badge--available,
+.light .kw-shell .kw-badge--installed,
+.light .kw-shell .kw-badge--running,
+.light .kw-shell .kw-badge--reachable,
+.light .kw-shell .kw-badge--pass,
+.light .kw-shell .kw-badge--ready,
+.light .kw-shell .kw-badge--trusted,
+.light .kw-shell .kw-badge--healthy,
+.light .kw-shell .kw-badge--compatible { color: #116329; }
+.light .kw-shell .kw-badge--blocked,
+.light .kw-shell .kw-badge--failed,
+.light .kw-shell .kw-badge--unavailable,
+.light .kw-shell .kw-badge--incompatible,
+.light .kw-shell .kw-badge--not-detected { color: #9f1c1c; }
+.kw-shell :focus-visible { outline: 2px solid var(--kw-primary); outline-offset: 2px; }
+.kw-workbench-scroll { overflow: auto; }
+.kw-table-wrap { overflow: visible; }
+.kw-table { min-width: 880px; }
+.kw-project-select { width: 100%; min-width: 180px; padding: 0; border: 0 !important; background: transparent !important; color: inherit !important; text-align: left; }
+.kw-project-select strong, .kw-project-select small { display: block; }
+.kw-table tr.is-selected .kw-project-select strong,
+.kw-table tr.is-selected td,
+.kw-table tr.is-selected small,
+.kw-table tr.is-selected code { color: var(--kw-text); }
+.kw-bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; padding: 7px 9px; border: 1px solid var(--kw-border); border-radius: 5px; background: var(--kw-panel-2); }
+.kw-bulk-bar button, .kw-toolbar button, .kw-operation-actions button, .kw-quality-actions button, .kw-agent-actions button, .kw-quality-card button, .kw-snapshot-form button, .kw-self-audit button { min-height: 30px; padding: 5px 10px; border-radius: 5px; }
+.kw-table-toolbar .kw-select-all { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.kw-table-toolbar .kw-select-all input { width: auto; }
+.kw-surface-section, .kw-operation-panel, .kw-quality-card, .kw-system-grid article, .kw-agent-panel { border: 1px solid var(--kw-border); border-radius: 6px; background: var(--kw-panel); padding: 12px; }
+.kw-surface-section h2, .kw-operation-panel h2, .kw-quality-card h2, .kw-agent-panel h2, .kw-inspector h2 { margin: 0 0 8px; font-size: 14px; }
+.kw-surface-section h3, .kw-quality-card h3, .kw-agent-panel h3 { margin: 12px 0 6px; font-size: 12px; }
+.kw-toolbar, .kw-operation-actions, .kw-quality-actions, .kw-agent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.kw-operation-result { margin-top: 10px; padding: 8px; border: 1px solid var(--kw-border); border-radius: 5px; background: var(--kw-panel-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.kw-quality-list, .kw-system-grid, .kw-provider-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.kw-quality-card p, .kw-quality-card small, .kw-system-grid p, .kw-system-grid small { color: var(--kw-muted); }
+.kw-quality-card pre, .kw-operation-result pre, .kw-system-grid pre, .kw-agent-panel pre, .kw-task-detail pre { max-height: 300px; overflow: auto; white-space: pre-wrap; }
+.kw-snapshot-form, .kw-settings-grid { display: grid; gap: 9px; }
+.kw-snapshot-form label, .kw-settings-grid label { display: grid; gap: 4px; }
+.kw-snapshot-form input, .kw-snapshot-form textarea, .kw-settings-grid select { min-height: 32px; padding: 5px 8px; border-radius: 5px; }
+.kw-task-detail summary { cursor: pointer; color: var(--kw-text); }
+.kw-online-inspector .kw-operation-actions { margin-top: 10px; }
+.kw-online-inspector .kw-operation-actions button { flex: 1 1 auto; }
+.kw-inspector h2 { color: var(--kw-muted); letter-spacing: .04em; text-transform: uppercase; font-size: 11px; margin-top: 14px; }
+.kw-online-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; padding: 8px; }
+.kw-capability-card { border-radius: 12px; background: var(--kw-panel); border: 1px solid var(--kw-border); padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04); transition: box-shadow .15s ease, border-color .15s ease; }
+.kw-capability-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); border-color: var(--kw-border-hover, var(--kw-border)); }
+.kw-capability-card .kw-card-header { display: flex; align-items: flex-start; gap: 10px; }
+.kw-capability-card .kw-card-header h3 { font-size: 15px; font-weight: 600; line-height: 1.25; letter-spacing: -.01em; margin: 0 0 2px; }
+.kw-capability-card .kw-card-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.kw-capability-card .kw-card-badges span { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; letter-spacing: .02em; text-transform: uppercase; }
+.kw-capability-card .kw-card-desc { color: var(--kw-muted); font-size: 12px; line-height: 1.4; margin-top: 6px; }
+.kw-capability-card .kw-card-evidence { display: flex; gap: 10px; font-size: 11px; color: var(--kw-muted); margin-top: 6px; }
+.kw-capability-card .kw-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; border-top: 1px solid var(--kw-border-subtle, var(--kw-border)); padding-top: 10px; }
+.kw-capability-card .kw-card-actions button { min-height: 30px; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; border: 1px solid var(--kw-border); background: transparent; color: var(--kw-text); transition: background .15s ease, color .15s ease; }
+.kw-capability-card .kw-card-actions button:hover:not(:disabled) { background: var(--kw-accent); border-color: var(--kw-accent); }
+.kw-capability-card .kw-card-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.kw-capability-card .kw-card-actions button.kw-action-primary { background: var(--kw-primary); color: var(--kw-primary-foreground); border-color: var(--kw-primary); }
+.kw-capability-card .kw-card-actions button.kw-action-primary:hover:not(:disabled) { background: var(--kw-primary-hover, var(--kw-primary)); }
+.kw-inspector { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.kw-inspector > .kw-inspector-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding-bottom: 24px; }
+.kw-online-layout { overflow: hidden; }
+.kw-online-results { overflow: auto; max-height: calc(100vh - 220px); }
+@media (max-width: 900px) { .kw-table { min-width: 760px; } }

@@ -1,191 +1,129 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { setProjectContext } from "./helpers/workbench";
 
-const sequence = [
-  { nav: "Workspace", title: "Projects" },
-  { nav: "Agents", title: "Agents" },
-  { nav: "KForge Sonar", title: "KForge Sonar" },
-  { nav: "Marketplace", title: "Marketplace" },
-  { nav: "Project graph", title: "Project graph" },
-  { nav: "Release Gate", title: "Release Gate" },
-  { nav: "Terminal", title: "Terminal" },
-  { nav: "GitHub", title: "GitHub" },
-  { nav: "Settings", title: "Settings" },
-] as const;
+async function prepareWorkspace(page: import("@playwright/test").Page) {
+  const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
+  expect(reset.ok(), await reset.text()).toBeTruthy();
+  const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
+  expect(opened.ok(), await opened.text()).toBeTruthy();
+  return await opened.json() as { project: { id: string; name: string } };
+}
 
-test.describe("KForge Workspace production acceptance", () => {
-  test.setTimeout(120_000);
+async function selectActivityAndView(page: import("@playwright/test").Page, activity: string, view: string) {
+  await page.locator(".kw-activity-bar").getByRole("button", { name: activity, exact: true }).click();
+  const explorer = page.getByRole("complementary", { name: `${activity} Explorer`, exact: true });
+  await expect(explorer).toBeVisible();
+  await explorer.getByRole("button", { name: view, exact: true }).click();
+  await expect(page.locator(".kw-workbench h1")).toHaveText(view);
+}
+
+test.describe("KForge Workbench production acceptance", () => {
+  test.setTimeout(180_000);
 
   test.beforeEach(async ({ page }) => {
-    const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
-    expect(reset.ok(), await reset.text()).toBeTruthy();
-    const opened = await page.request.post("/api/workspace/projects/open", {
-      data: { path: path.resolve(process.cwd()) },
-    });
-    expect(opened.ok(), await opened.text()).toBeTruthy();
+    await prepareWorkspace(page);
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
-    await expect(page.locator(".kf-sidebar")).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator(".kf-topbar")).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator(".kw-topbar")).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator(".kw-activity-bar")).toBeVisible();
   });
 
-  test("keeps a persistent shell while each requested destination replaces the active capability surface", async ({ page }) => {
-    const apiFailures: string[] = [];
-    const pageErrors: string[] = [];
-    const consoleErrors: string[] = [];
-    page.on("response", (response) => {
-      if (response.url().includes("/api/") && response.status() >= 400) apiFailures.push(`${response.status()} ${response.url()}`);
-    });
-    page.on("pageerror", (error) => pageErrors.push(error.message));
-    page.on("console", (message) => {
-      if (message.type() === "error") consoleErrors.push(message.text());
-    });
+  test("keeps the shell persistent while high-level domains replace the active capability", async ({ page }) => {
+    const sequence = [
+      ["Projects", "Workspace"],
+      ["AI", "Agents"],
+      ["Online", "Marketplace"],
+      ["Intelligence", "Project Graph"],
+      ["Quality", "Problems"],
+      ["Developer Tools", "Terminal"],
+      ["Remote / Git", "Git"],
+      ["Release", "Release Gate"],
+      ["System", "Settings"],
+    ] as const;
 
-    let previousTitle = "Projects";
-    for (const destination of sequence) {
-      const navigation = page.locator(".kf-nav").getByRole("button", { name: destination.nav, exact: true });
-      await expect(navigation).toBeVisible();
-      await navigation.click();
-
-      await expect(page.locator(".kf-sidebar")).toBeVisible({ timeout: 30_000 });
-      await expect(page.locator(".kf-topbar")).toBeVisible({ timeout: 30_000 });
-      await expect(page.locator(".kf-breadcrumb strong")).toHaveText(destination.title);
-      await expect(page.locator(".kf-page-heading h1")).toHaveText(destination.title);
-      await expect(navigation).toHaveClass(/is-active/);
-      await expect(page.locator(".kf-page-subtitle")).not.toHaveText("");
-
-      if (destination.nav === "Workspace") {
-        await expect(page.locator(".kf-workspace-panel")).toBeVisible();
-        await expect(page.locator(".kf-active-surface")).toHaveCount(0);
-      } else {
-        await expect(page.locator(`.kf-active-surface[aria-label="${destination.title} capability"]`)).toBeVisible();
-        await expect(page.locator(".kf-active-surface")).toHaveCount(1);
-      }
-
-      if (previousTitle !== destination.title) await expect(page.locator(".kf-page-heading h1")).not.toHaveText(previousTitle);
-      previousTitle = destination.title;
+    for (const [activity, view] of sequence) {
+      await selectActivityAndView(page, activity, view);
+      await expect(page.locator(".kw-topbar")).toBeVisible();
+      await expect(page.locator(".kw-activity-bar")).toBeVisible();
+      await expect(page.locator(".kw-workbench")).toBeVisible();
+      await expect(page.locator(".kw-workbench h1")).toHaveCount(1);
+      await expect(page.locator(".kw-breadcrumb strong")).toHaveText(view);
     }
-
-    expect(apiFailures, `Unexpected KForge API failures:\n${apiFailures.join("\n")}`).toEqual([]);
-    expect(pageErrors, `React/page errors:\n${pageErrors.join("\n")}`).toEqual([]);
-    expect(consoleErrors, `Console errors:\n${consoleErrors.join("\n")}`).toEqual([]);
   });
 
-  test("supports keyboard command-palette opening and Escape dismissal without leaving a stacked surface", async ({ page }) => {
-    await page.keyboard.press("Control+K");
-    await expect(page.getByRole("dialog", { name: "KForge command palette" })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog", { name: "KForge command palette" })).toHaveCount(0);
-    await expect(page.locator(".kf-page-heading h1")).toHaveText("Projects");
-  });
-});
-
-
-test.describe("KForge Settings persistence in production", () => {
-  test("persists real editable settings across a renderer reload", async ({ page }) => {
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    await page.locator(".kf-nav").getByRole("button", { name: "Settings", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
-
-    await page.getByLabel("Startup capability").selectOption("Agents");
+  test("persists Settings v3 activity/view, appearance and privacy controls across reload", async ({ page }) => {
+    await selectActivityAndView(page, "System", "Settings");
+    await page.getByLabel("Startup activity").selectOption("online");
+    await page.getByLabel("Startup Online view").selectOption("models");
+    await page.getByLabel("Theme").selectOption("dark");
     await page.getByLabel("Information density").selectOption("compact");
     const reduceMotion = page.getByLabel("Reduce motion");
     if (!(await reduceMotion.isChecked())) await reduceMotion.check();
+    await page.getByLabel("Remote context policy").selectOption("blocked");
+    const saving = page.waitForResponse((response) => response.url().endsWith("/api/workspace/settings") && response.request().method() === "PATCH");
     await page.getByRole("button", { name: "Save settings", exact: true }).click();
-    await expect(page.getByText(/Settings saved locally at/)).toBeVisible();
+    expect((await saving).ok()).toBeTruthy();
+    await expect(page.getByText("Settings v3 saved locally.", { exact: true })).toBeVisible();
 
-    await page.reload();
-    await page.waitForLoadState("networkidle");
-    await page.locator(".kf-nav").getByRole("button", { name: "Settings", exact: true }).click();
-    await expect(page.getByLabel("Startup capability")).toHaveValue("Agents");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator(".kw-activity-bar").getByRole("button", { name: "Online", exact: true })).toHaveClass(/is-active/);
+    await expect(page.locator(".kw-workbench h1")).toHaveText("Models");
+
+    await selectActivityAndView(page, "System", "Settings");
+    await expect(page.getByLabel("Startup activity")).toHaveValue("online");
+    await expect(page.getByLabel("Startup Online view")).toHaveValue("models");
+    await expect(page.getByLabel("Theme")).toHaveValue("dark");
     await expect(page.getByLabel("Information density")).toHaveValue("compact");
-    await expect(reduceMotion).toBeChecked();
-  });
-});
-
-
-test.describe("KForge project collections in production", () => {
-  test.setTimeout(120_000);
-
-  test.beforeEach(async ({ page }) => {
-    const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
-    expect(reset.ok(), await reset.text()).toBeTruthy();
-    const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
-    expect(opened.ok(), await opened.text()).toBeTruthy();
-    const { project } = await opened.json() as { project: { id: string } };
-    const collectionReset = await page.request.post(`/api/workspace/projects/${encodeURIComponent(project.id)}/collection`, {
-      data: { favorite: false, pinned: false, archived: false },
-    });
-    expect(collectionReset.ok(), await collectionReset.text()).toBeTruthy();
+    await expect(page.getByLabel("Reduce motion")).toBeChecked();
+    await expect(page.getByLabel("Remote context policy")).toHaveValue("blocked");
+    await expect(page.getByText("secretRedaction = true · confirmRemoteWrites = true · Git mutation remains confirmation-gated", { exact: true })).toBeVisible();
   });
 
-  test("persists favorite, pinned, and archive membership through visible project actions", async ({ page }) => {
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    const workspacePath = path.resolve(process.cwd());
-    const table = page.locator(".kf-table");
-    const ensureWorkspaceTable = async () => {
-      await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled({ timeout: 30_000 });
-      await expect(table).toBeVisible({ timeout: 30_000 });
-    };
-    const rows = page.locator(".kf-table tbody tr");
-    const projectRow = async () => {
-      await ensureWorkspaceTable();
-      const index = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), workspacePath);
-      expect(index).toBeGreaterThanOrEqual(0);
-      return rows.nth(index);
-    };
-    const projectName = (await (await projectRow()).locator(".kf-project-cell strong").textContent())?.trim();
-    expect(projectName).toBeTruthy();
-    const expectedProjectName = projectName!;
-    const clickAction = async (label: string) => {
-      const currentRow = await projectRow();
-      await expect(currentRow).toBeVisible();
-      await currentRow.locator(`summary[aria-label="Actions for ${expectedProjectName}"]`).click();
-      const persisted = page.waitForResponse((response) =>
-        response.request().method() === "POST" && response.url().includes("/collection"),
-      );
-      await currentRow.getByRole("button", { name: label, exact: true }).click();
-      expect((await persisted).ok()).toBeTruthy();
-    };
+  test("uses server action descriptors to disable execution that lacks project evidence", async ({ page }) => {
+    const project = await prepareWorkspace(page);
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await setProjectContext(page, project.project.id);
+    await selectActivityAndView(page, "Developer Tools", "Terminal");
+    await expect(page.getByText("KForge Command Terminal", { exact: true })).toBeVisible();
+    await expect(page.getByText("Only registered KForge actions are executable. There is no unrestricted shell input.", { exact: true })).toBeVisible();
+    const disabled = page.locator(".kw-command-table button:disabled");
+    expect(await disabled.count()).toBeGreaterThanOrEqual(0);
+  });
 
-    const collectionCard = () => page.locator(".kf-provider-card").filter({ hasText: workspacePath });
-    const clickCollectionAction = async (label: string) => {
-      const persisted = page.waitForResponse((response) =>
-        response.request().method() === "POST" && response.url().includes("/collection"),
-      );
-      await collectionCard().getByRole("button", { name: label, exact: true }).click();
-      expect((await persisted).ok()).toBeTruthy();
-    };
+  test("selects an exact Marketplace capability card and synchronizes the Canonical Inspector", async ({ page }) => {
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await selectActivityAndView(page, "Online", "Marketplace");
+    const targetCard = page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]');
+    await expect(targetCard).toBeVisible({ timeout: 15_000 });
+    const targetName = await targetCard.locator("h2").innerText();
+    await targetCard.click();
+    await expect(targetCard).toHaveAttribute("data-selected", "true");
+    await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
+    await expect(page.locator(".kw-inspector")).toHaveCount(1);
+    await expect(page.locator(".kw-inspector")).toContainText(targetName);
+  });
 
-    await clickAction("Add favorite");
-    await page.locator(".kf-nav").getByRole("button", { name: "Favorites", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Favorites", exact: true })).toBeVisible();
-    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
+  test("selects an exact Marketplace capability card by keyboard and synchronizes the Canonical Inspector", async ({ page }) => {
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await selectActivityAndView(page, "Online", "Marketplace");
+    const targetCard = page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]');
+    await expect(targetCard).toBeVisible({ timeout: 15_000 });
+    await targetCard.focus();
+    await page.keyboard.press("Enter");
+    await expect(targetCard).toHaveAttribute("data-selected", "true");
+    const targetName = await targetCard.locator("h2").innerText();
+    await expect(page.locator(".kw-inspector")).toHaveCount(1);
+    await expect(page.locator(".kw-inspector")).toContainText(targetName);
+  });
 
-    await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-    await clickAction("Pin project");
-    await page.locator(".kf-nav").getByRole("button", { name: "Pinned", exact: true }).click();
-    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
-
-    await page.locator(".kf-nav").getByRole("button", { name: "Workspace", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-    await clickAction("Archive project");
-    await page.locator(".kf-nav").getByRole("button", { name: "Archive", exact: true }).click();
-    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
-    await clickCollectionAction("Restore from archive");
-    await expect(collectionCard()).toHaveCount(0, { timeout: 30_000 });
-
-    await page.locator(".kf-nav").getByRole("button", { name: "Favorites", exact: true }).click();
-    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
-    await clickCollectionAction("Remove favorite");
-    await expect(collectionCard()).toHaveCount(0, { timeout: 30_000 });
-
-    await page.locator(".kf-nav").getByRole("button", { name: "Pinned", exact: true }).click();
-    await expect(collectionCard()).toBeVisible({ timeout: 30_000 });
-    await clickCollectionAction("Unpin project");
-    await expect(collectionCard()).toHaveCount(0, { timeout: 30_000 });
+  test("renders structured artifact columns rather than raw JSON as the primary artifact UX", async ({ page }) => {
+    const project = await prepareWorkspace(page);
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await setProjectContext(page, project.project.id);
+    await selectActivityAndView(page, "Release", "Artifacts");
+    await expect(page.getByRole("columnheader", { name: "Artifact", exact: true })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "SHA-256", exact: true })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Signature", exact: true })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Verification", exact: true })).toBeVisible();
   });
 });

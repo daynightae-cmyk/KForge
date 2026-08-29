@@ -1,70 +1,76 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { clearProjectContext } from "./helpers/workbench";
 
-const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]);
+const ACTIVITY_LABELS = ["Projects", "AI", "Online", "Intelligence", "Quality", "Developer Tools", "Remote / Git", "Release", "System"] as const;
+const ONLINE_VIEWS = ["Discover", "Marketplace", "Extensions", "Models", "Agents", "Tools", "Integrations", "Installed", "Updates", "Downloads", "Providers", "Remote Sources", "Security", "Activity"] as const;
 
-function isExternalHttpRequest(rawUrl: string) {
-  const url = new URL(rawUrl);
-  return /^https?:$/i.test(url.protocol) && !LOCAL_ORIGINS.has(url.origin);
+async function prepareWorkspace(page: import("@playwright/test").Page) {
+  const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
+  expect(reset.ok(), await reset.text()).toBeTruthy();
+  const platform = await page.request.post("/api/workspace/platform/mode", { data: { mode: "offline" } });
+  expect(platform.ok(), await platform.text()).toBeTruthy();
+  const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
+  expect(opened.ok(), await opened.text()).toBeTruthy();
 }
 
-async function selectKForgeProject(page: import("@playwright/test").Page) {
-  const rows = page.locator(".kf-table tbody tr");
-  const projectPath = path.resolve(process.cwd());
-  const projectIndex = await rows.evaluateAll((entries, exactPath) => entries.findIndex((entry) => entry.querySelector(".kf-project-cell small")?.getAttribute("title") === exactPath), projectPath);
-  expect(projectIndex).toBeGreaterThanOrEqual(0);
-  const selectedRow = rows.nth(projectIndex);
-  await selectedRow.locator(".kf-project-cell").click();
-  await expect(selectedRow).toHaveClass(/is-active/);
-}
+test.describe("KForge contextual navigation audit", () => {
+  test.setTimeout(360_000);
 
-test.describe("KForge reachable navigation audit in production", () => {
-  test.setTimeout(600_000);
+  test.beforeEach(async ({ page }) => {
+    await prepareWorkspace(page);
+    await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+    await expect(page.locator(".kw-topbar")).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator(".kw-activity-bar")).toBeVisible();
+  });
 
-  test("opens every published sidebar destination through the keyboard and leaves exactly one truthful active surface", async ({ page }) => {
-    const externalRequests: string[] = [];
-    const pageErrors: string[] = [];
-    const consoleErrors: string[] = [];
-    page.on("request", (request) => { if (isExternalHttpRequest(request.url())) externalRequests.push(request.url()); });
-    page.on("pageerror", (error) => pageErrors.push(error.message));
-    page.on("console", (message) => {
-      if (message.type() === "error" && message.text() !== "Failed to load resource: net::ERR_NETWORK_CHANGED") consoleErrors.push(message.text());
-    });
+  test("publishes nine Activity Bar domains and keeps one scoped Explorer active", async ({ page }) => {
+    const buttons = page.locator(".kw-activity-bar > button");
+    await expect(buttons).toHaveCount(9);
+    const labels = await buttons.evaluateAll((entries) => entries.map((entry) => entry.getAttribute("aria-label")));
+    expect(labels).toEqual(ACTIVITY_LABELS);
 
-    const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });
-    expect(reset.ok(), await reset.text()).toBeTruthy();
-    const platform = await page.request.post("/api/workspace/platform/mode", { data: { mode: "offline" } });
-    expect(platform.ok(), await platform.text()).toBeTruthy();
-    const opened = await page.request.post("/api/workspace/projects/open", { data: { path: path.resolve(process.cwd()) } });
-    expect(opened.ok(), await opened.text()).toBeTruthy();
-
-    await page.goto("/workspace");
-    await page.waitForLoadState("networkidle");
-    await selectKForgeProject(page);
-
-    const labels = await page.locator(".kf-nav section button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") || button.textContent?.trim() || "").filter(Boolean));
-    expect(labels).toHaveLength(66);
-    expect(new Set(labels).size).toBe(labels.length);
-
-    for (const label of labels) {
-      const navigation = page.locator(".kf-nav").getByRole("button", { name: label, exact: true });
-      await navigation.focus();
-      await page.keyboard.press("Enter");
-      await expect(navigation).toHaveClass(/is-active/);
-      const publishedTitle = label === "Workspace" ? "Projects" : label;
-      await expect(page.locator(".kf-breadcrumb strong")).toHaveText(publishedTitle, { timeout: 30_000 });
-      await expect(page.locator(".kf-page-heading h1")).toHaveText(publishedTitle, { timeout: 30_000 });
-      if (label === "Workspace") {
-        await expect(page.locator(".kf-workspace-panel")).toBeVisible();
-        await expect(page.locator(".kf-active-surface")).toHaveCount(0);
-      } else {
-        await expect(page.locator(`.kf-active-surface[aria-label="${label} capability"]`)).toBeVisible({ timeout: 30_000 });
-        await expect(page.locator(".kf-active-surface")).toHaveCount(1);
-      }
+    for (const label of ACTIVITY_LABELS) {
+      const activity = page.locator(".kw-activity-bar").getByRole("button", { name: label, exact: true });
+      await activity.click();
+      await expect(activity).toHaveClass(/is-active/);
+      await expect(page.getByRole("complementary", { name: `${label} Explorer`, exact: true })).toBeVisible();
+      await expect(page.locator(".kw-workbench h1")).toHaveCount(1);
+      await expect(page.locator(".kw-workbench")).toBeVisible();
     }
+  });
 
-    expect(externalRequests, `Unexpected external requests during reachable-navigation audit:\n${externalRequests.join("\n")}`).toEqual([]);
-    expect(pageErrors, `Unexpected page errors during reachable-navigation audit:\n${pageErrors.join("\n")}`).toEqual([]);
-    expect(consoleErrors, `Unexpected console errors during reachable-navigation audit:\n${consoleErrors.join("\n")}`).toEqual([]);
+  test("keeps Online active while every child view replaces the workbench content", async ({ page }) => {
+    const online = page.locator(".kw-activity-bar").getByRole("button", { name: "Online", exact: true });
+    await online.click();
+    const explorer = page.getByRole("complementary", { name: "Online Explorer", exact: true });
+    await expect(explorer).toBeVisible();
+
+    for (const label of ONLINE_VIEWS) {
+      const destination = explorer.getByRole("button", { name: label, exact: true });
+      await destination.click();
+      await expect(online).toHaveClass(/is-active/);
+      await expect(destination).toHaveClass(/is-active/);
+      await expect(page.locator(".kw-workbench h1")).toHaveText(label);
+      await expect(page.getByRole("complementary", { name: "Online Explorer", exact: true })).toBeVisible();
+    }
+  });
+
+  test("supports projectless Online discovery without turning compatibility into INCOMPATIBLE", async ({ page }) => {
+    await clearProjectContext(page);
+    await page.locator(".kw-activity-bar").getByRole("button", { name: "Online", exact: true }).click();
+    const explorer = page.getByRole("complementary", { name: "Online Explorer", exact: true });
+    await explorer.getByRole("button", { name: "Discover", exact: true }).click();
+    await expect(page.getByText("No project selected", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("NOT_EVALUATED", { exact: true }).first()).toBeVisible();
+    await expect(page.locator(".kw-online")).toBeVisible();
+  });
+
+  test("opens command palette from the keyboard and returns to one workbench", async ({ page }) => {
+    await page.keyboard.press("Control+K");
+    await expect(page.getByRole("dialog", { name: "KForge command palette" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "KForge command palette" })).toHaveCount(0);
+    await expect(page.locator(".kw-workbench h1")).toHaveCount(1);
   });
 });

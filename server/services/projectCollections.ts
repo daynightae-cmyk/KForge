@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import { randomUUID } from "crypto";
 import path from "path";
 
 export interface ProjectCollectionEntry {
@@ -25,6 +26,26 @@ interface CollectionStore {
 }
 
 const defaultStore = (): CollectionStore => ({ version: 1, projects: {} });
+const storeMutationLocks = new Map<string, Promise<void>>();
+
+function storePath(workspaceRoot: string) {
+  return path.join(workspaceRoot, ".kforge", "project-collections.json");
+}
+
+async function withStoreMutationLock<T>(workspaceRoot: string, mutation: () => Promise<T>) {
+  const key = path.resolve(storePath(workspaceRoot));
+  const previous = storeMutationLocks.get(key) || Promise.resolve();
+  let release = () => undefined;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  storeMutationLocks.set(key, pending);
+  await previous;
+  try {
+    return await mutation();
+  } finally {
+    release();
+    if (storeMutationLocks.get(key) === pending) storeMutationLocks.delete(key);
+  }
+}
 
 function normalize(projectPath: string) {
   return path.resolve(projectPath);
@@ -48,7 +69,7 @@ function blankEntry(projectPath: string): ProjectCollectionEntry {
 }
 
 async function readStore(workspaceRoot: string): Promise<CollectionStore> {
-  const file = path.join(workspaceRoot, ".kforge", "project-collections.json");
+  const file = storePath(workspaceRoot);
   try {
     const parsed: unknown = JSON.parse(await fs.readFile(file, "utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return defaultStore();
@@ -80,7 +101,7 @@ async function writeStore(workspaceRoot: string, store: CollectionStore) {
   const directory = path.join(workspaceRoot, ".kforge");
   const file = path.join(directory, "project-collections.json");
   await fs.mkdir(directory, { recursive: true });
-  const temporary = `${file}.tmp-${process.pid}`;
+  const temporary = `${file}.tmp-${process.pid}-${randomUUID()}`;
   await fs.writeFile(temporary, `${JSON.stringify(store, null, 2)}\n`, "utf8");
   await fs.rename(temporary, file);
 }
@@ -96,34 +117,36 @@ export async function getProjectCollectionEntry(workspaceRoot: string, projectPa
   return store.projects[normalized] || blankEntry(normalized);
 }
 
-export async function recordProjectOpened(workspaceRoot: string, projectPath: string) {
+async function mutateProjectCollection(
+  workspaceRoot: string,
+  projectPath: string,
+  mutate: (current: ProjectCollectionEntry) => ProjectCollectionEntry,
+) {
   const normalized = normalize(projectPath);
-  const store = await readStore(workspaceRoot);
-  const current = store.projects[normalized] || blankEntry(normalized);
-  const entry = { ...current, path: normalized, lastOpenedAt: new Date().toISOString() };
-  store.projects[normalized] = entry;
-  await writeStore(workspaceRoot, store);
-  return entry;
+  return withStoreMutationLock(workspaceRoot, async () => {
+    const store = await readStore(workspaceRoot);
+    const current = store.projects[normalized] || blankEntry(normalized);
+    const entry = { ...mutate(current), path: normalized };
+    store.projects[normalized] = entry;
+    await writeStore(workspaceRoot, store);
+    return entry;
+  });
+}
+
+export async function recordProjectOpened(workspaceRoot: string, projectPath: string) {
+  return mutateProjectCollection(workspaceRoot, projectPath, (current) => ({ ...current, lastOpenedAt: new Date().toISOString() }));
 }
 
 export async function updateProjectCollection(workspaceRoot: string, projectPath: string, patch: ProjectCollectionPatch) {
-  const normalized = normalize(projectPath);
-  const store = await readStore(workspaceRoot);
-  const current = store.projects[normalized] || blankEntry(normalized);
-  const entry = { ...current, ...patch, tags: patch.tags ? normalizeTags(patch.tags) : current.tags, path: normalized };
-  store.projects[normalized] = entry;
-  await writeStore(workspaceRoot, store);
-  return entry;
+  return mutateProjectCollection(workspaceRoot, projectPath, (current) => ({
+    ...current,
+    ...patch,
+    tags: patch.tags ? normalizeTags(patch.tags) : current.tags,
+  }));
 }
 
 async function recordProjectTimestamp(workspaceRoot: string, projectPath: string, key: "lastScannedAt" | "lastTaskAt") {
-  const normalized = normalize(projectPath);
-  const store = await readStore(workspaceRoot);
-  const current = store.projects[normalized] || blankEntry(normalized);
-  const entry = { ...current, path: normalized, [key]: new Date().toISOString() };
-  store.projects[normalized] = entry;
-  await writeStore(workspaceRoot, store);
-  return entry;
+  return mutateProjectCollection(workspaceRoot, projectPath, (current) => ({ ...current, [key]: new Date().toISOString() }));
 }
 
 export async function recordProjectScanned(workspaceRoot: string, projectPath: string) {

@@ -189,16 +189,16 @@ function remoteState(networkEnabled: boolean, configured: boolean, record: Conta
 export async function getOnlineControlCenter(input: {
   workspaceRoot: string;
   platform: LocalPlatformStatus;
-  project: ProjectSummary;
-  hasCiConfiguration: boolean;
-  preview: PreviewStatus;
+  project?: ProjectSummary;
+  hasCiConfiguration?: boolean;
+  preview?: PreviewStatus;
 }): Promise<OnlineControlCenter> {
   const inspectedAt = new Date().toISOString();
   const now = new Date(inspectedAt).getTime();
   const contacts = (await readContacts(input.workspaceRoot)).contacts;
   const online = input.platform.policy.externalMetadataReads;
-  const githubConfigured = input.project.remoteUrl?.includes("github.com") === true;
-  const repositoryConfigured = Boolean(input.project.remoteUrl);
+  const githubConfigured = input.project?.remoteUrl?.includes("github.com") === true;
+  const repositoryConfigured = Boolean(input.project?.remoteUrl);
   const adapters = listMarketplaceRegistryAdapters(online);
   const marketplaceConfigured = adapters.some((adapter) => adapter.kind === "remote" && adapter.configured);
   const modelRegistryConfigured = adapters.some((adapter) => adapter.id === "ollama-official" && adapter.configured);
@@ -212,8 +212,8 @@ export async function getOnlineControlCenter(input: {
   const services: OnlineControlServiceStatus[] = [
     status("connection-mode", "Connection Mode", online ? "CONNECTED" : "OFFLINE", "Persisted Local Platform mode", null, "NOT_REQUIRED", `${input.platform.mode} policy: metadata reads ${input.platform.policy.externalMetadataReads ? "enabled" : "blocked"}, remote transfers ${input.platform.policy.remoteTransfers ? "enabled" : "blocked"}, provider refresh ${input.platform.policy.providerRefresh ? "enabled" : "blocked"}. Opening this surface still performs no remote contact.`, undefined, now),
     status("network-state", "Network State", networkState, "Cached evidence from explicit remote operations; no connectivity probe", null, "NOT_REQUIRED", online ? latestContact ? "State is derived from the latest explicit remote operation. Opening this screen made no new request." : "No connectivity probe or explicit remote operation evidence exists in this KForge workspace." : "Network access is disabled by the persisted operating mode.", networkRecord, now),
-    status("github", "GitHub", remoteState(online, githubConfigured, contacts.github), "Explicit GitHub API evidence", githubConfigured ? "https://api.github.com" : null, "REQUIRED", githubConfigured ? "GitHub metadata is contacted only when the GitHub surface is explicitly refreshed." : "The selected project has no GitHub origin remote.", contacts.github, now),
-    status("remote-repository", "Remote Repository", remoteState(online, repositoryConfigured, contacts["remote-repository"]), "Git origin and explicit fetch/pull/push/clone evidence", input.project.remoteUrl || null, "REQUIRED", repositoryConfigured ? "Configured Git remote; opening the control center does not fetch it." : "No Git remote is configured for the selected project.", contacts["remote-repository"], now),
+    status("github", "GitHub", remoteState(online, githubConfigured, contacts.github), "Explicit GitHub API evidence", githubConfigured ? "https://api.github.com" : null, "REQUIRED", githubConfigured ? "GitHub metadata is contacted only when the GitHub surface is explicitly refreshed." : input.project ? "The selected project has no GitHub origin remote." : "No project is selected; global Online browsing remains available.", contacts.github, now),
+    status("remote-repository", "Remote Repository", remoteState(online, repositoryConfigured, contacts["remote-repository"]), "Git origin and explicit fetch/pull/push/clone evidence", input.project?.remoteUrl || null, "REQUIRED", repositoryConfigured ? "Configured Git remote; opening the control center does not fetch it." : input.project ? "No Git remote is configured for the selected project." : "No project is selected; no repository context was evaluated.", contacts["remote-repository"], now),
     status("marketplace-registry", "Marketplace Registry", remoteState(online, marketplaceConfigured, contacts["marketplace-registry"]), "Marketplace registry adapters", adapters.find((adapter) => adapter.kind === "remote" && adapter.configured)?.sourceUrl || null, "REQUIRED", marketplaceConfigured ? "A configured adapter may be refreshed only by an explicit action." : "No remote Marketplace registry adapter is configured; local registry evidence remains available.", contacts["marketplace-registry"], now),
     status("model-registry", "Model Registry", remoteState(online, modelRegistryConfigured, contacts["model-registry"]), "Ollama registry adapter and confirmed model tasks", "https://ollama.com/library", "REQUIRED", modelRegistryConfigured ? "The configured model registry is contacted only by confirmed downloads or update checks." : "The official source is identified, but no live catalog adapter is configured.", contacts["model-registry"], now),
     status(
@@ -230,12 +230,12 @@ export async function getOnlineControlCenter(input: {
       now,
     ),
     status("remote-documentation", "Remote Documentation", "NOT_CONFIGURED", "Documentation capability registry", null, "REQUIRED", "No remote documentation provider or adapter is configured.", contacts["remote-documentation"], now),
-    status("remote-ci", "Remote CI", remoteState(online, input.hasCiConfiguration, contacts["remote-ci"]), "Project CI configuration and explicit provider evidence", githubConfigured ? "https://api.github.com" : null, "REQUIRED", input.hasCiConfiguration ? "Local CI configuration exists, but no remote CI request is made from this screen." : "No supported CI configuration was detected for the selected project.", contacts["remote-ci"], now),
-    status("remote-preview", "Remote Preview", "UNAVAILABLE", `Existing Preview engine is ${input.preview.state} and local-only`, null, "REQUIRED", "The existing Preview engine is local. No remote Preview adapter exists.", contacts["remote-preview"], now),
+    status("remote-ci", "Remote CI", remoteState(online, input.hasCiConfiguration === true, contacts["remote-ci"]), "Project CI configuration and explicit provider evidence", githubConfigured ? "https://api.github.com" : null, "REQUIRED", input.hasCiConfiguration ? "Local CI configuration exists, but no remote CI request is made from this screen." : input.project ? "No supported CI configuration was detected for the selected project." : "No project is selected; CI compatibility is NOT_EVALUATED.", contacts["remote-ci"], now),
+    status("remote-preview", "Remote Preview", "UNAVAILABLE", input.preview ? `Existing Preview engine is ${input.preview.state} and local-only` : "No project Preview context selected", null, "REQUIRED", "The existing Preview engine is local. No remote Preview adapter exists.", contacts["remote-preview"], now),
     status("updates", "Updates", "NOT_CONFIGURED", "Installed items and provider version evidence", null, "REQUIRED", "No verified KForge update registry is configured; update success is never inferred from installed state.", contacts.updates, now),
   ];
   return {
-    projectId: input.project.id,
+    projectId: input.project?.id || "GLOBAL",
     inspectedAt,
     mode: input.platform.mode,
     remoteContactPerformed: false,
