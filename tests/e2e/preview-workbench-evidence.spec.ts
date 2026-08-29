@@ -107,6 +107,8 @@ test.describe("KForge canonical Preview Workbench", () => {
     expect((await darkSettingsSaved).ok()).toBeTruthy();
     await expect(page.locator("html")).toHaveClass(/dark/);
     await selectExplorerView(page, "Developer Tools", "Preview");
+    await expect(page.getByRole("region", { name: "KForge Preview Workbench" })).toContainText("RUNNING");
+    await expect(page.locator('iframe[aria-label="Preview application frame"]')).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.screenshot({ path: path.join(visualRoot, "preview-workbench-dark-1440x900.png"), fullPage: true });
 
