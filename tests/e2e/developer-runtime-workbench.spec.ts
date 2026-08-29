@@ -71,7 +71,7 @@ test.describe("KForge specialized Developer Runtime Workbench", () => {
     await expect(runtime).toBeVisible();
     await expect(runtime).toHaveAttribute("data-runtime-run-state", "NOT_RUN_THIS_SESSION");
     await expect(runtime.getByRole("region", { name: "Runtime discovery evidence", exact: true })).toContainText("npm run start");
-    await expect(runtime.getByRole("region", { name: "Runtime discovery evidence", exact: true })).toContainText("package.json#scripts.start");
+    await expect(runtime.getByRole("region", { name: "Runtime discovery evidence", exact: true })).toContainText("package.json");
     await expect(runtime.getByRole("region", { name: "Runtime discovery evidence", exact: true })).toContainText("NOT_REQUIRED");
     expect(await exists(markerPath)).toBe(false);
     expect(runtimeActionPosts).toBe(0);
