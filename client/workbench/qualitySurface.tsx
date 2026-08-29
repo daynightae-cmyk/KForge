@@ -8,6 +8,7 @@ import QualityTriageWorkbench from "./QualityTriageWorkbench";
 import DocumentationConsistencyWorkbench from "./DocumentationConsistencyWorkbench";
 import SnapshotRecoveryWorkbench from "./SnapshotRecoveryWorkbench";
 import SecurityQualityWorkbench from "./SecurityQualityWorkbench";
+import PerformanceQualityWorkbench from "./PerformanceQualityWorkbench";
 
 function QualitySurface({ view, project, onNavigate }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail={`${viewLabel("quality", view)} needs project context.`} />;
@@ -15,6 +16,7 @@ function QualitySurface({ view, project, onNavigate }: SurfaceProps) {
   if (view === "snapshots") return <SnapshotRecoveryWorkbench project={project} />;
   if (view === "documentation") return <DocumentationConsistencyWorkbench project={project} />;
   if (view === "security") return <SecurityQualityWorkbench project={project} />;
+  if (view === "performance") return <PerformanceQualityWorkbench project={project} />;
   return <QualityEvidence project={project} view={view} />;
 }
 
@@ -67,11 +69,9 @@ function QualityEvidence({ project, view }: { project: ProjectSummary; view: str
     await refresh();
   };
 
-  const visible = view === "performance"
-    ? problems.filter((issue) => issue.category === "performance")
-    : view === "technical-debt"
-      ? problems.filter((issue) => ["completeness", "mock", "documentation"].includes(String(issue.category)))
-      : problems;
+  const visible = view === "technical-debt"
+    ? problems.filter((issue) => ["completeness", "mock", "documentation"].includes(String(issue.category)))
+    : problems;
 
   return (
     <section className="kw-surface-section">
