@@ -48,7 +48,10 @@ test.describe("KForge snapshot and recovery evidence", () => {
     await expect(page.locator(".kw-workbench-scroll")).toContainText("Security Tool Manager");
     await expect(page.locator(".kw-workbench-scroll")).toContainText("No tool is downloaded or run silently.");
     await selectExplorerView(page, "Quality", "Solutions");
-    await expect(page.locator(".kw-workbench-scroll")).toContainText(/Solutions Engine|No matching scan evidence|Current normalized findings/i);
+    const solutions = page.getByRole("region", { name: "KForge Quality Solutions", exact: true });
+    await expect(solutions).toBeVisible();
+    await expect(solutions.getByRole("heading", { name: "Solutions Triage Workbench", exact: true })).toBeVisible();
+    await expect(solutions).toContainText(/No matching findings|Check verified fix/i);
     await selectExplorerView(page, "Quality", "Documentation");
     await expect(page.locator(".kw-workbench-scroll")).toContainText(/Documentation Audit|No semantic contradictions|documentation/i);
     expect(externalRequests).toEqual([]);
