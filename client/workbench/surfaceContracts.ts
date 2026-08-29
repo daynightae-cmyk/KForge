@@ -84,7 +84,7 @@ export type InspectorAction = {
 };
 
 export type InspectorContext = {
-  kind: "online-item" | "project" | "execution" | null;
+  kind: "online-item" | "preview-runtime" | "project" | "execution" | null;
   item?: MarketplaceItem | null;
   title?: string;
   view?: string;
@@ -92,6 +92,7 @@ export type InspectorContext = {
   projectName?: string;
   actions?: InspectorAction[];
   operation?: RecordRow | null;
+  preview?: RecordRow | null;
 };
 
 export type CanonicalInspectorProps = {

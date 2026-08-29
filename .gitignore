@@ -46,6 +46,7 @@ _Knoux_Extracted/
 
 # Generated verification evidence (CI artifacts / local gate output)
 docs/verification-evidence/
+/verification/
 
 # Agent configuration directories (not part of KForge source)
 .claude/

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectProfile } from "../../shared/workspace";
-import { getPreviewStatus, startPreview } from "./previewRuntime";
+import { getPreviewStatus, inspectPreviewCapability, startPreview } from "./previewRuntime";
 
 const profileWithoutPreview = { packageManager: "npm", scripts: {} } as ProjectProfile;
 
@@ -14,5 +14,18 @@ describe("local Preview runtime", () => {
   it("refuses to fabricate a Preview when no detected preview, dev, or start script exists", async () => {
     const preview = await startPreview("missing-command-preview", process.cwd(), profileWithoutPreview);
     expect(preview).toMatchObject({ state: "unavailable", error: "PREVIEW_COMMAND_UNAVAILABLE", health: { ok: false } });
+  });
+
+  it("describes detected Preview eligibility without allocating a fake fixed port", () => {
+    const capability = inspectPreviewCapability({
+      packageManager: "npm",
+      scripts: { dev: "vite" },
+    } as unknown as ProjectProfile);
+    expect(capability).toMatchObject({
+      available: true,
+      source: "package.json#scripts.dev",
+      command: "npm run dev -- --port <allocated>",
+    });
+    expect(inspectPreviewCapability(profileWithoutPreview)).toMatchObject({ available: false, reason: expect.stringContaining("UNAVAILABLE") });
   });
 });

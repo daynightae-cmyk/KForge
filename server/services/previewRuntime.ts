@@ -19,15 +19,23 @@ export interface PreviewStatus {
   startedAt?: string;
   stoppedAt?: string;
   checkedAt?: string;
-  health?: { ok: boolean; status?: number; detail: string };
-  healthHistory: Array<{ checkedAt: string; ok: boolean; status?: number; detail: string }>;
+  health?: { ok: boolean; status?: number; latencyMs?: number; detail: string };
+  healthHistory: Array<{ checkedAt: string; ok: boolean; status?: number; latencyMs?: number; detail: string }>;
   routes: Array<{ path: string; source: "root" | "html-link"; checkedAt: string }>;
   history: Array<{ at: string; event: "start" | "health" | "stop" | "exit" | "error"; detail: string }>;
   runtime: { execution: "LOCAL"; network: "NOT_REQUIRED"; source: "detected-project-script"; projectSourceSent: false };
   telemetry: { console: "process-stdout-stderr"; network: "health-probe-only"; browserConsoleCaptured: false };
+  embedding: { state: "ALLOWED" | "BLOCKED" | "UNKNOWN"; reason?: string };
   logs: string[];
   error?: string;
 }
+
+export type PreviewCapability = {
+  available: boolean;
+  command?: string;
+  source?: string;
+  reason?: string;
+};
 
 interface ActivePreview {
   child: ChildProcess;
@@ -50,6 +58,7 @@ function baseStatus(projectId: string): PreviewStatus {
     history: [],
     runtime: { execution: "LOCAL", network: "NOT_REQUIRED", source: "detected-project-script", projectSourceSent: false },
     telemetry: { console: "process-stdout-stderr", network: "health-probe-only", browserConsoleCaptured: false },
+    embedding: { state: "UNKNOWN", reason: "Preview response headers have not been inspected." },
     health: { ok: false, detail: "No Preview process has been started in this KForge server session." },
   };
 }
@@ -64,6 +73,7 @@ function cloneStatus(status: PreviewStatus): PreviewStatus {
     health: status.health ? { ...status.health } : undefined,
     runtime: { ...status.runtime },
     telemetry: { ...status.telemetry },
+    embedding: { ...status.embedding },
   };
 }
 
@@ -101,10 +111,18 @@ function reserveLocalPort() {
 async function probe(status: PreviewStatus) {
   status.checkedAt = new Date().toISOString();
   if (!status.url) return { ok: false, detail: "No local preview URL is available." };
+  const started = performance.now();
   try {
     const response = await fetch(status.url, { signal: AbortSignal.timeout(3_000) });
+    const latencyMs = Math.max(0, Math.round(performance.now() - started));
     const detail = `HTTP ${response.status} ${response.statusText}`;
-    status.health = { ok: response.ok, status: response.status, detail };
+    status.health = { ok: response.ok, status: response.status, latencyMs, detail };
+    const xFrameOptions = (response.headers.get("x-frame-options") || "").trim();
+    const contentSecurityPolicy = response.headers.get("content-security-policy") || "";
+    const frameAncestors = contentSecurityPolicy.match(/(?:^|;)\s*frame-ancestors\s+([^;]+)/i)?.[1]?.trim();
+    if (/^(deny|sameorigin)$/i.test(xFrameOptions)) status.embedding = { state: "BLOCKED", reason: `X-Frame-Options: ${xFrameOptions}` };
+    else if (frameAncestors && (/^'none'$/i.test(frameAncestors) || /^'self'$/i.test(frameAncestors))) status.embedding = { state: "BLOCKED", reason: `Content-Security-Policy frame-ancestors ${frameAncestors}` };
+    else status.embedding = { state: "ALLOWED", reason: frameAncestors ? `frame-ancestors ${frameAncestors}` : "No blocking frame policy was reported by the Preview response." };
     status.healthHistory = [...status.healthHistory, { checkedAt: status.checkedAt, ...status.health }].slice(-MAX_HISTORY_ITEMS);
     const contentType = response.headers.get("content-type") || "";
     const routes = new Set<string>(["/"]);
@@ -123,12 +141,23 @@ async function probe(status: PreviewStatus) {
     if (!response.ok && status.state === "running") status.error = detail;
     return status.health;
   } catch (error: unknown) {
+    const latencyMs = Math.max(0, Math.round(performance.now() - started));
     const detail = error instanceof Error ? error.message : String(error);
-    status.health = { ok: false, detail };
+    status.health = { ok: false, latencyMs, detail };
     status.healthHistory = [...status.healthHistory, { checkedAt: status.checkedAt, ...status.health }].slice(-MAX_HISTORY_ITEMS);
     recordEvent(status, "health", detail);
     return status.health;
   }
+}
+
+export function inspectPreviewCapability(profile: ProjectProfile): PreviewCapability {
+  const selection = selectProjectRuntime(profile, "<allocated>", "preview");
+  if (selection.available === false) return { available: false, reason: selection.reason };
+  return {
+    available: true,
+    command: selection.selected.display,
+    source: selection.selected.source,
+  };
 }
 
 export function getPreviewStatus(projectId: string): PreviewStatus {

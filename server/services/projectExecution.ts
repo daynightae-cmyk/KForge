@@ -11,7 +11,7 @@ export interface SelectedProjectRuntime {
 
 export type ProjectRuntimeSelection = { available: true; selected: SelectedProjectRuntime } | { available: false; reason: string };
 
-function packageScript(profile: ProjectProfile, script: string, port: number, purpose: "runtime" | "preview"): SelectedProjectRuntime {
+function packageScript(profile: ProjectProfile, script: string, port: number | string, purpose: "runtime" | "preview"): SelectedProjectRuntime {
   const manager = profile.packageManager === "pnpm" ? "pnpm" : profile.packageManager === "yarn" ? "yarn" : profile.packageManager === "bun" ? "bun" : "npm";
   const command = process.platform === "win32" ? `${manager}.cmd` : manager;
   const args = ["run", script];
@@ -25,7 +25,7 @@ function safeTokens(command: string) {
   return tokens;
 }
 
-export function selectProjectRuntime(profile: ProjectProfile, port: number, purpose: "runtime" | "preview" = "runtime"): ProjectRuntimeSelection {
+export function selectProjectRuntime(profile: ProjectProfile, port: number | string, purpose: "runtime" | "preview" = "runtime"): ProjectRuntimeSelection {
   const script = purpose === "preview"
     ? profile.scripts.preview ? "preview" : profile.scripts.dev ? "dev" : profile.scripts.start ? "start" : undefined
     : profile.scripts.start ? "start" : profile.scripts.dev ? "dev" : profile.scripts.preview ? "preview" : undefined;

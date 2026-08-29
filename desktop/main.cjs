@@ -182,7 +182,7 @@ if (!app.requestSingleInstanceLock()) {
         responseHeaders: {
           ...details.responseHeaders,
           "Content-Security-Policy": [isLocalKForge
-            ? "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+            ? "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
             : "default-src 'none'"],
         },
       });

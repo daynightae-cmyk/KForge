@@ -50,6 +50,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload rendered Preview evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kforge-preview-visual-${{ github.event.pull_request.head.sha || github.sha }}
+          path: verification/preview-workbench-*.png
+          if-no-files-found: warn
+          retention-days: 30
+
   package-windows:
     name: Windows NSIS package gate
     runs-on: windows-latest
