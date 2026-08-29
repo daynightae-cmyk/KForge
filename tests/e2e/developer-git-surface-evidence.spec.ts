@@ -28,7 +28,7 @@ test.describe("KForge developer workbench and Git evidence", () => {
     repository = "";
   });
 
-  test("runs only detected project commands and keeps Git as explicit structured local evidence", async ({ page }) => {
+  test("runs only detected project commands and keeps structured local observability and Git evidence", async ({ page }) => {
     repository = await mkdtemp(path.join(os.tmpdir(), "kforge-developer-workbench-"));
     await git(repository, ["init"]);
     await git(repository, ["config", "user.name", "KForge Workbench Acceptance"]);
@@ -93,6 +93,26 @@ test.describe("KForge developer workbench and Git evidence", () => {
     await page.getByRole("button", { name: "Run", exact: true }).click();
     expect((await runtimeResponse).ok()).toBeTruthy();
     await expect(page.locator(".kw-bottom-panel")).toContainText("HTTP 200", { timeout: 60_000 });
+
+    const logsRead = page.waitForResponse((response) => response.url().includes("/api/workspace/tasks?projectId=") && response.request().method() === "GET");
+    await navigate(page, "Developer Tools", "Logs");
+    expect((await logsRead).ok()).toBeTruthy();
+    const logsWorkbench = page.getByRole("region", { name: "KForge Developer Logs", exact: true });
+    await expect(logsWorkbench).toBeVisible();
+    await expect(logsWorkbench.getByText("Developer Logs", { exact: true })).toBeVisible();
+    await expect(logsWorkbench.locator('[data-task-kind="test"]')).toBeVisible();
+    await expect(logsWorkbench.locator('[data-task-kind="build"]')).toBeVisible();
+    await expect(logsWorkbench.locator('[data-task-kind="runtime"]')).toBeVisible();
+    await expect(logsWorkbench).toContainText("Persisted local task evidence");
+
+    const diagnosticsRead = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/problems`) && response.request().method() === "GET");
+    await navigate(page, "Developer Tools", "Diagnostics");
+    expect((await diagnosticsRead).ok()).toBeTruthy();
+    const diagnosticsWorkbench = page.getByRole("region", { name: "KForge Developer Diagnostics", exact: true });
+    await expect(diagnosticsWorkbench).toBeVisible({ timeout: 30_000 });
+    await expect(diagnosticsWorkbench.getByText("Developer Diagnostics", { exact: true })).toBeVisible();
+    await expect(diagnosticsWorkbench.getByRole("region", { name: "Health metrics", exact: true })).toBeVisible();
+    await expect(diagnosticsWorkbench).toContainText("No synthetic success state is generated.");
 
     await navigate(page, "Remote / Git", "Git");
     const gitWorkbench = page.locator('section[aria-label="KForge Git Workbench"]');
