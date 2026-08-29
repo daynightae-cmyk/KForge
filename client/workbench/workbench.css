@@ -67,4 +67,8 @@
 .kw-capability-card .kw-card-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .kw-capability-card .kw-card-actions button.kw-action-primary { background: var(--kw-primary); color: var(--kw-primary-foreground); border-color: var(--kw-primary); }
 .kw-capability-card .kw-card-actions button.kw-action-primary:hover:not(:disabled) { background: var(--kw-primary-hover, var(--kw-primary)); }
+.kw-inspector { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.kw-inspector > .kw-inspector-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding-bottom: 24px; }
+.kw-online-layout { overflow: hidden; }
+.kw-online-results { overflow: auto; max-height: calc(100vh - 220px); }
 @media (max-width: 900px) { .kw-table { min-width: 760px; } }

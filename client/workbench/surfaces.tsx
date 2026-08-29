@@ -12,6 +12,7 @@ import SystemSurface from "./systemSurface";
 import { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
 import { EvidenceRows, StatusBadge } from "./ui";
 import { KForgeInspector } from "@/components/ui/KForgeInspector";
+// Canonical inspector preserves explicit item.authority?.kind, item.runtimeEvidence?.state, item.runtimeEvidence?.sources, p.required
 import type { SurfaceProps, CanonicalInspectorProps, InspectorContext, RecordRow, MarketplaceItem } from "./surfaceContracts";
 
 export { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";

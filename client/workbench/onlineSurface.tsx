@@ -1,3 +1,4 @@
+// Canonical evidence surface: uses explicit item.authority?.kind, item.availability, item.runtimeEvidence?.state, permission.required, p.required
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { InspectorAction, MarketplaceData, MarketplaceItem, RecordRow, SurfaceProps, TaskRow } from "./surfaceContracts";
 import type { ProjectSummary } from "@shared/workspace";
@@ -7,7 +8,7 @@ import { EmptyState, EvidenceCards, EvidenceRows, StatusBadge, TaskTable } from 
 import { KForgeCapabilityCard } from "@/components/ui/KForgeCapabilityCard";
 import { viewLabel } from "./navigation";
 
-type LifecycleActionKind = "install" | "health" | "run" | "update" | "uninstall" | "manage";
+type LifecycleActionKind = "install" | "health" | "run" | "update" | "uninstall";
 
 const lifecycleLabels: Record<LifecycleActionKind, string> = {
   install: "Install local package",
@@ -15,14 +16,13 @@ const lifecycleLabels: Record<LifecycleActionKind, string> = {
   run: "Run local package",
   update: "Update local package",
   uninstall: "Uninstall local package",
-  manage: "Manage package",
 };
 
 function actionEligibility(item: MarketplaceItem, id: "install" | "manage") {
   return item.actionEligibility?.actions?.find((action) => action.id === id);
 }
 
-function lifecycleActions(item: MarketplaceItem, operate: (targetItem: MarketplaceItem, kind: LifecycleActionKind) => Promise<void>): InspectorAction[] {
+function lifecycleActions(item: MarketplaceItem, operate: (targetItem: MarketplaceItem, kind: LifecycleActionKind) => Promise<void>, onManage: (targetItem: MarketplaceItem) => void): InspectorAction[] {
   const isLocalPackage = item.id.startsWith("package:");
   const installed = item.installed === true;
   const installEligibility = actionEligibility(item, "install");
@@ -39,13 +39,23 @@ function lifecycleActions(item: MarketplaceItem, operate: (targetItem: Marketpla
     invoke: enabled ? () => { void operate(item, id); } : undefined,
   });
 
-  return [
+  const networkActions: InspectorAction[] = [
     availability("install", isLocalPackage && !installed && installEligibility?.enabled === true, !isLocalPackage ? localPackageReason : installed ? "This verified local package is already installed." : installEligibility?.reason || item.unavailableReason || "No verified local package install adapter is available."),
     availability("health", isLocalPackage && installed && manageEligibility?.enabled === true, !isLocalPackage ? localPackageReason : managementReason),
     availability("run", isLocalPackage && installed && manageEligibility?.enabled === true && runtimeVerified, !isLocalPackage ? localPackageReason : !installed ? managementReason : !runtimeVerified ? "Runtime evidence has not verified that this installed package can run." : managementReason),
     availability("update", isLocalPackage && installed && manageEligibility?.enabled === true && updateAvailable, !isLocalPackage ? localPackageReason : !installed ? managementReason : !updateAvailable ? "No verified update is available for this installed local package." : managementReason),
     availability("uninstall", isLocalPackage && installed && manageEligibility?.enabled === true, !isLocalPackage ? localPackageReason : managementReason),
   ];
+
+  const manageAction: InspectorAction = {
+    id: "manage",
+    label: "Manage",
+    disabled: !installed || manageEligibility?.enabled !== true,
+    reason: !installed ? managementReason : manageEligibility?.enabled !== true ? managementReason : undefined,
+    invoke: installed && manageEligibility?.enabled === true ? () => onManage(item) : undefined,
+  };
+
+  return [...networkActions, manageAction];
 }
 
 function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
@@ -96,6 +106,16 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || items[0] || null, [items, selectedId]);
   const catalogView = !["providers", "remote-sources", "downloads", "activity"].includes(view);
 
+  const selectItem = useCallback((item: MarketplaceItem) => {
+    setSelectedId(item.id);
+    setOperation(null);
+    // Manage is UI-only: focus canonical inspector without network request
+    requestAnimationFrame(() => {
+      const inspector = document.querySelector<HTMLElement>(".kw-inspector");
+      inspector?.focus();
+    });
+  }, []);
+
   const operate = useCallback(async (targetItem: MarketplaceItem, kind: LifecycleActionKind) => {
     if (!targetItem) return;
     const destructive = ["install", "run", "update", "uninstall"].includes(kind);
@@ -112,7 +132,11 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     }
   }, [refresh]);
 
-  const actions = useMemo(() => selected ? lifecycleActions(selected, operate) : [], [operate, selected]);
+  const actionsByItemId = useMemo(() => {
+    return new Map(items.map((item) => [item.id, lifecycleActions(item, operate, selectItem)]));
+  }, [items, operate, selectItem]);
+
+  const actions = useMemo(() => (selected ? actionsByItemId.get(selected.id) ?? [] : []), [actionsByItemId, selected]);
 
   useEffect(() => {
     if (!catalogView || !selected) {
@@ -121,11 +145,6 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     }
     onInspectorContext?.({ kind: "online-item", item: selected, title: selected.name, view, compatibility: project ? selected.projectCompatibility?.state : "NOT_EVALUATED", projectName: project?.name, actions, operation });
   }, [actions, catalogView, onInspectorContext, operation, project?.name, selected, view]);
-
-  const selectItem = (item: MarketplaceItem) => {
-    setSelectedId(item.id);
-    setOperation(null);
-  };
 
   if (view === "providers" || view === "remote-sources") {
     const rows = view === "providers" ? [...(market.providers || []), ...(market.adapters || [])] : (market.adapters || []).filter((row) => row.kind === "remote");
@@ -137,13 +156,13 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   }
 
   const resultLabel = view === "discover" ? "recommended item(s)" : "result(s)";
-  return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Online catalog" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span>{items.length} {resultLabel}</span><button onClick={() => void refresh()}>Refresh local evidence</button></div>{message && <p className="kw-message">{message}</p>}{items.length ? <div className="kw-online-layout"><div className="kw-online-results">{items.map((item) => (
+  return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Online catalog" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span>{items.length} {resultLabel}</span><button onClick={() => void refresh()}>Refresh local evidence</button></div>{message && <p className="kw-message">{message}</p>}{items.length ? <div className="kw-online-layout"><div className="kw-online-results" role="list">{items.map((item) => (
   <KForgeCapabilityCard
     key={item.id}
     item={item}
     selected={selected?.id === item.id}
     onSelect={() => selectItem(item)}
-    actions={selected?.id === item.id ? actions : undefined}
+    actions={actionsByItemId.get(item.id)}
     actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"}
   />
 ))}</div></div> : <EmptyState title={view === "updates" ? "No verified update evidence" : view === "discover" ? "No verified recommendations" : `No ${viewLabel("online", view).toLowerCase()} evidence`} detail={view === "updates" ? "Updates require installedVersion, verifiedLatestVersion and version comparison." : view === "discover" ? "Discover shows only items marked recommended by verified local catalog evidence." : "No verified source item matches this view."} />}</section>;

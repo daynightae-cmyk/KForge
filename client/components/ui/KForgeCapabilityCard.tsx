@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Check, AlertCircle, Clock, Shield, Zap, Wrench, Package, Plug, Cloud } from "lucide-react";
 import type { MarketplaceItem, InspectorAction } from "../../workbench/surfaceContracts";
@@ -42,14 +42,26 @@ export const KForgeCapabilityCard: React.FC<CapabilityCardProps> = ({
   const installed = item.installed === true;
   const updateAvailable = item.updateState?.state === "VERIFIED" && /^UPDATE_AVAILABLE\b/i.test(item.updateState.value || "");
 
+  // Premium concise subset: only enabled actionable items are surfaced on the card.
+  // Disabled policy remains in inspector matrix; card stays uncluttered.
+  const visibleActions = useMemo(() => {
+    if (!actions?.length) return [];
+    const enabled = actions.filter((a) => !a.disabled && typeof a.invoke === "function");
+    // Keep premium uncluttered: at most 4 primary actions on card
+    // Priority: install (when not installed), then health/run/update, then manage, then uninstall
+    const order: Record<string, number> = { install: 0, health: 1, run: 2, update: 3, manage: 4, uninstall: 5 };
+    return enabled.sort((a, b) => (order[a.id] ?? 99) - (order[b.id] ?? 99));
+  }, [actions]);
 
   return (
     <article
       role="article"
       tabIndex={0}
       aria-label={`${item.name}, ${item.category}`}
+      data-item-id={item.id}
+      data-selected={selected ? "true" : "false"}
       onClick={onSelect}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect?.(); }}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect?.(); } }}
       className={cn(
         "group relative rounded-xl border bg-card text-card-foreground shadow-sm transition-all",
         "hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -87,22 +99,26 @@ export const KForgeCapabilityCard: React.FC<CapabilityCardProps> = ({
           <span>Integrity: {item.integrity?.state || "UNKNOWN"}</span>
         </div>
       </div>
-      <div className="flex items-center gap-2 px-4 py-3 border-t bg-muted/20">
-        {(actions || []).map((action) => (
+      <div className="flex items-center gap-2 px-4 py-3 border-t bg-muted/20 min-h-[48px]">
+        {visibleActions.length ? visibleActions.map((action) => {
+          const visibleLabel = action.id === "install" ? "Install" : action.id === "manage" ? "Manage" : action.label;
+          return (
           <button
             key={action.id}
-            disabled={actionsDisabled || action.disabled}
-            title={action.reason || action.label}
-            onClick={(e) => { e.stopPropagation(); if (!action.disabled && action.invoke) action.invoke(); }}
+            disabled={Boolean(actionsDisabled)}
+            aria-label={visibleLabel}
+            onClick={(e) => { e.stopPropagation(); if (action.invoke) action.invoke(); }}
+            data-action-id={action.id}
+            data-item-id={item.id}
             className={cn(
               "inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
-              action.id === "install" || action.id === "run" || action.id === "update" ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90" : "border-border hover:bg-accent hover:text-accent-foreground",
-              (actionsDisabled || action.disabled) ? "opacity-45 cursor-not-allowed" : ""
+              action.id === "install" || action.id === "run" || action.id === "update" ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90" : action.id === "manage" ? "border-border bg-card hover:bg-accent hover:text-accent-foreground" : "border-border hover:bg-accent hover:text-accent-foreground",
+              actionsDisabled ? "opacity-45 cursor-not-allowed" : ""
             )}
           >
-            {action.label}
+            {visibleLabel}
           </button>
-        ))}
+        )}) : <span className="text-[11px] text-muted-foreground">No actions available</span>}
       </div>
     </article>
   );
