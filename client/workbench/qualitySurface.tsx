@@ -9,6 +9,7 @@ import DocumentationConsistencyWorkbench from "./DocumentationConsistencyWorkben
 import SnapshotRecoveryWorkbench from "./SnapshotRecoveryWorkbench";
 import SecurityQualityWorkbench from "./SecurityQualityWorkbench";
 import PerformanceQualityWorkbench from "./PerformanceQualityWorkbench";
+import TechnicalDebtWorkbench from "./TechnicalDebtWorkbench";
 
 function QualitySurface({ view, project, onNavigate }: SurfaceProps) {
   if (!project) return <EmptyState title="No project selected" detail={`${viewLabel("quality", view)} needs project context.`} />;
@@ -17,6 +18,7 @@ function QualitySurface({ view, project, onNavigate }: SurfaceProps) {
   if (view === "documentation") return <DocumentationConsistencyWorkbench project={project} />;
   if (view === "security") return <SecurityQualityWorkbench project={project} />;
   if (view === "performance") return <PerformanceQualityWorkbench project={project} />;
+  if (view === "technical-debt") return <TechnicalDebtWorkbench project={project} />;
   return <QualityEvidence project={project} view={view} />;
 }
 
@@ -69,10 +71,6 @@ function QualityEvidence({ project, view }: { project: ProjectSummary; view: str
     await refresh();
   };
 
-  const visible = view === "technical-debt"
-    ? problems.filter((issue) => ["completeness", "mock", "documentation"].includes(String(issue.category)))
-    : problems;
-
   return (
     <section className="kw-surface-section">
       <div className="kw-toolbar">
@@ -83,9 +81,9 @@ function QualityEvidence({ project, view }: { project: ProjectSummary; view: str
       {view === "sonar" && <p>No tool is downloaded or run silently. Security tools and scanner findings keep UNAVAILABLE/BLOCKED states when evidence is absent.</p>}
       {view === "sonar" ? <><h3>Security Tool Manager</h3><EvidenceCards rows={tools} /></> : null}
       <h3>Current normalized findings</h3>
-      {visible.length ? (
+      {problems.length ? (
         <div className="kw-quality-list">
-          {visible.map((issue, index) => (
+          {problems.map((issue, index) => (
             <article className="kw-quality-card" key={String(issue.id || index)}>
               <h2>{String(issue.title || `Finding ${index + 1}`)}</h2>
               <div className="kw-row-badges"><StatusBadge value={issue.severity} /><StatusBadge value={issue.category} /></div>
