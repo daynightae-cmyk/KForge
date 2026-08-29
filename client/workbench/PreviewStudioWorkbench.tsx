@@ -281,7 +281,7 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
         <button aria-label="Preview home" title="Home" disabled={!baseUrl} onClick={() => navigateRoute("/")}><Home size={15} /></button>
         <button aria-label="Reload preview frame" title="Reload frame" disabled={!currentUrl} onClick={() => setFrameVersion((value) => value + 1)}><RefreshCcw size={15} /></button>
         <form className="mx-1 flex min-w-[220px] flex-1 items-center gap-2 rounded-md border bg-background px-2" onSubmit={(event) => { event.preventDefault(); navigateRoute(routeInput); }}>
-          <span className="text-[10px] font-medium text-emerald-600">LOCAL</span>
+          <span className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-300">LOCAL</span>
           <input aria-label="Preview address" className="min-w-0 flex-1 border-0 bg-transparent px-0 py-1.5 text-xs outline-none" value={routeInput} disabled={!baseUrl} onChange={(event) => setRouteInput(event.target.value)} placeholder="/" />
         </form>
         <button aria-label="Copy preview URL" title="Copy URL" disabled={!currentUrl} onClick={() => void copyUrl()}><Clipboard size={15} /></button>
@@ -369,8 +369,9 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
         </div> : null}
 
         {dockOpen && dockTab === "routes" ? <div className="p-3" aria-label="Preview discovered routes">
-          <div className="flex flex-wrap gap-2">{data.routes.length ? data.routes.map((route) => <button key={`${route.path}:${route.checkedAt}`} aria-pressed={activeRoute === route.path} onClick={() => navigateRoute(route.path)}><code>{route.path}</code><span className="ml-2 text-[10px] text-muted-foreground">{route.source}</span></button>) : <p className="text-sm text-muted-foreground">No route evidence exists yet. Routes are derived only from same-origin links observed during the local health probe.</p>}</div>
-          <p className="mt-3 text-[11px] text-muted-foreground">Address navigation is constrained to {baseUrl ? new URL(baseUrl).origin : "the allocated loopback origin"}. KForge will not navigate this iframe to an external origin.</p>
+          <div className="flex flex-wrap gap-2">{data.routes.length ? data.routes.map((route) => <button key={`${route.path}:${route.checkedAt}`} aria-pressed={activeRoute === route.path} onClick={() => navigateRoute(route.path)}><code>{route.path}</code><span className="ml-2 text-[10px] text-muted-foreground">{route.source}</span></button>) : <p className="text-sm text-muted-foreground">No route evidence exists yet.</p>}</div>
+          <p className="mt-3 text-[11px] text-muted-foreground">Routes are derived only from same-origin links observed during the local health probe.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Address navigation is constrained to {baseUrl ? new URL(baseUrl).origin : "the allocated loopback origin"}. KForge will not navigate this iframe to an external origin.</p>
         </div> : null}
 
         {dockOpen && dockTab === "health" ? <div className="p-3" aria-label="Preview health history">
