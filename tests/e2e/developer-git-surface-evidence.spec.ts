@@ -87,9 +87,13 @@ test.describe("KForge developer workbench and Git evidence", () => {
     await expect(page.locator(".kw-bottom-panel")).toContainText("KFORGE_TEST_OK", { timeout: 60_000 });
 
     await navigate(page, "Developer Tools", "Build");
+    const buildWorkbench = page.getByRole("region", { name: "KForge Build Workbench", exact: true });
+    await expect(buildWorkbench).toBeVisible();
+    await expect(buildWorkbench).toHaveAttribute("data-build-run-state", "NOT_RUN_THIS_SESSION");
     const buildResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/actions`) && response.request().method() === "POST");
-    await page.getByRole("button", { name: "Run", exact: true }).click();
+    await buildWorkbench.getByRole("button", { name: "Run detected build", exact: true }).click();
     expect((await buildResponse).ok()).toBeTruthy();
+    await expect(buildWorkbench).toHaveAttribute("data-build-run-state", "PASSED", { timeout: 60_000 });
     await expect(page.locator(".kw-bottom-panel")).toContainText("KFORGE_BUILD_OK", { timeout: 60_000 });
 
     await navigate(page, "Developer Tools", "Runtime");
