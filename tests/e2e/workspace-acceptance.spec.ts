@@ -90,32 +90,30 @@ test.describe("KForge Workbench production acceptance", () => {
     expect(await disabled.count()).toBeGreaterThanOrEqual(0);
   });
 
-  test("selects a Marketplace capability card and synchronizes the Canonical Inspector", async ({ page }) => {
+  test("selects an exact Marketplace capability card and synchronizes the Canonical Inspector", async ({ page }) => {
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
     await selectActivityAndView(page, "Online", "Marketplace");
-    await expect(page.locator(".kw-capability-card")).toBeVisible({ timeout: 15_000 });
-    const cards = page.locator(".kw-capability-card");
-    const count = await cards.count();
-    expect(count, "Marketplace must show at least one verified capability card").toBeGreaterThanOrEqual(1);
-    const firstName = await cards.first().locator("h2").innerText();
-    await cards.first().click();
+    const targetCard = page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]');
+    await expect(targetCard).toBeVisible({ timeout: 15_000 });
+    const targetName = await targetCard.locator("h2").innerText();
+    await targetCard.click();
+    await expect(targetCard).toHaveAttribute("data-selected", "true");
     await expect(page.locator(".kw-workbench h1")).toContainText("Marketplace");
-    await expect(page.locator(".kw-inspector")).toContainText(firstName);
+    await expect(page.locator(".kw-inspector")).toHaveCount(1);
+    await expect(page.locator(".kw-inspector")).toContainText(targetName);
   });
 
-  test("verifies keyboard card selection updates Canonical Inspector without triggering nested actions", async ({ page }) => {
+  test("selects an exact Marketplace capability card by keyboard and synchronizes the Canonical Inspector", async ({ page }) => {
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
     await selectActivityAndView(page, "Online", "Marketplace");
-    await expect(page.locator(".kw-capability-card")).toBeVisible({ timeout: 15_000 });
-    const cards = page.locator(".kw-capability-card");
-    const count = await cards.count();
-    expect(count, "Marketplace must show at least one verified capability card").toBeGreaterThanOrEqual(1);
-    const firstCard = cards.first();
-    await firstCard.focus();
+    const targetCard = page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]');
+    await expect(targetCard).toBeVisible({ timeout: 15_000 });
+    await targetCard.focus();
     await page.keyboard.press("Enter");
-    await expect(firstCard).toHaveAttribute("data-selected", "true");
-    const firstName = await firstCard.locator("h2").innerText();
-    await expect(page.locator(".kw-inspector")).toContainText(firstName);
+    await expect(targetCard).toHaveAttribute("data-selected", "true");
+    const targetName = await targetCard.locator("h2").innerText();
+    await expect(page.locator(".kw-inspector")).toHaveCount(1);
+    await expect(page.locator(".kw-inspector")).toContainText(targetName);
   });
 
   test("renders structured artifact columns rather than raw JSON as the primary artifact UX", async ({ page }) => {
