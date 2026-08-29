@@ -63,7 +63,7 @@ test.describe("KForge specialized quality security evidence", () => {
     await selected.getByRole("button", { name: "Review data disclosure", exact: true }).click();
     await expect(security.getByRole("status")).toContainText("No security tool has been run and no remote service has been contacted.");
     await expect(run).toBeDisabled();
-    await expect(selected).toContainText("offline mode blocks this network-required security operation", { ignoreCase: true });
+    await expect(selected).toContainText(/offline mode blocks this network-required security operation/i);
     expect(securityRunRequests).toEqual([]);
     expect(externalRequests).toEqual([]);
 
