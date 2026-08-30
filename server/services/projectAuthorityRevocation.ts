@@ -33,10 +33,9 @@ export interface ProjectAuthorityRevocationReport {
 export async function revokeProjectAuthority(workspaceRoot: string, project: ProjectSummary): Promise<ProjectAuthorityRevocationReport> {
   const revokedAt = new Date().toISOString();
 
-  // Persist the trust boundary first so concurrent follow-up requests resolve as
-  // untrusted before teardown work begins.
-  await setProjectTrust(workspaceRoot, project.path, "untrusted");
-
+  // Cancel work that is still synchronously queued before the first await. This
+  // closes the microtask race where a queued executor could otherwise start
+  // while the trust file is being persisted.
   const beforeTasks = listTasks(project.id);
   const cancelledBeforeExecution: ProjectAuthorityRevocationReport["tasks"]["cancelledBeforeExecution"] = [];
   for (const task of beforeTasks) {
@@ -44,6 +43,10 @@ export async function revokeProjectAuthority(workspaceRoot: string, project: Pro
     const result = cancelTask(task.id);
     if (result.cancellable) cancelledBeforeExecution.push({ id: task.id, kind: task.kind, priorStatus: "queued" });
   }
+
+  // Persist the trust boundary before any asynchronous teardown that may wait on
+  // child-process exit. Follow-up trust-gated requests then resolve untrusted.
+  await setProjectTrust(workspaceRoot, project.path, "untrusted");
 
   const currentTasks = listTasks(project.id);
   const alreadyRunning = currentTasks
