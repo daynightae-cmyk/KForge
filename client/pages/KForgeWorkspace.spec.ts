@@ -159,13 +159,14 @@ describe("KForge contextual workbench architecture", () => {
     expect(developer).toContain("descriptor.enabled");
   });
 
-  it("keeps release artifacts structured with explicit verification columns in the Release surface", () => {
+  it("routes release preparation, artifact evidence and versioning through the specialized distribution workbench", () => {
     const release = releaseSurfaceSource();
-    expect(release).toContain("<th>Artifact</th>");
-    expect(release).toContain("<th>SHA-256</th>");
-    expect(release).toContain("<th>Signature</th>");
-    expect(release).toContain("<th>Verification</th>");
-    expect(release).toContain("Raw JSON is not treated as a verified artifact.");
+    expect(release).toMatch(/import\s+ReleaseDistributionWorkbench\s+from\s+"\.\/ReleaseDistributionWorkbench"/);
+    expect(release).toContain('view === "release-preparation"');
+    expect(release).toContain('view === "artifacts"');
+    expect(release).toContain('view === "versioning"');
+    expect(release).toContain("<ReleaseDistributionWorkbench project={project} view={view} />");
+    expect(release).toContain("KForge does not fall back to raw JSON as the primary release UX.");
   });
 
   it("uses Settings v3 hierarchical startup navigation in the System surface", () => {
