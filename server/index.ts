@@ -1,5 +1,6 @@
 import express from "express";
 import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
+import operationEvidenceRouter from "./routes/operationEvidence";
 import productTruthRouter from "./routes/productTruth";
 import workspaceRouter from "./routes/workspace";
 
@@ -20,6 +21,10 @@ export function createServer() {
   // Product-truth hardening routes are narrow overlays that reuse the canonical
   // workspace engines and persist only explicit local evidence/authority state.
   app.use("/api/workspace", productTruthRouter);
+  // Execution-evidence overlay observes only the canonical workspace action
+  // response and persists its already-computed transparency contract. It never
+  // executes a project action or changes the workspace authority decision.
+  app.use("/api/workspace", operationEvidenceRouter);
   app.use("/api/workspace", workspaceRouter);
 
   return app;
