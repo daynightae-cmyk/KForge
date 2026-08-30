@@ -10,10 +10,13 @@ import DeveloperObservabilityWorkbench from "./DeveloperObservabilityWorkbench";
 import DeveloperTestsWorkbench from "./DeveloperTestsWorkbench";
 import DeveloperBuildWorkbench from "./DeveloperBuildWorkbench";
 import DeveloperRuntimeWorkbench from "./DeveloperRuntimeWorkbench";
+import DeveloperLintWorkbench from "./DeveloperLintWorkbench";
 import PreviewStudioWorkbench from "./PreviewStudioWorkbench";
 import RemoteSurface from "./remoteSurface";
 import ReleaseSurface from "./releaseSurface";
 import SystemSurface from "./systemSurface";
+import SystemTrustCenter from "./SystemTrustCenter";
+import SystemControlCenter from "./SystemControlCenter";
 import { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
 import { EvidenceRows, StatusBadge } from "./ui";
 import { KForgeInspector } from "@/components/ui/KForgeInspector";
@@ -64,11 +67,14 @@ export function WorkbenchSurface(props: SurfaceProps) {
   if (props.activity === "developer-tools" && props.view === "tests" && props.project) return <DeveloperTestsWorkbench project={props.project} onExecution={props.onExecution} />;
   if (props.activity === "developer-tools" && props.view === "build" && props.project) return <DeveloperBuildWorkbench project={props.project} onExecution={props.onExecution} />;
   if (props.activity === "developer-tools" && props.view === "runtime" && props.project) return <DeveloperRuntimeWorkbench project={props.project} onExecution={props.onExecution} />;
+  if (props.activity === "developer-tools" && props.view === "lint" && props.project) return <DeveloperLintWorkbench project={props.project} onExecution={props.onExecution} />;
   if (props.activity === "developer-tools" && props.view === "preview" && props.project) return <PreviewStudioWorkbench project={props.project} onExecution={props.onExecution} onInspectorContext={props.onInspectorContext} />;
   if (props.activity === "developer-tools" && ["logs", "diagnostics"].includes(props.view)) return <DeveloperObservabilityWorkbench {...props} />;
   if (props.activity === "developer-tools") return <DeveloperSurface {...props} />;
   if (props.activity === "remote") return <RemoteSurface {...props} />;
   if (props.activity === "release") return <ReleaseSurface {...props} />;
+  if (props.activity === "system" && props.view === "trust") return <SystemTrustCenter project={props.project} onRefresh={props.onRefresh} />;
+  if (props.activity === "system" && ["online-offline", "self-audit", "system-diagnostics"].includes(props.view)) return <SystemControlCenter view={props.view as "online-offline" | "self-audit" | "system-diagnostics"} project={props.project} />;
   if (props.activity === "system") return <SystemSurface {...props} />;
   return <IntelligenceSurface {...props} />;
 }
