@@ -18,6 +18,7 @@ import RemoteSurface from "./remoteSurface";
 import ReleaseSurface from "./releaseSurface";
 import SystemSurface from "./systemSurface";
 import SystemTrustCenter from "./SystemTrustCenter";
+import SystemPermissionsCenter from "./SystemPermissionsCenter";
 import SystemControlCenter from "./SystemControlCenter";
 import { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
 import { EvidenceRows, StatusBadge } from "./ui";
@@ -58,7 +59,7 @@ export function CanonicalInspector(props: CanonicalInspectorProps) {
       <h2>Advanced evidence</h2><details><summary>Raw canonical Preview record</summary><pre tabIndex={0}>{JSON.stringify(preview, null, 2)}</pre></details>
     </div></aside>;
   }
-  return <aside className="kw-inspector" aria-label="Context inspector"><div className="kw-inspector-scroll" tabIndex={0}><div className="kw-inspector-title"><StatusBadge value={activity} /><div><strong>Inspector</strong><small>{activityLabel(activity)} / {viewLabel(activity, view)}</small></div></div><h2>Project context</h2>{project ? <EvidenceRows value={project as unknown as RecordRow} /> : <p className="kw-muted">No project selected. Online compatibility remains NOT_EVALUATED.</p>}{execution && <><h2>Latest execution</h2><EvidenceRows value={execution as unknown as RecordRow} /></>}<h2>Workbench contract</h2><ul className="kw-contract"><li>One active capability surface</li><li>Explorer is scoped to the Activity</li><li>Inspector is contextual</li><li>Remote contact remains explicit</li></ul></div></aside>;
+  return <aside className="kw-inspector" aria-label="Context inspector"><div className="kw-inspector-scroll" tabIndex={0}><div className="kw-inspector-title"><StatusBadge value={activity} /><div><strong>Inspector</strong><small>{activityLabel(activity)} / {viewLabel(activity, view)}</small></div></div><h2>Project context</h2>{project ? <EvidenceRows value={project as unknown as RecordRow} /> : <p className="kw-message">No project selected. Online compatibility remains NOT_EVALUATED.</p>}{execution && <><h2>Latest execution</h2><EvidenceRows value={execution as unknown as RecordRow} /></>}<h2>Workbench contract</h2><ul className="kw-contract"><li>One active capability surface</li><li>Explorer is scoped to the Activity</li><li>Inspector is contextual</li><li>Remote contact remains explicit</li></ul></div></aside>;
 }
 
 export function WorkbenchSurface(props: SurfaceProps) {
@@ -78,6 +79,7 @@ export function WorkbenchSurface(props: SurfaceProps) {
   if (props.activity === "remote") return <RemoteSurface {...props} />;
   if (props.activity === "release") return <ReleaseSurface {...props} />;
   if (props.activity === "system" && props.view === "trust") return <SystemTrustCenter project={props.project} onRefresh={props.onRefresh} />;
+  if (props.activity === "system" && props.view === "permissions") return <SystemPermissionsCenter project={props.project} />;
   if (props.activity === "system" && ["online-offline", "self-audit", "system-diagnostics"].includes(props.view)) return <SystemControlCenter view={props.view as "online-offline" | "self-audit" | "system-diagnostics"} project={props.project} />;
   if (props.activity === "system") return <SystemSurface {...props} />;
   return <IntelligenceSurface {...props} />;
