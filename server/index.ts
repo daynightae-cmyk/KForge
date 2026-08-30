@@ -1,5 +1,6 @@
 import express from "express";
 import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
+import productTruthRouter from "./routes/productTruth";
 import workspaceRouter from "./routes/workspace";
 
 export function createServer() {
@@ -16,6 +17,9 @@ export function createServer() {
   // The router intentionally defines no root GET route, so the existing
   // /api/workspace/marketplace catalog remains owned by workspaceRouter.
   app.use("/api/workspace/marketplace", marketplaceLifecycleRouter);
+  // Product-truth hardening routes are narrow overlays that reuse the canonical
+  // workspace engines and persist only explicit local evidence/authority state.
+  app.use("/api/workspace", productTruthRouter);
   app.use("/api/workspace", workspaceRouter);
 
   return app;
