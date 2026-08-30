@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { activityLabel, viewLabel } from "./navigation";
 import ProjectsSurface from "./projectsSurface";
+import ProjectHealthWorkbench from "./ProjectHealthWorkbench";
+import ProjectCollectionsWorkbench from "./ProjectCollectionsWorkbench";
 import OnlineSurface from "./onlineSurface";
 import AISurface from "./aiSurface";
 import IntelligenceSurface from "./intelligenceSurface";
@@ -60,6 +62,8 @@ export function CanonicalInspector(props: CanonicalInspectorProps) {
 }
 
 export function WorkbenchSurface(props: SurfaceProps) {
+  if (props.activity === "projects" && props.view === "health") return <ProjectHealthWorkbench project={props.project} onRefresh={props.onRefresh} />;
+  if (props.activity === "projects" && ["recent", "favorites", "pinned", "archive"].includes(props.view)) return <ProjectCollectionsWorkbench view={props.view as "recent" | "favorites" | "pinned" | "archive"} workspace={props.workspace} project={props.project} onProjectSelect={props.onProjectSelect} onRefresh={props.onRefresh} />;
   if (props.activity === "projects") return <ProjectsSurface {...props} />;
   if (props.activity === "online") return <OnlineSurface {...props} />;
   if (props.activity === "ai") return <AISurface {...props} />;
