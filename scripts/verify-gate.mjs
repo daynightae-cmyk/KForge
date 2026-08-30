@@ -42,7 +42,6 @@ async function runStep(id, command, args, options = {}) {
     const resolved = resolveLocalExecutable(command, args);
 
     const child = spawn(resolved.command, resolved.args, {
-
       cwd: process.cwd(),
       env: { ...process.env, ...(options.env || {}) },
       stdio: "inherit",
@@ -73,6 +72,7 @@ function skipStep(id, command, reason) {
   });
 }
 
+await runStep("workflow-pins", process.execPath, ["scripts/verify-workflow-pins.mjs"]);
 const installOk = await runStep("npm-ci", "npm", ["ci"]);
 
 if (installOk) {
@@ -111,7 +111,7 @@ if (installOk) {
   }
 }
 
-const required = ["npm-ci", "typecheck", "lint", "tests", "build", "e2e"];
+const required = ["workflow-pins", "npm-ci", "typecheck", "lint", "tests", "build", "e2e"];
 if (installPlaywright) required.splice(required.length - 1, 0, "playwright-browser");
 const byId = new Map(evidence.steps.map((step) => [step.id, step]));
 const pass = required.every((id) => byId.get(id)?.state === "PASS");
