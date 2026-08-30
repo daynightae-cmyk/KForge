@@ -116,14 +116,16 @@ test.describe("KForge Workbench production acceptance", () => {
     await expect(page.locator(".kw-inspector")).toContainText(targetName);
   });
 
-  test("renders structured artifact columns rather than raw JSON as the primary artifact UX", async ({ page }) => {
+  test("renders structured artifact evidence boundaries rather than raw JSON as the primary artifact UX", async ({ page }) => {
     const project = await prepareWorkspace(page);
     await page.goto("/workspace", { waitUntil: "domcontentloaded" });
     await setProjectContext(page, project.project.id);
     await selectActivityAndView(page, "Release", "Artifacts");
-    await expect(page.getByRole("columnheader", { name: "Artifact", exact: true })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: "SHA-256", exact: true })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: "Signature", exact: true })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: "Verification", exact: true })).toBeVisible();
+    const center = page.getByRole("region", { name: "KForge Release and Distribution Center", exact: true });
+    const inventory = center.getByRole("region", { name: "Artifact evidence inventory", exact: true });
+    await expect(inventory.getByRole("heading", { name: "Artifact Evidence Inventory", exact: true })).toBeVisible();
+    await expect(inventory).toContainText(/PRESENCE_ONLY|No local artifact directory detected/);
+    await expect(inventory).toContainText("CI artifact identity");
+    expect(await page.locator(".kw-workbench-scroll pre").evaluateAll((nodes) => nodes.every((node) => Boolean(node.closest("details")))), "Raw artifact evidence must remain secondary inside details.").toBeTruthy();
   });
 });
