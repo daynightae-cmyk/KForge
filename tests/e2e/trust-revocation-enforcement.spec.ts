@@ -115,7 +115,7 @@ test.describe("KForge trust revocation enforcement", () => {
 
     const blockedAction = await page.request.post(`/api/workspace/projects/${encodeURIComponent(project.id)}/actions`, { data: { action: "test" } });
     expect(blockedAction.status()).toBe(428);
-    expect((await blockedAction.json() as { error: string }).error).toContain("untrusted");
+    expect((await blockedAction.json() as { error: string }).error).toMatch(/untrusted/i);
 
     expect(externalRequests).toEqual([]);
     expect(await readFile(path.join(projectPath, "source.js"), "utf8")).toBe(sourceBefore);
