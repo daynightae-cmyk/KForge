@@ -75,7 +75,8 @@ test.describe("KForge System Permissions Center", () => {
     const blockedStop = center.locator('[data-tool-name="stop"]');
     await expect(blockedStop).toHaveAttribute("data-tool-permission", "blocked");
     await expect(blockedStop).toHaveAttribute("data-tool-status", "BLOCKED");
-    await expect(blockedStop).toContainText("does not claim to manage processes it did not create");
+    await expect(blockedStop).toContainText("Stopping arbitrary user processes is not available to the agent.");
+    await expect(blockedStop).toContainText("Project trust is required before this tool may execute.");
 
     expect(toolGets).toBeGreaterThanOrEqual(1);
     expect(toolPosts).toBe(0);
