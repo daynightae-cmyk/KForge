@@ -21,12 +21,28 @@ export interface PreviewStatus {
   checkedAt?: string;
   health?: { ok: boolean; status?: number; latencyMs?: number; detail: string };
   healthHistory: Array<{ checkedAt: string; ok: boolean; status?: number; latencyMs?: number; detail: string }>;
+  startupTimeline: Array<{ at: string; phase: "allocated" | "spawned" | "first-probe" | "healthy" | "exit" | "stopped" | "error"; detail: string }>;
   routes: Array<{ path: string; source: "root" | "html-link"; checkedAt: string }>;
   history: Array<{ at: string; event: "start" | "health" | "stop" | "exit" | "error"; detail: string }>;
   runtime: { execution: "LOCAL"; network: "NOT_REQUIRED"; source: "detected-project-script"; projectSourceSent: false };
   telemetry: { console: "process-stdout-stderr"; network: "loopback-health-probe-only"; browserConsoleCaptured: false };
   embedding: { state: "ALLOWED" | "BLOCKED" | "UNKNOWN"; reason?: string };
   logs: string[];
+  error?: string;
+}
+
+export interface PreviewDocumentInspection {
+  projectId: string;
+  sessionId?: string;
+  checkedAt: string;
+  route: string;
+  url?: string;
+  state: "COMPLETED" | "UNAVAILABLE" | "FAILED";
+  source: "loopback-html-response" | "none";
+  httpStatus?: number;
+  contentType?: string;
+  findings: Array<{ id: string; category: "accessibility" | "document" | "responsive"; state: "PASS" | "WARNING" | "NOT_TESTED"; detail: string; evidence: string }>;
+  limitations: string[];
   error?: string;
 }
 
@@ -55,6 +71,7 @@ function baseStatus(projectId: string): PreviewStatus {
     state: "idle",
     logs: [],
     healthHistory: [],
+    startupTimeline: [],
     routes: [],
     history: [],
     runtime: { execution: "LOCAL", network: "NOT_REQUIRED", source: "detected-project-script", projectSourceSent: false },
@@ -69,6 +86,7 @@ function cloneStatus(status: PreviewStatus): PreviewStatus {
     ...status,
     logs: [...status.logs],
     healthHistory: status.healthHistory.map((item) => ({ ...item })),
+    startupTimeline: status.startupTimeline.map((item) => ({ ...item })),
     routes: status.routes.map((item) => ({ ...item })),
     history: status.history.map((item) => ({ ...item })),
     health: status.health ? { ...status.health } : undefined,
@@ -76,6 +94,10 @@ function cloneStatus(status: PreviewStatus): PreviewStatus {
     telemetry: { ...status.telemetry },
     embedding: { ...status.embedding },
   };
+}
+
+function recordStartup(status: PreviewStatus, phase: PreviewStatus["startupTimeline"][number]["phase"], detail: string) {
+  status.startupTimeline = [...status.startupTimeline, { at: new Date().toISOString(), phase, detail }].slice(-MAX_HISTORY_ITEMS);
 }
 
 function recordEvent(status: PreviewStatus, event: PreviewStatus["history"][number]["event"], detail: string) {
@@ -158,6 +180,8 @@ async function probe(status: PreviewStatus) {
     const latencyMs = Math.max(0, Math.round(performance.now() - started));
     const detail = `HTTP ${response.status} ${response.statusText}${redirects ? ` · ${redirects} same-origin redirect(s)` : ""}`;
     status.health = { ok: response.ok, status: response.status, latencyMs, detail };
+    if (!status.startupTimeline.some((entry) => entry.phase === "first-probe")) recordStartup(status, "first-probe", detail);
+    if (response.ok && !status.startupTimeline.some((entry) => entry.phase === "healthy")) recordStartup(status, "healthy", `First responding health probe completed in ${latencyMs} ms.`);
     status.embedding = evaluatePreviewEmbedding(response.headers);
     status.healthHistory = [...status.healthHistory, { checkedAt: status.checkedAt, ...status.health }].slice(-MAX_HISTORY_ITEMS);
     const contentType = response.headers.get("content-type") || "";
@@ -218,15 +242,17 @@ export async function startPreview(projectId: string, projectPath: string, profi
   const selected = selection.selected;
   const previous = previewRecords.get(projectId);
   const status: PreviewStatus = { ...baseStatus(projectId), sessionId: randomUUID(), state: "starting", command: selected.display, port, url: `http://127.0.0.1:${port}${selected.urlPath || "/"}`, startedAt: new Date().toISOString(), logs: [`Starting detected runtime from ${selected.source} on local port ${port}.`], history: previous?.history || [], healthHistory: previous?.healthHistory || [] };
+  recordStartup(status, "allocated", `Reserved loopback port ${port} for project ${projectId}.`);
   recordEvent(status, "start", `Detected runtime from ${selected.source} started on local port ${port}.`);
   const launch = resolvePreviewCommand(selected.command, selected.args);
   const child = spawn(launch.command, launch.args, { cwd: projectPath, shell: false, windowsHide: true, detached: process.platform !== "win32", env: { ...process.env, ...(launch.runAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}), PORT: String(port), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${port}` } });
   status.pid = child.pid;
+  recordStartup(status, "spawned", `Spawned the detected project command${child.pid ? ` as PID ${child.pid}` : ""}.`);
   const active: ActivePreview = { child, status };
   activePreviews.set(projectId, active);
   child.stdout?.on("data", (data: Buffer) => appendLog(status, data.toString()));
   child.stderr?.on("data", (data: Buffer) => appendLog(status, data.toString()));
-  child.on("error", (error) => { status.state = "failed"; status.error = error.message; appendLog(status, error.message); recordEvent(status, "error", error.message); });
+  child.on("error", (error) => { status.state = "failed"; status.error = error.message; appendLog(status, error.message); recordStartup(status, "error", error.message); recordEvent(status, "error", error.message); });
   child.on("exit", (code, signal) => {
     if (status.state !== "stopped") {
       status.state = code === 0 ? "stopped" : "failed";
@@ -234,6 +260,7 @@ export async function startPreview(projectId: string, projectPath: string, profi
     }
     status.stoppedAt = new Date().toISOString();
     appendLog(status, `Preview process exited: code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}.`);
+    recordStartup(status, "exit", `Process exited with code ${code ?? "unknown"}${signal ? ` and signal ${signal}` : ""}.`);
     recordEvent(status, "exit", `Process exited with code ${code ?? "unknown"}${signal ? ` and signal ${signal}` : ""}.`);
     if (activePreviews.get(projectId)?.child === child) activePreviews.delete(projectId);
   });
@@ -265,6 +292,7 @@ export function stopPreview(projectId: string): PreviewStatus {
   active.status.state = "stopped";
   active.status.stoppedAt = new Date().toISOString();
   appendLog(active.status, "Preview stop requested by KForge.");
+  recordStartup(active.status, "stopped", "Preview stop requested by KForge.");
   recordEvent(active.status, "stop", "Preview stop requested by KForge.");
   if (!active.child.killed) {
     if (process.platform === "win32" && active.child.pid) spawn("taskkill", ["/pid", String(active.child.pid), "/t", "/f"], { windowsHide: true });
@@ -276,6 +304,46 @@ export function stopPreview(projectId: string): PreviewStatus {
   activePreviews.delete(projectId);
   previewRecords.set(projectId, active.status);
   return cloneStatus(active.status);
+}
+
+function countMatches(value: string, pattern: RegExp) {
+  return [...value.matchAll(pattern)].length;
+}
+
+export async function inspectPreviewDocument(projectId: string, route = "/"): Promise<PreviewDocumentInspection> {
+  const status = getPreviewStatus(projectId);
+  const checkedAt = new Date().toISOString();
+  const base: PreviewDocumentInspection = { projectId, sessionId: status.sessionId, checkedAt, route, state: "UNAVAILABLE", source: "none", findings: [], limitations: [
+    "This inspection reads the delivered HTML response. It does not execute application JavaScript or claim DOM, layout, contrast, keyboard, screen-reader, or overflow coverage.",
+    "Browser console, request waterfalls, screenshots, element picking, and interaction capture require a browser bridge or automation runtime and remain unavailable here.",
+  ] };
+  if (!status.url || status.state !== "running" || !status.health?.ok) return { ...base, error: "A healthy canonical Preview session is required before document inspection." };
+  try {
+    const target = new URL(route.trim() || "/", status.url);
+    if (target.origin !== new URL(status.url).origin) return { ...base, state: "FAILED", error: "Document inspection refused a route outside the active loopback origin." };
+    const { response, finalUrl } = await fetchLoopbackOnly(target.toString());
+    const contentType = response.headers.get("content-type") || "unknown";
+    if (!contentType.toLowerCase().includes("text/html")) return { ...base, url: finalUrl, httpStatus: response.status, contentType, error: "The selected route did not return an HTML document." };
+    const html = await response.text();
+    const images = countMatches(html, /<img\b/gi);
+    const imagesWithAlt = countMatches(html, /<img\b[^>]*\balt\s*=\s*["'][^"']*["'][^>]*>/gi);
+    const controls = countMatches(html, /<(?:button|input|select|textarea)\b/gi);
+    const labels = countMatches(html, /<label\b/gi);
+    const hasLang = /<html\b[^>]*\blang\s*=\s*["'][^"']+["']/i.test(html);
+    const hasTitle = /<title>\s*[^<\s][\s\S]*?<\/title>/i.test(html);
+    const hasViewport = /<meta\b[^>]*\bname\s*=\s*["']viewport["'][^>]*>/i.test(html);
+    const findings: PreviewDocumentInspection["findings"] = [
+      { id: "document-title", category: "document", state: hasTitle ? "PASS" : "WARNING", detail: hasTitle ? "A non-empty document title was delivered." : "No non-empty document title was found in the delivered HTML.", evidence: hasTitle ? "<title> present" : "<title> not observed" },
+      { id: "document-language", category: "accessibility", state: hasLang ? "PASS" : "WARNING", detail: hasLang ? "The root HTML element declares a language." : "The root HTML element does not declare a language.", evidence: hasLang ? "html[lang] present" : "html[lang] not observed" },
+      { id: "image-alternatives", category: "accessibility", state: images === imagesWithAlt ? "PASS" : "WARNING", detail: images === imagesWithAlt ? `${images} delivered image element(s) include an alt attribute.` : `${images - imagesWithAlt} of ${images} delivered image element(s) have no observed alt attribute.`, evidence: `${imagesWithAlt}/${images} img elements with alt` },
+      { id: "form-label-baseline", category: "accessibility", state: controls === 0 || labels > 0 ? "PASS" : "WARNING", detail: controls === 0 ? "No native form controls were delivered in the initial HTML." : `${controls} native control(s) and ${labels} label element(s) were delivered. Runtime association is not tested.`, evidence: `${controls} controls; ${labels} labels` },
+      { id: "viewport-meta", category: "responsive", state: hasViewport ? "PASS" : "WARNING", detail: hasViewport ? "A viewport meta declaration was delivered." : "No viewport meta declaration was observed; mobile layout behavior may be incorrect.", evidence: hasViewport ? "meta[name=viewport] present" : "meta[name=viewport] not observed" },
+      { id: "runtime-layout", category: "responsive", state: "NOT_TESTED", detail: "Rendered overflow and breakpoint behavior require a browser layout engine and were not inferred from HTML.", evidence: "No browser layout measurement available" },
+    ];
+    return { ...base, state: "COMPLETED", source: "loopback-html-response", url: finalUrl, httpStatus: response.status, contentType, findings };
+  } catch (error) {
+    return { ...base, state: "FAILED", error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 export async function stopPreviewAndWait(projectId: string, timeoutMs = 5_000): Promise<PreviewStatus> {

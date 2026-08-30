@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Clipboard, ExternalLink, Expand, Home, Monitor, Pause, Play, RefreshCcw, RotateCw, Search, Smartphone, Square, Tablet, TerminalSquare, Trash2 } from "lucide-react";
+import { Activity, ArrowLeft, ArrowRight, Clipboard, ExternalLink, Expand, Home, Monitor, Pause, Play, RefreshCcw, RotateCw, Search, ShieldCheck, Smartphone, Square, Tablet, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
 import type { CommandResult, ProjectSummary, WorkspaceActionDescriptor } from "@shared/workspace";
 import type { SurfaceProps, RecordRow } from "./surfaceContracts";
 import { fetchJson, jsonRequest } from "./api";
@@ -18,6 +18,7 @@ type PreviewStatus = {
   checkedAt?: string;
   health?: { ok: boolean; status?: number; latencyMs?: number; detail: string };
   healthHistory: Array<{ checkedAt: string; ok: boolean; status?: number; latencyMs?: number; detail: string }>;
+  startupTimeline: Array<{ at: string; phase: string; detail: string }>;
   routes: Array<{ path: string; source: string; checkedAt: string }>;
   history: Array<{ at: string; event: string; detail: string }>;
   runtime: RecordRow;
@@ -30,8 +31,22 @@ type PreviewStatus = {
 type PreviewCapability = { available: boolean; command?: string; source?: string; reason?: string };
 type PreviewResponse = { preview: PreviewStatus; capability?: PreviewCapability; trust?: string };
 type ActionsResponse = { actions: WorkspaceActionDescriptor[] };
+type PreviewInspection = {
+  projectId: string;
+  sessionId?: string;
+  checkedAt: string;
+  route: string;
+  url?: string;
+  state: "COMPLETED" | "UNAVAILABLE" | "FAILED";
+  source: "loopback-html-response" | "none";
+  httpStatus?: number;
+  contentType?: string;
+  findings: Array<{ id: string; category: "accessibility" | "document" | "responsive"; state: "PASS" | "WARNING" | "NOT_TESTED"; detail: string; evidence: string }>;
+  limitations: string[];
+  error?: string;
+};
 type ViewportId = "responsive" | "desktop" | "laptop" | "tablet" | "mobile";
-type DockTab = "console" | "routes" | "health" | "session";
+type DockTab = "console" | "problems" | "network" | "routes" | "health" | "qa" | "session";
 type ZoomValue = "fit" | 50 | 75 | 100 | 125;
 type RuntimeRunState = "NOT_RUN" | "RUNNING" | "PASSED" | "FAILED" | "BLOCKED_BY_PREVIEW";
 
@@ -71,6 +86,8 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
   const [clearedLogOffset, setClearedLogOffset] = useState(0);
   const [logQuery, setLogQuery] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
+  const [inspection, setInspection] = useState<PreviewInspection | null>(null);
+  const [inspectionBusy, setInspectionBusy] = useState(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
 
   const previewEndpoint = `/api/workspace/projects/${encodeURIComponent(project.id)}/preview`;
@@ -95,6 +112,7 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
     setRuntimeResult(null);
     setRuntimeRunState("NOT_RUN");
     setNotice("");
+    setInspection(null);
     setRouteHistory(["/"]);
     setRouteIndex(0);
     setRouteInput("/");
@@ -253,6 +271,30 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
     .filter((line) => !errorsOnly || /error|failed|exception|fatal|warn/i.test(line))
     .filter((line) => !logQuery || line.toLowerCase().includes(logQuery.toLowerCase()));
 
+  const runtimeProblems = useMemo(() => {
+    if (!data) return [];
+    const items: Array<{ id: string; severity: "error" | "warning" | "info"; title: string; detail: string }> = [];
+    if (data.error) items.push({ id: "runtime-error", severity: "error", title: "Runtime reported an error", detail: data.error });
+    if (data.checkedAt && !data.health?.ok) items.push({ id: "health-failure", severity: "error", title: "Health probe is not responding", detail: data.health?.detail || "No responding health evidence." });
+    if (data.embedding.state !== "ALLOWED") items.push({ id: "embedding", severity: data.embedding.state === "BLOCKED" ? "warning" : "info", title: "Inline inspection is limited", detail: data.embedding.reason || "The framing policy is not proven." });
+    const warningLogs = data.logs.filter((line) => /error|failed|exception|fatal|warn/i.test(line)).slice(-20);
+    warningLogs.forEach((line, index) => items.push({ id: `log-${index}`, severity: /error|failed|exception|fatal/i.test(line) ? "error" : "warning", title: "Process output", detail: line }));
+    return items;
+  }, [data]);
+
+  const runInspection = async () => {
+    setInspectionBusy(true);
+    setNotice("");
+    try {
+      const result = await fetchJson<{ inspection: PreviewInspection }>(`${previewEndpoint}/inspect`, jsonRequest({ route: activeRoute }));
+      setInspection(result.inspection);
+      setDockTab("qa");
+      setDockOpen(true);
+      setNotice(result.inspection.state === "COMPLETED" ? "Document evidence captured from the active loopback response." : result.inspection.error || "Document inspection is unavailable.");
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Document inspection failed."); }
+    finally { setInspectionBusy(false); }
+  };
+
   if (loading) return <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground" role="status"><span className="inline-flex items-center gap-2"><RefreshCcw className="animate-spin" size={16} /> Reconciling Preview Studio runtime evidence…</span></div>;
   if (!data) return <EmptyState title="Preview evidence unavailable" detail={notice || "KForge could not read the canonical Preview runtime."} action={<button onClick={() => void load()}>Retry</button>} />;
 
@@ -260,7 +302,7 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
   const stageWidth = fixedViewport && viewportWidth ? Math.round(viewportWidth * fitScale) : undefined;
   const stageHeight = fixedViewport && viewportHeight ? Math.round(viewportHeight * fitScale) : undefined;
 
-  return <section className="flex min-h-0 flex-col gap-3" aria-label="KForge Preview Workbench" data-preview-state={data.state} data-preview-studio="2">
+  return <section className="flex min-h-0 flex-col gap-3" aria-label="KForge Preview Workbench" data-preview-state={data.state} data-preview-studio="3">
     <header className="rounded-xl border bg-card shadow-sm">
       <div className="flex min-h-10 items-center gap-2 border-b px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -307,6 +349,7 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
       </select>
       <span className="text-[11px] text-muted-foreground">{fixedViewport && viewportWidth && viewportHeight ? `${viewportWidth}×${viewportHeight} · ${Math.round(fitScale * 100)}% rendered` : "Fluid canvas"}</span>
       <button className="ml-auto" aria-label="Fullscreen Preview canvas" onClick={() => void fullscreen()}><Expand size={14} /> Fullscreen</button>
+      <button aria-label="Inspect delivered Preview document" disabled={!liveFrame || inspectionBusy} onClick={() => void runInspection()}><ShieldCheck size={14} /> {inspectionBusy ? "Inspecting…" : "Inspect HTML"}</button>
     </div>
 
     <div className="grid min-h-[560px] flex-1 gap-3 xl:grid-rows-[minmax(420px,1fr)_auto]">
@@ -351,8 +394,11 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
       <section className="overflow-hidden rounded-xl border bg-card" aria-label="Preview evidence dock">
         <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
           <button aria-pressed={dockTab === "console"} onClick={() => { setDockTab("console"); setDockOpen(true); }}><TerminalSquare size={14} /> Console <span className="text-[10px] text-muted-foreground">{data.logs.length}</span></button>
+          <button aria-pressed={dockTab === "problems"} onClick={() => { setDockTab("problems"); setDockOpen(true); }}><TriangleAlert size={14} /> Problems <span className="text-[10px] text-muted-foreground">{runtimeProblems.length}</span></button>
+          <button aria-pressed={dockTab === "network"} onClick={() => { setDockTab("network"); setDockOpen(true); }}><Activity size={14} /> Network <span className="text-[10px] text-muted-foreground">{data.healthHistory.length}</span></button>
           <button aria-pressed={dockTab === "routes"} onClick={() => { setDockTab("routes"); setDockOpen(true); }}>Routes <span className="text-[10px] text-muted-foreground">{data.routes.length}</span></button>
           <button aria-pressed={dockTab === "health"} onClick={() => { setDockTab("health"); setDockOpen(true); }}>Health timeline <span className="text-[10px] text-muted-foreground">{data.healthHistory.length}</span></button>
+          <button aria-pressed={dockTab === "qa"} onClick={() => { setDockTab("qa"); setDockOpen(true); }}><ShieldCheck size={14} /> Visual &amp; A11y QA</button>
           <button aria-pressed={dockTab === "session"} onClick={() => { setDockTab("session"); setDockOpen(true); }}>Session</button>
           <button className="ml-auto" aria-expanded={dockOpen} onClick={() => setDockOpen((value) => !value)}>{dockOpen ? "Collapse" : "Expand"}</button>
         </div>
@@ -368,6 +414,15 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
           <p className="mt-2 text-[11px] text-muted-foreground">Captured source: process stdout/stderr. Browser console is {data.telemetry.browserConsoleCaptured === true ? "captured" : "NOT_CAPTURED"}; KForge does not fabricate browser console events.</p>
         </div> : null}
 
+        {dockOpen && dockTab === "problems" ? <div className="p-3" aria-label="Preview runtime problems">
+          {runtimeProblems.length ? <div className="grid gap-2">{runtimeProblems.map((item) => <article key={item.id} className="rounded-lg border p-3 text-xs"><div className="flex items-center gap-2"><StatusBadge value={item.severity.toUpperCase()} /><strong>{item.title}</strong></div><p className="mt-2 break-words text-muted-foreground">{item.detail}</p></article>)}</div> : <p className="text-sm text-muted-foreground">No problems are derived from current process output, health, or embedding evidence. This is not a static-analysis claim.</p>}
+        </div> : null}
+
+        {dockOpen && dockTab === "network" ? <div className="p-3" aria-label="Preview network observations">
+          <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-xs"><strong>Observed channel · loopback health probes only</strong><p className="mt-1 text-muted-foreground">KForge has not installed a browser request bridge, so this panel does not claim application request waterfalls, transfer sizes, initiators, cache state, or throttling.</p></div>
+          <div className="mt-3 grid gap-2">{data.healthHistory.slice(-20).reverse().map((item) => <div key={`${item.checkedAt}:${item.status ?? "none"}`} className="grid gap-2 rounded-lg border p-2 text-xs sm:grid-cols-[120px_80px_90px_minmax(0,1fr)]"><span>{new Date(item.checkedAt).toLocaleTimeString()}</span><span>{item.status ? `HTTP ${item.status}` : "NO HTTP"}</span><span>{item.latencyMs !== undefined ? `${item.latencyMs} ms` : "not measured"}</span><span>{item.detail}</span></div>)}</div>
+        </div> : null}
+
         {dockOpen && dockTab === "routes" ? <div className="p-3" aria-label="Preview discovered routes">
           <div className="flex flex-wrap gap-2">{data.routes.length ? data.routes.map((route) => <button key={`${route.path}:${route.checkedAt}`} aria-pressed={activeRoute === route.path} onClick={() => navigateRoute(route.path)}><code>{route.path}</code><span className="ml-2 text-[10px] text-muted-foreground">{route.source}</span></button>) : <p className="text-sm text-muted-foreground">No route evidence exists yet.</p>}</div>
           <p className="mt-3 text-[11px] text-muted-foreground">Routes are derived only from same-origin links observed during the local health probe.</p>
@@ -376,6 +431,11 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
 
         {dockOpen && dockTab === "health" ? <div className="p-3" aria-label="Preview health history">
           {data.healthHistory.length ? <div className="grid gap-2">{data.healthHistory.slice(-12).reverse().map((item) => <div key={`${item.checkedAt}:${item.status ?? "none"}`} className="grid gap-2 rounded-lg border p-2 text-xs sm:grid-cols-[120px_90px_90px_minmax(0,1fr)]"><span>{new Date(item.checkedAt).toLocaleTimeString()}</span><StatusBadge value={item.ok ? "HEALTHY" : "UNHEALTHY"} /><span>{item.latencyMs !== undefined ? `${item.latencyMs} ms` : "NO LATENCY"}</span><span className="truncate" title={item.detail}>{item.status ? `HTTP ${item.status} · ` : ""}{item.detail}</span></div>)}</div> : <p className="text-sm text-muted-foreground">No health samples exist yet.</p>}
+        </div> : null}
+
+        {dockOpen && dockTab === "qa" ? <div className="p-3" aria-label="Preview visual and accessibility QA">
+          <div className="flex flex-wrap items-center gap-2"><div><h3 className="text-sm font-semibold">Delivered-document QA</h3><p className="text-xs text-muted-foreground">Evidence is captured from the active route's loopback HTML response.</p></div><button className="ml-auto" disabled={!liveFrame || inspectionBusy} onClick={() => void runInspection()}>{inspectionBusy ? "Inspecting…" : "Run inspection"}</button></div>
+          {inspection ? <><div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge value={inspection.state} /><span className="text-xs">{inspection.route}</span><span className="text-xs text-muted-foreground">{new Date(inspection.checkedAt).toLocaleString()}</span></div>{inspection.error ? <p className="mt-3 text-xs text-destructive">{inspection.error}</p> : null}<div className="mt-3 grid gap-2 lg:grid-cols-2">{inspection.findings.map((finding) => <article key={finding.id} className="rounded-lg border p-3 text-xs"><div className="flex items-center gap-2"><StatusBadge value={finding.state} /><strong>{finding.category}</strong></div><p className="mt-2">{finding.detail}</p><code className="mt-2 block break-words text-[10px] text-muted-foreground">{finding.evidence}</code></article>)}</div><div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs"><strong>Truth boundary</strong>{inspection.limitations.map((item) => <p key={item} className="mt-1 text-muted-foreground">{item}</p>)}</div></> : <p className="mt-3 text-sm text-muted-foreground">No QA evidence has been captured for this route. Run inspection while the canonical Preview is healthy.</p>}
         </div> : null}
 
         {dockOpen && dockTab === "session" ? <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.75fr)]" aria-label="Preview session evidence">
@@ -390,6 +450,7 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
               <div><dt className="text-muted-foreground">Source</dt><dd>{capability?.source || "Detected project metadata"}</dd></div>
               <div><dt className="text-muted-foreground">Embedding</dt><dd>{data.embedding.state}</dd></div>
             </dl>
+            <div className="mt-3"><h4 className="text-xs font-semibold">Startup timeline</h4><ol className="mt-2 grid gap-1.5">{data.startupTimeline.length ? data.startupTimeline.map((entry) => <li key={`${entry.at}:${entry.phase}`} className="grid gap-1 rounded border p-2 text-[11px] sm:grid-cols-[90px_90px_minmax(0,1fr)]"><span>{new Date(entry.at).toLocaleTimeString()}</span><strong>{entry.phase}</strong><span className="text-muted-foreground">{entry.detail}</span></li>) : <li className="text-xs text-muted-foreground">No startup events exist for this session.</li>}</ol></div>
             <div className="mt-3"><AdvancedEvidence value={{ runtime: data.runtime, telemetry: data.telemetry, embedding: data.embedding, history: data.history }} label="Advanced · Preview session evidence" /></div>
           </div>
 

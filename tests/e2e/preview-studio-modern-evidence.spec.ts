@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { selectExplorerView, setProjectContext } from "./helpers/workbench";
 
-test.describe("KForge Preview Studio 2.0 browser evidence", () => {
+test.describe("KForge Preview Studio 3.0 browser and QA evidence", () => {
   test.setTimeout(150_000);
   let projectPath = "";
   let projectId = "";
@@ -29,7 +29,7 @@ test.describe("KForge Preview Studio 2.0 browser evidence", () => {
       "const port = Number(process.env.PORT);",
       "const server = http.createServer((request, response) => {",
       " response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });",
-      " response.end(`<main><h1>KFORGE_PREVIEW_STUDIO_READY</h1><p id=\"route\">${request.url}</p><a href=\"/quality\">Quality</a><a href=\"/settings\">Settings</a></main>`);",
+      " response.end(`<!doctype html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>KForge fixture</title></head><body><main><h1>KFORGE_PREVIEW_STUDIO_READY</h1><p id=\"route\">${request.url}</p><a href=\"/quality\">Quality</a><a href=\"/settings\">Settings</a></main></body></html>`);",
       "});",
       "server.listen(port, '127.0.0.1', () => console.log(`PREVIEW_STUDIO_READY:${port}`));",
     ].join("\n"), "utf8");
@@ -54,9 +54,12 @@ test.describe("KForge Preview Studio 2.0 browser evidence", () => {
     await setProjectContext(page, project.id);
     await selectExplorerView(page, "Developer Tools", "Preview");
     const studio = page.getByRole("region", { name: "KForge Preview Workbench", exact: true });
-    await expect(studio).toHaveAttribute("data-preview-studio", "2");
+    await expect(studio).toHaveAttribute("data-preview-studio", "3");
     await expect(studio.getByText("App Preview", { exact: true })).toBeVisible();
     await expect(studio.locator('[aria-label="Preview device laboratory"]')).toBeVisible();
+    await expect(studio.getByRole("button", { name: /Problems/ })).toBeVisible();
+    await expect(studio.getByRole("button", { name: /Network/ })).toBeVisible();
+    await expect(studio.getByRole("button", { name: "Visual & A11y QA", exact: true })).toBeVisible();
     expect(externalRequests).toEqual([]);
 
     const startResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/preview/start`) && response.request().method() === "POST");
@@ -102,6 +105,18 @@ test.describe("KForge Preview Studio 2.0 browser evidence", () => {
     await expect(health).toContainText("HEALTHY");
     await expect(health).toContainText("HTTP 200");
 
+    const inspectResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/preview/inspect`) && response.request().method() === "POST");
+    await studio.getByLabel("Inspect delivered Preview document", { exact: true }).click();
+    expect((await inspectResponse).ok()).toBeTruthy();
+    const qa = studio.locator('[aria-label="Preview visual and accessibility QA"]');
+    await expect(qa).toContainText("COMPLETED");
+    await expect(qa).toContainText("A non-empty document title was delivered");
+    await expect(qa).toContainText("Browser console, request waterfalls, screenshots");
+
+    await studio.getByRole("button", { name: /Network/ }).click();
+    await expect(studio.locator('[aria-label="Preview network observations"]')).toContainText("loopback health probes only");
+    await expect(studio.locator('[aria-label="Preview network observations"]')).toContainText("does not claim application request waterfalls");
+
     await studio.getByRole("button", { name: "Session", exact: true }).click();
     const session = studio.locator('[aria-label="Preview session evidence"]');
     const backend = await (await page.request.get(`/api/workspace/projects/${project.id}/preview`)).json() as { preview: { sessionId?: string; pid?: number; port?: number; state: string } };
@@ -110,6 +125,9 @@ test.describe("KForge Preview Studio 2.0 browser evidence", () => {
     await expect(session).toContainText(String(backend.preview.pid));
     await expect(session.locator('[aria-label="Runtime verification integration"]').getByRole("button", { name: "Verify runtime", exact: true })).toBeDisabled();
     await expect(session).toContainText("owns PID");
+    await expect(session).toContainText("allocated");
+    await expect(session).toContainText("spawned");
+    await expect(session).toContainText("healthy");
 
     await studio.getByRole("button", { name: /Console/ }).click();
     const consoleOutput = studio.locator('[aria-label="Preview console output"]');

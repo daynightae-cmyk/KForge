@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectProfile } from "../../shared/workspace";
-import { evaluatePreviewEmbedding, getPreviewStatus, inspectPreviewCapability, startPreview } from "./previewRuntime";
+import { evaluatePreviewEmbedding, getPreviewStatus, inspectPreviewCapability, inspectPreviewDocument, startPreview } from "./previewRuntime";
 
 const profileWithoutPreview = { packageManager: "npm", scripts: {} } as ProjectProfile;
 
@@ -15,6 +15,13 @@ describe("local Preview runtime", () => {
   it("refuses to fabricate a Preview when no detected preview, dev, or start script exists", async () => {
     const preview = await startPreview("missing-command-preview", process.cwd(), profileWithoutPreview);
     expect(preview).toMatchObject({ state: "unavailable", error: "PREVIEW_COMMAND_UNAVAILABLE", health: { ok: false } });
+  });
+
+  it("keeps document QA unavailable until a healthy canonical session exists", async () => {
+    const inspection = await inspectPreviewDocument("missing-inspection-preview", "/");
+    expect(inspection).toMatchObject({ state: "UNAVAILABLE", source: "none", findings: [] });
+    expect(inspection.error).toContain("healthy canonical Preview session");
+    expect(inspection.limitations.join(" ")).toContain("does not execute application JavaScript");
   });
 
   it("describes detected Preview eligibility without allocating a fake fixed port", () => {
