@@ -33,7 +33,8 @@ test.describe("KForge Self Audit persisted evidence", () => {
     await audit.getByRole("button", { name: "Run KForge Self Audit", exact: true }).click();
     expect((await persisted).status()).toBe(202);
     await expect(audit).toContainText(/WAITING_RESTART|restart boundary/i, { timeout: 30_000 });
-    await expect(audit.locator("pre")).toContainText(/observational|sourceMutation|WAITING_RESTART/i);
+    const rawRecord = audit.getByText("Advanced · Raw persisted Self Audit record", { exact: true }).locator("..").locator("pre");
+    await expect(rawRecord).toContainText(/observational|sourceMutation|WAITING_RESTART/i);
     expect(externalRequests).toEqual([]);
   });
 });
