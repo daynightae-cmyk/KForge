@@ -67,6 +67,7 @@ test.describe("KForge workbench accessibility and keyboard evidence", () => {
       ["Release Gate", "Release", "Release Gate"],
       ["System Settings", "System", "Settings"],
       ["System Permissions", "System", "Permissions"],
+      ["System Storage", "System", "Storage"],
     ];
     for (const [label, activity, view] of surfaces) {
       await selectExplorerView(page, activity, view);
