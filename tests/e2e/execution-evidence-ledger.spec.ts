@@ -79,7 +79,13 @@ test.describe("KForge persistent execution evidence ledger", () => {
     await expect(selected).toContainText("CONFIRMED");
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("region", { name: "KForge Developer Logs", exact: true })).toContainText("Persistent execution ledger", { timeout: 30_000 });
+    await expect(page.locator(".kw-shell")).toBeVisible({ timeout: 60_000 });
+    await setProjectContext(page, project.id);
+    await selectExplorerView(page, "Developer Tools", "Logs");
+    const reloadedLogs = page.getByRole("region", { name: "KForge Developer Logs", exact: true });
+    await expect(reloadedLogs).toContainText("Persistent execution ledger", { timeout: 30_000 });
+    await expect(reloadedLogs.locator('[data-ledger-action="typecheck"]')).toContainText("SUCCEEDED");
+    await expect(reloadedLogs.locator('[data-ledger-action="push"]')).toContainText("BLOCKED");
     expect(externalRequests, `Unexpected external requests:\n${externalRequests.join("\n")}`).toEqual([]);
   });
 });
