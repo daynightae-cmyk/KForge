@@ -84,8 +84,9 @@ test.describe("KForge specialized Trust Center", () => {
 
     page.once("dialog", async (dialog) => {
       expect(dialog.type()).toBe("confirm");
-      expect(dialog.message()).toContain("disables bounded local execution");
-      expect(dialog.message()).toContain("does not delete or modify project source");
+      expect(dialog.message()).toContain("persist the project as untrusted");
+      expect(dialog.message()).toContain("stop its active Preview when possible");
+      expect(dialog.message()).toContain("cannot be retroactively undone");
       await dialog.accept();
     });
     const revokeResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/trust/revoke`) && response.request().method() === "POST");
