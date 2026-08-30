@@ -2,7 +2,7 @@ import { Router } from "express";
 import path from "path";
 import { candidateProjectPaths, makeProjectSummary, scanProject } from "./workspace";
 import { listPersistedProjectHealthSummaries, persistProjectHealthSummary } from "../services/projectHealthEvidence";
-import { setProjectTrust } from "../services/projectTrust";
+import { revokeProjectAuthority } from "../services/projectAuthorityRevocation";
 
 const router = Router();
 
@@ -62,15 +62,16 @@ router.post("/projects/:id/trust/revoke", async (req, res) => {
     error: "Revoking project trust disables bounded local execution and write-capable KForge operations for this project. Explicit confirmation is required.",
     permission: "ask",
   });
-  await setProjectTrust(getWorkspaceRoot(), project.path, "untrusted");
+  const teardown = await revokeProjectAuthority(getWorkspaceRoot(), project);
   return res.json({
     project: await makeProjectSummary(project.path),
     trust: "untrusted",
+    teardown,
     transparency: {
       execution: "LOCAL",
       network: "NOT_REQUIRED",
-      source: ".kforge/project-trust.json",
-      purpose: "Persist explicit local project trust revocation without modifying project source or contacting a remote service.",
+      source: ".kforge/project-trust.json + canonical local runtime/task registries",
+      purpose: "Persist explicit local project trust revocation, stop the active Preview when possible, cancel tasks that have not started, and report already-running work without pretending it was retroactively undone.",
     },
   });
 });
