@@ -340,9 +340,12 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 overflow-x-auto border-b px-2 py-1" role="tablist" aria-label="Preview browser tabs">
-        {tabs.map((tab) => <div key={tab.id} className={`flex shrink-0 items-center rounded-md border ${tab.id === activeTabId ? "bg-background" : "bg-muted/20"}`}><button role="tab" aria-selected={tab.id === activeTabId} className="border-0 bg-transparent text-xs" onClick={() => { setActiveTabId(tab.id); setRouteInput(tab.history[tab.index] || "/"); }}>{tab.title}</button>{tabs.length > 1 ? <button className="border-0 bg-transparent px-1 text-[11px] text-muted-foreground" aria-label={`Close ${tab.title} Preview tab`} onClick={() => closeTab(tab.id)}>×</button> : null}</div>)}
+      <div className="flex items-center gap-1 overflow-x-auto border-b px-2 py-1">
+        <div className="flex items-center gap-1" role="tablist" aria-label="Preview browser tabs">
+          {tabs.map((tab) => <button key={tab.id} role="tab" aria-selected={tab.id === activeTabId} className={`shrink-0 rounded-md border text-xs ${tab.id === activeTabId ? "bg-background" : "bg-muted/20"}`} onClick={() => { setActiveTabId(tab.id); setRouteInput(tab.history[tab.index] || "/"); }}>{tab.title}</button>)}
+        </div>
         <button className="shrink-0" aria-label="New Preview tab" onClick={addTab}>＋</button>
+        <button className="shrink-0" aria-label="Close active Preview tab" disabled={tabs.length === 1} onClick={() => closeTab(activeTabId)}>×</button>
         <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">One runtime · {tabs.length} route context{tabs.length === 1 ? "" : "s"}</span>
       </div>
 
