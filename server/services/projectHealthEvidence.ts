@@ -98,6 +98,11 @@ async function withStoreMutationLock<T>(workspaceRoot: string, mutation: () => P
   }
 }
 
+export async function listPersistedProjectHealthSummaries(workspaceRoot: string) {
+  const store = await readStore(workspaceRoot);
+  return Object.values(store.projects).sort((left, right) => right.scannedAt.localeCompare(left.scannedAt));
+}
+
 export async function getPersistedProjectHealthSummary(workspaceRoot: string, projectPath: string) {
   const store = await readStore(workspaceRoot);
   return store.projects[normalize(projectPath)] || null;
