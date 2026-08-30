@@ -525,3 +525,21 @@
 }
 
 [data-kf-reduced-motion="true"] .kw-preview-live-dot.is-live { box-shadow: 0 0 0 3px rgba(47, 209, 123, .14); }
+
+@media (min-width: 1181px) {
+  .kw-shell:has(.kw-persistent-preview[data-layout="bottom"]:not([data-minimized="true"])) {
+    grid-template-rows: 44px minmax(0, 1fr) min(360px, 43vh);
+  }
+  .kw-persistent-preview[data-layout="bottom"]:not([data-minimized="true"]) {
+    position: static;
+    grid-column: 2 / -1;
+    grid-row: 3;
+    width: auto;
+    height: auto;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0;
+    box-shadow: 0 -12px 30px rgba(0,0,0,.12);
+  }
+}

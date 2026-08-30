@@ -32,7 +32,7 @@ const VIEWPORTS: Record<Viewport, { label: string; width?: number; height?: numb
   mobile: { label: "Mobile 390×844", width: 390, height: 844, icon: Smartphone },
 };
 
-const defaults: PersistedDock = { open: true, minimized: false, layout: "floating", viewport: "fluid", routes: {}, routeIndexes: {} };
+const defaults: PersistedDock = { open: true, minimized: false, layout: "bottom", viewport: "fluid", routes: {}, routeIndexes: {} };
 
 function readPersisted(): PersistedDock {
   try {
@@ -40,7 +40,7 @@ function readPersisted(): PersistedDock {
     return {
       open: parsed.open !== false,
       minimized: parsed.minimized === true,
-      layout: ["floating", "side", "bottom"].includes(String(parsed.layout)) ? parsed.layout as DockLayout : "floating",
+      layout: ["floating", "side", "bottom"].includes(String(parsed.layout)) ? parsed.layout as DockLayout : "bottom",
       viewport: ["fluid", "desktop", "tablet", "mobile"].includes(String(parsed.viewport)) ? parsed.viewport as Viewport : "fluid",
       routes: parsed.routes && typeof parsed.routes === "object" ? parsed.routes : {},
       routeIndexes: parsed.routeIndexes && typeof parsed.routeIndexes === "object" ? parsed.routeIndexes : {},
