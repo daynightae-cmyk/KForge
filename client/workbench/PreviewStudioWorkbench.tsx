@@ -49,6 +49,7 @@ type ViewportId = "responsive" | "desktop" | "laptop" | "tablet" | "mobile";
 type DockTab = "console" | "problems" | "network" | "routes" | "health" | "qa" | "session";
 type ZoomValue = "fit" | 50 | 75 | 100 | 125;
 type RuntimeRunState = "NOT_RUN" | "RUNNING" | "PASSED" | "FAILED" | "BLOCKED_BY_PREVIEW";
+type PreviewTab = { id: string; title: string; history: string[]; index: number };
 
 const VIEWPORTS: Record<ViewportId, { label: string; width?: number; height?: number; icon: typeof Monitor }> = {
   responsive: { label: "Responsive", icon: Monitor },
@@ -76,8 +77,8 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
   const [zoom, setZoom] = useState<ZoomValue>("fit");
   const [fitScale, setFitScale] = useState(1);
   const [frameVersion, setFrameVersion] = useState(0);
-  const [routeHistory, setRouteHistory] = useState<string[]>(["/"]);
-  const [routeIndex, setRouteIndex] = useState(0);
+  const [tabs, setTabs] = useState<PreviewTab[]>([{ id: "preview-1", title: "App", history: ["/"], index: 0 }]);
+  const [activeTabId, setActiveTabId] = useState("preview-1");
   const [routeInput, setRouteInput] = useState("/");
   const [dockTab, setDockTab] = useState<DockTab>("console");
   const [dockOpen, setDockOpen] = useState(true);
@@ -113,8 +114,8 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
     setRuntimeRunState("NOT_RUN");
     setNotice("");
     setInspection(null);
-    setRouteHistory(["/"]);
-    setRouteIndex(0);
+    setTabs([{ id: "preview-1", title: "App", history: ["/"], index: 0 }]);
+    setActiveTabId("preview-1");
     setRouteInput("/");
     setFrameVersion(0);
     void load().catch((error) => setNotice(error instanceof Error ? error.message : "Preview evidence unavailable.")).finally(() => setLoading(false));
@@ -139,6 +140,9 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
   }, [capability, data, onInspectorContext, project.name, runtimeResult]);
 
   const baseUrl = data?.url;
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0];
+  const routeHistory = activeTab?.history || ["/"];
+  const routeIndex = activeTab?.index || 0;
   const activeRoute = routeHistory[routeIndex] || "/";
   const currentUrl = useMemo(() => {
     if (!baseUrl) return "";
@@ -239,9 +243,7 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
       const candidate = new URL(value.trim() || "/", baseUrl);
       if (candidate.origin !== new URL(baseUrl).origin) throw new Error("Preview navigation is limited to the active project loopback origin.");
       const route = `${candidate.pathname}${candidate.search}${candidate.hash}` || "/";
-      const next = [...routeHistory.slice(0, routeIndex + 1), route];
-      setRouteHistory(next);
-      setRouteIndex(next.length - 1);
+      setTabs((current) => current.map((tab) => tab.id === activeTabId ? { ...tab, title: route === "/" ? "App" : route.split("/").filter(Boolean).pop()?.slice(0, 22) || "App", history: [...tab.history.slice(0, tab.index + 1), route], index: tab.index + 1 } : tab));
       setRouteInput(route);
       setNotice("");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Invalid Preview route."); }
@@ -250,8 +252,29 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
   const goHistory = (direction: -1 | 1) => {
     const nextIndex = routeIndex + direction;
     if (nextIndex < 0 || nextIndex >= routeHistory.length) return;
-    setRouteIndex(nextIndex);
+    setTabs((current) => current.map((tab) => tab.id === activeTabId ? { ...tab, index: nextIndex } : tab));
     setRouteInput(routeHistory[nextIndex] || "/");
+  };
+
+  const addTab = () => {
+    const id = `preview-${Date.now()}`;
+    setTabs((current) => [...current, { id, title: "New preview", history: ["/"], index: 0 }]);
+    setActiveTabId(id);
+    setRouteInput("/");
+  };
+
+  const closeTab = (id: string) => {
+    setTabs((current) => {
+      if (current.length === 1) return current;
+      const index = current.findIndex((tab) => tab.id === id);
+      const next = current.filter((tab) => tab.id !== id);
+      if (id === activeTabId) {
+        const fallback = next[Math.max(0, index - 1)] || next[0];
+        setActiveTabId(fallback.id);
+        setRouteInput(fallback.history[fallback.index] || "/");
+      }
+      return next;
+    });
   };
 
   const copyUrl = async () => {
@@ -315,6 +338,12 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
           <StatusBadge value={data.health?.ok ? "HEALTHY" : data.checkedAt ? "UNHEALTHY" : "NOT_CHECKED"} />
           <StatusBadge value={data.embedding.state} />
         </div>
+      </div>
+
+      <div className="flex items-center gap-1 overflow-x-auto border-b px-2 py-1" role="tablist" aria-label="Preview browser tabs">
+        {tabs.map((tab) => <div key={tab.id} className={`flex shrink-0 items-center rounded-md border ${tab.id === activeTabId ? "bg-background" : "bg-muted/20"}`}><button role="tab" aria-selected={tab.id === activeTabId} className="border-0 bg-transparent text-xs" onClick={() => { setActiveTabId(tab.id); setRouteInput(tab.history[tab.index] || "/"); }}>{tab.title}</button>{tabs.length > 1 ? <button className="border-0 bg-transparent px-1 text-[11px] text-muted-foreground" aria-label={`Close ${tab.title} Preview tab`} onClick={() => closeTab(tab.id)}>×</button> : null}</div>)}
+        <button className="shrink-0" aria-label="New Preview tab" onClick={addTab}>＋</button>
+        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">One runtime · {tabs.length} route context{tabs.length === 1 ? "" : "s"}</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 px-3 py-2" role="toolbar" aria-label="Preview controls">
