@@ -36,7 +36,8 @@ function CommandTerminal({ project, onExecution }: { project: ProjectSummary; on
 
   return <section className="kw-terminal" aria-label="KForge Command Terminal">
     <div className="kw-terminal-header"><Terminal size={18} /><div><strong>KForge Command Terminal</strong><small>Working directory · {project.path}</small></div></div>
-    <p>Only registered KForge actions are executable. There is no unrestricted shell input. Tests, Build, Runtime, Lint and Preview have dedicated Workbenches and are not duplicated here.</p>
+    <p>Only registered KForge actions are executable. There is no unrestricted shell input.</p>
+    <p>Tests, Build, Runtime, Lint and Preview have dedicated Workbenches and are not duplicated here.</p>
     {message && <p className="kw-message" role="status">{message}</p>}
     <div className="kw-command-table"><div className="kw-command-head"><span>Command</span><span>State</span><span>Permission</span><span>Evidence source</span><span /></div>{actions.map((descriptor) => <div key={descriptor.id}><span><strong>{descriptor.label}</strong><code>{descriptor.command || "NO_EXECUTABLE_EVIDENCE"}</code></span><StatusBadge value={descriptor.state} /><span>{descriptor.requiredPermission}</span><span>{descriptor.source}<small>{descriptor.unavailableReason}</small></span><button disabled={!descriptor.enabled} onClick={() => void run(descriptor)}>Run</button></div>)}</div>
   </section>;
