@@ -128,7 +128,7 @@ function SystemPermissionsCenter({ project }: { project?: ProjectSummary }) {
         <label className="text-xs">Eligibility<select aria-label="Permission status filter" className="mt-1 w-full" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All states</option>{["AVAILABLE", "AVAILABLE_WITH_CONFIRMATION", "UNAVAILABLE", "BLOCKED", "ERROR"].map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select></label>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 overflow-x-auto" tabIndex={0} aria-label="Permission matrix table">
         <table className="w-full min-w-[980px] text-left text-xs">
           <thead><tr className="border-b"><th className="p-2">Tool</th><th className="p-2">Permission</th><th className="p-2">Eligibility</th><th className="p-2">Handler</th><th className="p-2">Runtime</th><th className="p-2">Confirmation</th><th className="p-2">Evidence / reason</th></tr></thead>
           <tbody>{filtered.map((tool) => <tr key={tool.name} className="border-b align-top" data-tool-name={tool.name} data-tool-permission={tool.permission || "UNKNOWN"} data-tool-status={tool.status || "UNKNOWN"}>
