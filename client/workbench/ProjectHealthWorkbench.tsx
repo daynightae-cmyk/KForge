@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import type { BoundedEvidenceCoverage, ProjectHealth, ProjectSummary, ToolAvailability } from "@shared/workspace";
+import type { BoundedEvidenceCoverage, ProjectHealth, ProjectSummary, ReleaseDecisionState, ToolAvailability, WorkspaceStatus } from "@shared/workspace";
 import type { SurfaceProps } from "./surfaceContracts";
 import { fetchJson } from "./api";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+
+type PersistedHealthSummary = {
+  path: string;
+  scannedAt: string;
+  score: number | null;
+  evidenceCoverage: number;
+  releaseState: ReleaseDecisionState;
+  securityStatus: WorkspaceStatus;
+  buildStatus: WorkspaceStatus;
+  testStatus: WorkspaceStatus;
+  source: "persisted-project-health";
+};
 
 type HealthResponse = {
   projectId: string;
@@ -11,27 +23,37 @@ type HealthResponse = {
   issueCount: number;
   coverage: Record<string, BoundedEvidenceCoverage>;
   tools: ToolAvailability[];
+  persistedSummary: PersistedHealthSummary;
 };
+
+type HealthEvidenceResponse = { summaries: PersistedHealthSummary[] };
 
 function ProjectHealthWorkbench({ project, onRefresh }: { project?: ProjectSummary; onRefresh: SurfaceProps["onRefresh"] }) {
   const [data, setData] = useState<HealthResponse | null>(null);
+  const [persisted, setPersisted] = useState<PersistedHealthSummary | null>(null);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState("No health scan has been run from this Workbench session.");
 
   useEffect(() => {
     setData(null);
+    setPersisted(null);
     setRunning(false);
     setMessage("No health scan has been run from this Workbench session.");
-  }, [project?.id]);
+    if (!project) return;
+    void fetchJson<HealthEvidenceResponse>("/api/workspace/projects/health-evidence")
+      .then((response) => setPersisted(response.summaries.find((entry) => entry.path === project.path) || null))
+      .catch(() => setPersisted(null));
+  }, [project?.id, project?.path]);
 
   const runHealthScan = async () => {
     if (!project || running) return;
     setRunning(true);
-    setMessage("Running the bounded local Project Health scan…");
+    setMessage("Running the explicitly requested bounded Project Health scan…");
     try {
-      const result = await fetchJson<HealthResponse>(`/api/workspace/projects/${encodeURIComponent(project.id)}/health`);
+      const result = await fetchJson<HealthResponse>(`/api/workspace/projects/${encodeURIComponent(project.id)}/health/scan`, { method: "POST" });
       setData(result);
-      setMessage(`Project Health scan recorded ${result.issueCount} finding(s). UNKNOWN and unavailable evidence remain explicit.`);
+      setPersisted(result.persistedSummary);
+      setMessage(`Project Health scan recorded ${result.issueCount} finding(s) and persisted its bounded summary locally. UNKNOWN and unavailable evidence remain explicit.`);
       await onRefresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Project Health scan failed.");
@@ -56,20 +78,20 @@ function ProjectHealthWorkbench({ project, onRefresh }: { project?: ProjectSumma
     <header className="flex flex-wrap items-start gap-3 rounded-lg border bg-card p-4">
       <div className="min-w-0 flex-1">
         <h2 className="text-sm font-semibold">Project Health Workbench</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Opening this surface does not run a scan. Health evidence is created only after explicit execution and is never inferred from project discovery alone.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Opening this surface reads persisted local summary evidence only; it never starts a scan. A fresh health calculation runs only after explicit execution.</p>
       </div>
-      <StatusBadge value={data ? data.health.release.state : "NOT_RUN_THIS_SESSION"} />
+      <StatusBadge value={data ? data.health.release.state : persisted?.releaseState || "NOT_RUN_THIS_SESSION"} />
       <button onClick={() => void runHealthScan()} disabled={running}>{running ? "Scanning…" : "Run Project Health scan"}</button>
     </header>
 
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Project health prior evidence">
-      <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Last recorded scan</span><strong className="mt-1 block text-sm">{project.lastScannedAt || "NEVER"}</strong></article>
-      <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Summary health score</span><strong className="mt-1 block text-sm">{project.healthScore ?? "NOT_CALCULATED_IN_SUMMARY"}</strong></article>
+      <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Persisted health evidence</span><strong className="mt-1 block text-sm">{persisted?.scannedAt || "NEVER"}</strong><small className="text-muted-foreground">{persisted ? "persisted-project-health" : "No persisted summary"}</small></article>
+      <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Persisted health score</span><strong className="mt-1 block text-sm">{persisted?.score ?? "NOT_SCANNED"}</strong>{persisted ? <div className="mt-1"><StatusBadge value={persisted.releaseState} /></div> : null}</article>
       <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Trust</span><div className="mt-1"><StatusBadge value={project.trust} /></div></article>
       <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Git working changes</span><strong className="mt-1 block text-sm">{project.modifiedFiles + project.untrackedFiles}</strong></article>
     </section>
 
-    {!data ? <EmptyState title="No current-session health evidence" detail="Run Project Health scan explicitly to calculate metrics, evidence coverage, release readiness and source freshness. KForge does not manufacture a score from stale or unrelated state." /> : <>
+    {!data ? <EmptyState title="No current-session health evidence" detail={persisted ? "A persisted summary is visible above, but it is not promoted to a fresh current-session scan. Run Project Health explicitly to refresh metrics, coverage and release evidence." : "Run Project Health scan explicitly to calculate metrics, evidence coverage, release readiness and source freshness. KForge does not manufacture a score from stale or unrelated state."} /> : <>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Project health summary">
         <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Health score</span><strong className="mt-1 block text-lg">{data.health.score ?? "UNKNOWN"}</strong></article>
         <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Coverage</span><strong className="mt-1 block text-lg">{data.health.evidenceCoverage}%</strong></article>
