@@ -71,18 +71,35 @@ function SystemTrustCenter({ project, onRefresh }: { project?: ProjectSummary; o
     }
   };
 
-  if (!project) return <EmptyState title="No project selected" detail="Trust is project-scoped. Select a local project to inspect or grant execution authority." />;
+  const revokeTrust = async () => {
+    if (!project || project.trust !== "trusted" || busy) return;
+    if (!window.confirm(`Revoke trust for ${project.name}? This disables bounded local execution and write-capable KForge operations for this project. It does not delete or modify project source.`)) return;
+    setBusy(true);
+    setMessage("Applying confirmed local project trust revocation…");
+    try {
+      await fetchJson(`/api/workspace/projects/${encodeURIComponent(project.id)}/trust/revoke`, jsonRequest({ confirmed: true }));
+      await onRefresh();
+      await load();
+      setMessage("Project trust revoked. Bounded execution/write authorities were re-evaluated; remote services were not contacted.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Project trust revocation failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!project) return <EmptyState title="No project selected" detail="Trust is project-scoped. Select a local project to inspect, grant, or revoke execution authority." />;
   if (loading) return <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground" role="status">Loading project trust evidence…</div>;
 
   return <section className="space-y-4" aria-label="KForge Trust Center" data-project-trust={project.trust}>
     <header className="flex flex-wrap items-start gap-3 rounded-lg border bg-card p-4">
       <div className="min-w-0 flex-1">
         <h2 className="text-sm font-semibold">Trust Center</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Project trust is a local execution boundary. It does not authorize Git push, cloud AI, registry access, remote transfers, or hidden network contact.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Project trust is a reversible local execution boundary. It does not authorize Git push, cloud AI, registry access, remote transfers, or hidden network contact.</p>
       </div>
       <StatusBadge value={project.trust} />
       <button onClick={() => void load()} disabled={busy}>Refresh evidence</button>
-      {project.trust !== "trusted" ? <button onClick={() => void grantTrust()} disabled={busy}>{busy ? "Applying…" : "Trust project with confirmation"}</button> : null}
+      {project.trust !== "trusted" ? <button onClick={() => void grantTrust()} disabled={busy}>{busy ? "Applying…" : "Trust project with confirmation"}</button> : <button onClick={() => void revokeTrust()} disabled={busy}>{busy ? "Applying…" : "Revoke project trust"}</button>}
     </header>
 
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.75fr)]">
@@ -112,9 +129,9 @@ function SystemTrustCenter({ project, onRefresh }: { project?: ProjectSummary; o
           <div><dt className="text-muted-foreground">Secret redaction</dt><dd>ENFORCED</dd></div>
           <div><dt className="text-muted-foreground">Arbitrary shell</dt><dd>NOT_EXPOSED</dd></div>
           <div><dt className="text-muted-foreground">Trust persistence</dt><dd>LOCAL_WORKSPACE_EVIDENCE</dd></div>
-          <div><dt className="text-muted-foreground">Trust revocation authority</dt><dd>NOT_EXPOSED_BY_CURRENT_WORKSPACE_API</dd></div>
+          <div><dt className="text-muted-foreground">Trust revocation authority</dt><dd>EXPLICIT_CONFIRMED_LOCAL_REVOCATION</dd></div>
         </dl>
-        <p className="mt-3 text-[11px] text-muted-foreground">KForge does not display a fake revoke button. The current server contract exposes explicit trust grant but no revocation route; this Workbench reports that limitation instead of pretending otherwise.</p>
+        <p className="mt-3 text-[11px] text-muted-foreground">Grant and revoke both persist only local trust metadata. Revocation disables trust-gated execution without deleting source, changing Git state, or contacting a remote service.</p>
       </aside>
     </div>
 
