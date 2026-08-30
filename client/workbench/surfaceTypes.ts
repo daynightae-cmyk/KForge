@@ -5,7 +5,7 @@ export const CANONICAL_INSPECTOR_OWNER = "WORKBENCH" as const;
 export const ONLINE_INSPECTOR_POLICY = "SINGLE_CANONICAL_INSPECTOR" as const;
 
 export const SURFACE_AUDIT_MATRIX: Record<KForgeActivity, Record<string, ProductSurfaceClass>> = {
-  projects: { workspace: "SPECIALIZED", health: "INTENTIONALLY_SHARED", recent: "INTENTIONALLY_SHARED", favorites: "INTENTIONALLY_SHARED", pinned: "INTENTIONALLY_SHARED", archive: "INTENTIONALLY_SHARED", "open-project": "SPECIALIZED", "import-project": "SPECIALIZED" },
+  projects: { workspace: "SPECIALIZED", health: "SPECIALIZED", recent: "SPECIALIZED", favorites: "SPECIALIZED", pinned: "SPECIALIZED", archive: "SPECIALIZED", "open-project": "SPECIALIZED", "import-project": "SPECIALIZED" },
   ai: { providers: "SPECIALIZED", models: "SPECIALIZED", agents: "SPECIALIZED", tasks: "SPECIALIZED" },
   online: { discover: "SPECIALIZED", marketplace: "SPECIALIZED", extensions: "SPECIALIZED", models: "SPECIALIZED", agents: "SPECIALIZED", tools: "SPECIALIZED", integrations: "SPECIALIZED", providers: "SPECIALIZED", installed: "SPECIALIZED", updates: "SPECIALIZED", downloads: "SPECIALIZED", "remote-sources": "SPECIALIZED", security: "SPECIALIZED", activity: "SPECIALIZED" },
   intelligence: { "project-graph": "SPECIALIZED", dependencies: "SPECIALIZED", "impact-analysis": "SPECIALIZED", "code-understanding": "SPECIALIZED", "ask-kforge": "SPECIALIZED", architecture: "SPECIALIZED" },
