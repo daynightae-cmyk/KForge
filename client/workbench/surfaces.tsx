@@ -8,6 +8,7 @@ import AISurface from "./aiSurface";
 import IntelligenceSurface from "./intelligenceSurface";
 import QualitySurface from "./qualitySurface";
 import DeveloperSurface from "./developerSurface";
+import DeveloperExecutionLedger from "./DeveloperExecutionLedger";
 import DeveloperObservabilityWorkbench from "./DeveloperObservabilityWorkbench";
 import DeveloperTestsWorkbench from "./DeveloperTestsWorkbench";
 import DeveloperBuildWorkbench from "./DeveloperBuildWorkbench";
@@ -74,7 +75,8 @@ export function WorkbenchSurface(props: SurfaceProps) {
   if (props.activity === "developer-tools" && props.view === "runtime" && props.project) return <DeveloperRuntimeWorkbench project={props.project} onExecution={props.onExecution} />;
   if (props.activity === "developer-tools" && props.view === "lint" && props.project) return <DeveloperLintWorkbench project={props.project} onExecution={props.onExecution} />;
   if (props.activity === "developer-tools" && props.view === "preview" && props.project) return <PreviewStudioWorkbench project={props.project} onExecution={props.onExecution} onInspectorContext={props.onInspectorContext} />;
-  if (props.activity === "developer-tools" && ["logs", "diagnostics"].includes(props.view)) return <DeveloperObservabilityWorkbench {...props} />;
+  if (props.activity === "developer-tools" && props.view === "logs") return <DeveloperExecutionLedger project={props.project} onExecution={props.onExecution} />;
+  if (props.activity === "developer-tools" && props.view === "diagnostics") return <DeveloperObservabilityWorkbench {...props} />;
   if (props.activity === "developer-tools") return <DeveloperSurface {...props} />;
   if (props.activity === "remote") return <RemoteSurface {...props} />;
   if (props.activity === "release") return <ReleaseSurface {...props} />;
@@ -83,4 +85,8 @@ export function WorkbenchSurface(props: SurfaceProps) {
   if (props.activity === "system" && ["online-offline", "self-audit", "system-diagnostics"].includes(props.view)) return <SystemControlCenter view={props.view as "online-offline" | "self-audit" | "system-diagnostics"} project={props.project} />;
   if (props.activity === "system") return <SystemSurface {...props} />;
   return <IntelligenceSurface {...props} />;
+}
+
+export function SurfaceTitle({ activity, view, children }: { activity: SurfaceProps["activity"]; view: string; children?: ReactNode }) {
+  return <div className="kw-surface-title"><div><span>{activityLabel(activity)}</span><h2>{viewLabel(activity, view)}</h2></div>{children}</div>;
 }
