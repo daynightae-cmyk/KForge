@@ -38,7 +38,8 @@ test.describe("KForge shell-owned Persistent Preview", () => {
     expect((await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } })).ok()).toBeTruthy();
     const opened = await page.request.post("/api/workspace/projects/open", { data: { path: projectPath } });
     expect(opened.ok(), await opened.text()).toBeTruthy();
-    projectId = (await opened.json() as { project: { id: string } }).project.id;
+    const openedPayload = await opened.json() as { project: { id: string; name: string } };
+    projectId = openedPayload.project.id;
     expect((await page.request.post(`/api/workspace/projects/${encodeURIComponent(projectId)}/trust`, { data: { confirmed: true } })).ok()).toBeTruthy();
 
     const externalRequests: string[] = [];
@@ -51,7 +52,7 @@ test.describe("KForge shell-owned Persistent Preview", () => {
     await setProjectContext(page, projectId);
     const dock = page.getByRole("complementary", { name: "Persistent Preview Dock", exact: true });
     await expect(dock).toBeVisible();
-    await expect(dock).toContainText("kforge-persistent-preview-fixture");
+    await expect(dock).toContainText(openedPayload.project.name);
 
     const start = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${projectId}/preview/start`) && response.request().method() === "POST");
     await dock.getByRole("button", { name: "Run", exact: true }).click();
