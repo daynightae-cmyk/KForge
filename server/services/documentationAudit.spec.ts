@@ -45,7 +45,7 @@ describe("KForge documentation safe fixes", () => {
     expect(readme).toContain("# KNOuX Forge");
     expect(readme).toContain("http://localhost:8080/workspace");
     expect(readme).toContain("http://localhost:3000/workspace");
-    expect(readme).toContain("does not claim browser console");
+    expect(readme).toContain("does not claim target-application browser-console or full browser-network telemetry");
     expect(runGuide).toContain("There is no repository `lint` script.");
     expect(environment).not.toContain("API_BASE_URL");
     expect(environment).toContain("KFORGE_WORKSPACE_ROOT=.");
