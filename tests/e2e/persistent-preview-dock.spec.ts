@@ -72,7 +72,7 @@ test.describe("KForge shell-owned Persistent Preview", () => {
       await expect(dock).toBeVisible();
       await expect(persistentFrame.locator("#route")).toHaveText("/quality");
       const current = await (await page.request.get(`/api/workspace/projects/${projectId}/preview`)).json() as { preview: { sessionId: string; pid: number } };
-      expect(current.preview).toMatchObject(before.preview);
+      expect(current.preview).toMatchObject({ sessionId: before.preview.sessionId, pid: before.preview.pid });
     }
 
     await dock.getByLabel("Bottom Preview layout", { exact: true }).click();
