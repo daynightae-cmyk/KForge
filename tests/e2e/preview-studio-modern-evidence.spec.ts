@@ -81,6 +81,15 @@ test.describe("KForge Preview Studio 3.0 browser and QA evidence", () => {
     await studio.getByLabel("Preview forward", { exact: true }).click();
     await expect(app.locator("#route")).toHaveText("/quality");
 
+    await studio.getByLabel("New Preview tab", { exact: true }).click();
+    await expect(app.locator("#route")).toHaveText("/");
+    await address.fill("/settings");
+    await address.press("Enter");
+    await expect(app.locator("#route")).toHaveText("/settings");
+    await studio.getByRole("tab", { name: "quality", exact: true }).click();
+    await expect(app.locator("#route")).toHaveText("/quality");
+    await expect(studio).toContainText("One runtime · 2 route contexts");
+
     await address.fill("https://example.com/escape");
     await address.press("Enter");
     await expect(studio.getByRole("status").last()).toContainText("limited to the active project loopback origin");
