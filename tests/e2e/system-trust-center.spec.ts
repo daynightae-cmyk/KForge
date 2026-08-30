@@ -13,7 +13,7 @@ test.describe("KForge specialized Trust Center", () => {
     projectPath = "";
   });
 
-  test("keeps opening observational and grants local trust only after explicit confirmation", async ({ page }) => {
+  test("keeps opening observational and grants then revokes local trust only after explicit confirmation", async ({ page }) => {
     projectPath = await mkdtemp(path.join(os.tmpdir(), "kforge-trust-center-"));
     await mkdir(path.join(projectPath, "src"), { recursive: true });
     await writeFile(path.join(projectPath, "package.json"), JSON.stringify({
@@ -38,10 +38,12 @@ test.describe("KForge specialized Trust Center", () => {
     const sourceBefore = await readFile(path.join(projectPath, "src", "index.js"), "utf8");
     const packageBefore = await readFile(path.join(projectPath, "package.json"), "utf8");
     let trustPosts = 0;
+    let revokePosts = 0;
     const externalRequests: string[] = [];
     page.on("request", (request) => {
       const url = new URL(request.url());
       if (request.method() === "POST" && url.pathname === `/api/workspace/projects/${project.id}/trust`) trustPosts += 1;
+      if (request.method() === "POST" && url.pathname === `/api/workspace/projects/${project.id}/trust/revoke`) revokePosts += 1;
       if (!["127.0.0.1", "localhost"].includes(url.hostname)) externalRequests.push(request.url());
     });
 
@@ -54,12 +56,14 @@ test.describe("KForge specialized Trust Center", () => {
     await expect(center).toHaveAttribute("data-project-trust", "untrusted");
     await expect(center).toContainText("Trust never implies");
     await expect(center).toContainText("NO_IMPLICIT_NETWORK_CONTACT");
-    await expect(center).toContainText("NOT_EXPOSED_BY_CURRENT_WORKSPACE_API");
+    await expect(center).toContainText("EXPLICIT_CONFIRMED_LOCAL_REVOCATION");
     expect(trustPosts).toBe(0);
+    expect(revokePosts).toBe(0);
 
     await center.getByRole("button", { name: "Refresh evidence", exact: true }).click();
     await expect(center).toHaveAttribute("data-project-trust", "untrusted");
     expect(trustPosts).toBe(0);
+    expect(revokePosts).toBe(0);
 
     page.once("dialog", async (dialog) => {
       expect(dialog.type()).toBe("confirm");
@@ -74,7 +78,33 @@ test.describe("KForge specialized Trust Center", () => {
     await expect(center).toContainText("LOCAL_EXECUTION_ENABLED");
     await expect(center).toContainText("AVAILABLE");
     await expect(center.getByRole("status")).toContainText("Project trust granted");
+    await expect(center.getByRole("button", { name: "Revoke project trust", exact: true })).toBeVisible();
     expect(trustPosts).toBe(1);
+    expect(revokePosts).toBe(0);
+
+    page.once("dialog", async (dialog) => {
+      expect(dialog.type()).toBe("confirm");
+      expect(dialog.message()).toContain("disables bounded local execution");
+      expect(dialog.message()).toContain("does not delete or modify project source");
+      await dialog.accept();
+    });
+    const revokeResponse = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/trust/revoke`) && response.request().method() === "POST");
+    await center.getByRole("button", { name: "Revoke project trust", exact: true }).click();
+    const revoked = await revokeResponse;
+    expect(revoked.ok(), await revoked.text()).toBeTruthy();
+
+    await expect(center).toHaveAttribute("data-project-trust", "untrusted", { timeout: 30_000 });
+    await expect(center).toContainText("READ_MOSTLY");
+    await expect(center.getByRole("status")).toContainText("Project trust revoked");
+    await expect(center.getByRole("button", { name: "Trust project with confirmation", exact: true })).toBeVisible();
+    expect(revokePosts).toBe(1);
+
+    const toolEvidence = await page.request.get(`/api/workspace/projects/${project.id}/agent/tools`);
+    expect(toolEvidence.ok(), await toolEvidence.text()).toBeTruthy();
+    const tools = (await toolEvidence.json() as { tools: Array<{ name: string; status: string }> }).tools;
+    const lint = tools.find((entry) => entry.name === "lint");
+    expect(lint?.status).not.toBe("AVAILABLE");
+
     expect(externalRequests).toEqual([]);
     expect(await readFile(path.join(projectPath, "src", "index.js"), "utf8")).toBe(sourceBefore);
     expect(await readFile(path.join(projectPath, "package.json"), "utf8")).toBe(packageBefore);
