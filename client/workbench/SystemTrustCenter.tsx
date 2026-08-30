@@ -20,12 +20,13 @@ function SystemTrustCenter({ project, onRefresh }: { project?: ProjectSummary; o
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const projectId = project?.id || "";
 
   const load = useCallback(async () => {
-    if (!project) return;
+    if (!projectId) return;
     try {
       const [toolData, platformData] = await Promise.all([
-        fetchJson<ToolsResponse>(`/api/workspace/projects/${encodeURIComponent(project.id)}/agent/tools`),
+        fetchJson<ToolsResponse>(`/api/workspace/projects/${encodeURIComponent(projectId)}/agent/tools`),
         fetchJson<LocalPlatformStatus>("/api/workspace/platform"),
       ]);
       setTools(toolData.tools || []);
@@ -35,7 +36,7 @@ function SystemTrustCenter({ project, onRefresh }: { project?: ProjectSummary; o
     } finally {
       setLoading(false);
     }
-  }, [project]);
+  }, [projectId]);
 
   useEffect(() => {
     setLoading(true);
@@ -43,7 +44,7 @@ function SystemTrustCenter({ project, onRefresh }: { project?: ProjectSummary; o
     setPlatform(null);
     setMessage("");
     void load();
-  }, [load, project?.id, project?.trust]);
+  }, [load, projectId]);
 
   const counts = useMemo(() => {
     const readOnly = tools.filter((tool) => tool.permission === "read-only").length;
