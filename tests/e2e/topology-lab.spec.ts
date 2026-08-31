@@ -28,7 +28,7 @@ test.describe("KForge Preview Experience 5.0 topology lab", () => {
     ] }, null, 2), "utf8");
     const server = (label: string, crash = false) => [
       "const http=require('node:http'); const port=Number(process.env.PORT);",
-      `http.createServer((req,res)=>{if(${crash}&&req.url==='/crash'){res.end('crashing');setTimeout(()=>process.exit(23),20);return;}res.writeHead(200,{'content-type':'text/html'});res.end('<!doctype html><html lang="en"><head><title>${label}</title></head><body><h1>${label}</h1><p id="port">'+port+'</p></body></html>')}).listen(port,'127.0.0.1',()=>console.log('${label}_READY:'+port));`,
+      `http.createServer((req,res)=>{if(${crash}&&req.url==='/crash'){res.end('crashing');setTimeout(()=>process.exit(23),20);return;}res.writeHead(200,{'content-type':'text/html'});res.end('<!doctype html><html lang=\"en\"><head><title>${label}</title></head><body><h1>${label}</h1><p id=\"port\">'+port+'</p></body></html>')}).listen(port,'127.0.0.1',()=>console.log('${label}_READY:'+port));`,
     ].join("\n");
     await writeFile(path.join(projectPath, "api.cjs"), server("API", true), "utf8");
     await writeFile(path.join(projectPath, "web.cjs"), server("WEB_APP"), "utf8");
@@ -88,7 +88,7 @@ test.describe("KForge Preview Experience 5.0 topology lab", () => {
     await selectExplorerView(page, "Developer Tools", "Preview");
     await lab.getByRole("button", { name: /Console/ }).click();
     await expect(lab.getByRole("region", { name: "Topology evidence dock", exact: true })).toContainText("[WORKER] WORKER_LOOP_READY");
-    await lab.getByRole("button", { name: /Problems/ }).click();
+    await lab.getByRole("button", { name: /^Topology issues/ }).click();
     await expect(lab.getByRole("region", { name: "Topology evidence dock", exact: true })).toContainText("UNEXPECTED_EXIT");
 
     const axe = await new AxeBuilder({ page }).include('[aria-label="Runtime Topology Lab"]').analyze();
