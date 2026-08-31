@@ -720,7 +720,7 @@ export function recordTopologyBrowserTraffic(observation: {
       at: now(),
       sourceServiceId: source?.id,
       destinationServiceId: destination?.id,
-      relationship: "OBSERVED_TRAFFIC",
+      relationship: "OBSERVED_TRAFFIC" as const,
       detail: `${observation.method || "GET"} ${safeUrl} · ${status} · ${sourceLabel} -> ${destinationLabel}`,
       evidence: `Electron session.webRequest${observation.resourceType ? ` · ${observation.resourceType}` : ""}${observation.fromCache ? " · cache" : ""}; request bodies, cookies, authorization headers, and query values are not captured.`,
     }].slice(-MAX_NETWORK);
