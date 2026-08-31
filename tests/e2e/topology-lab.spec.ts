@@ -86,7 +86,7 @@ test.describe("KForge Preview Experience 5.0 topology lab", () => {
     }, { timeout: 30_000 }).toMatchObject({ state: "DEGRADED", api: "FAILED", web: "DEGRADED", problems: expect.arrayContaining(["api:UNEXPECTED_EXIT", "web:DEPENDENCY_UNAVAILABLE"]) });
 
     await selectExplorerView(page, "Developer Tools", "Preview");
-    await lab.getByRole("button", { name: /Console/ }).click();
+    await lab.getByRole("button", { name: "Topology console", exact: true }).click();
     await expect(lab.getByRole("region", { name: "Topology evidence dock", exact: true })).toContainText("[WORKER] WORKER_LOOP_READY");
     await lab.getByRole("button", { name: /^Topology issues/ }).click();
     await expect(lab.getByRole("region", { name: "Topology evidence dock", exact: true })).toContainText("UNEXPECTED_EXIT");
