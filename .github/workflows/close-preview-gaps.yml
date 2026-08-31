@@ -33,7 +33,7 @@ jobs:
           cache: npm
 
       - name: Apply topology and observability integration
-        run: node scripts/close-preview-gaps.mjs
+        run: python3 scripts/close-preview-gaps.py
 
       - name: Refresh vulnerable transitive lock entries
         shell: bash
@@ -46,7 +46,7 @@ jobs:
       - name: Remove one-shot bootstrap
         shell: bash
         run: |
-          rm -f scripts/close-preview-gaps.mjs
+          rm -f scripts/close-preview-gaps.mjs scripts/close-preview-gaps.py
           rm -f .github/workflows/close-preview-gaps.yml
           rm -f audit-before.json audit-after.json
 
