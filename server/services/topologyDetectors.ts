@@ -135,7 +135,7 @@ function sourcePort(value: string) {
 
 function safeArgv(value: string): RuntimeControlCommand | undefined {
   const trimmed = value.trim();
-  if (!trimmed || /(?:&&|\|\||[;|`<>\r\n])/.test(trimmed)) return undefined;
+  if (!trimmed || /(?:&&|\|\||[;|`<>\r\n])/.test(trimmed) || (process.platform === "win32" && /[%!^&]/.test(trimmed))) return undefined;
   const parts: string[] = [];
   const expression = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|([^\s]+)/g;
   let consumed = "";

@@ -18,6 +18,7 @@ const logFile = path.join(logsRoot, "desktop.log");
 
 let mainWindow = null;
 let productionServer = null;
+let productionServerModule = null;
 let isQuitting = false;
 let startupError = null;
 
@@ -49,6 +50,23 @@ function desktopMetadata() {
     packaged: app.isPackaged,
     signature: "UNSIGNED",
   };
+}
+
+function recordDesktopTraffic(details, error) {
+  if (!productionServerModule || typeof productionServerModule.recordTopologyBrowserTraffic !== "function") return;
+  try {
+    productionServerModule.recordTopologyBrowserTraffic({
+      url: details.url,
+      sourceUrl: details.referrer || "",
+      method: details.method,
+      status: typeof details.statusCode === "number" ? details.statusCode : undefined,
+      resourceType: details.resourceType,
+      fromCache: details.fromCache === true,
+      error,
+    });
+  } catch (captureError) {
+    writeLog("WARN", `Preview browser traffic capture failed: ${captureError instanceof Error ? captureError.message : String(captureError)}`);
+  }
 }
 
 function createWindow() {
@@ -91,8 +109,8 @@ async function startLocalRuntime() {
   process.env.KFORGE_APP_ROOT = applicationRoot;
   process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
   process.env.KFORGE_DESKTOP = "1";
-  const serverModule = await import(pathToFileURL(modulePath).href);
-  productionServer = await serverModule.startKForgeProductionServer({ applicationRoot, host: "127.0.0.1", port: 0 });
+  productionServerModule = await import(pathToFileURL(modulePath).href);
+  productionServer = await productionServerModule.startKForgeProductionServer({ applicationRoot, host: "127.0.0.1", port: 0 });
   writeLog("INFO", `Loopback engine is ready at ${productionServer.url}.`);
 }
 
@@ -101,6 +119,7 @@ async function stopLocalRuntime() {
   const current = productionServer;
   productionServer = null;
   await current.close();
+  productionServerModule = null;
   writeLog("INFO", "Loopback engine and managed Preview and topology processes stopped.");
 }
 
@@ -178,16 +197,21 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
       const isLocalKForge = productionServer && details.url.startsWith(productionServer.url);
+      if (!isLocalKForge) {
+        callback({ responseHeaders: details.responseHeaders });
+        return;
+      }
       callback({
         responseHeaders: {
           ...details.responseHeaders,
-          "Content-Security-Policy": [isLocalKForge
-            ? "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
-            : "default-src 'none'"],
+          "Content-Security-Policy": ["default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"],
         },
       });
     });
-    writeLog("INFO", `Starting ${PRODUCT_NAME} ${app.getVersion()} (${app.isPackaged ? "packaged" : "development"} runtime).`);
+    const trafficFilter = { urls: ["http://*/*", "https://*/*"] };
+    session.defaultSession.webRequest.onCompleted(trafficFilter, (details) => recordDesktopTraffic(details));
+    session.defaultSession.webRequest.onErrorOccurred(trafficFilter, (details) => recordDesktopTraffic(details, details.error || "request failed"));
+    writeLog(    writeLog("INFO", `Starting ${PRODUCT_NAME} ${app.getVersion()} (${app.isPackaged ? "packaged" : "development"} runtime).`);
     await startApplication();
   });
 }

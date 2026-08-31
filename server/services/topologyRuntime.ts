@@ -16,6 +16,8 @@ import type {
   RuntimeTopologyDiscovery,
   TopologySession,
 } from "../../shared/topology";
+import { detectAutomaticTopology } from "./topologyDetectors";
+import { materializeRuntimeCommand, materializeRuntimeEnvironment, registerRuntimeControls, runServiceControl, runTopologyCleanup, runtimeControlPlan, verifyServiceListener } from "./topologyRuntimeIntegration";
 
 type JsonRecord = Record<string, unknown>;
 type ActiveService = { child: ChildProcess; service: RuntimeService };
@@ -240,19 +242,41 @@ async function discoverPackages(projectId: string, projectPath: string) {
 export async function discoverRuntimeTopology(projectId: string, projectPath: string): Promise<RuntimeTopologyDiscovery> {
   const configPath = path.join(projectPath, ".kforge", "topology.json");
   const config = await readJson(configPath);
-  const services = config ? await discoverExplicit(projectId, projectPath, configPath, config) : await discoverPackages(projectId, projectPath);
+  let services: RuntimeService[] = [];
+  let automatic: Awaited<ReturnType<typeof detectAutomaticTopology>> | undefined;
+  if (config) {
+    services = await discoverExplicit(projectId, projectPath, configPath, config);
+    registerRuntimeControls(projectId, {});
+  } else {
+    automatic = await detectAutomaticTopology(projectId, projectPath);
+    const packageServices = automatic.mode === "native" ? await discoverPackages(projectId, projectPath) : [];
+    const packageRoots = new Set(packageServices.map((service) => path.resolve(service.rootPath)));
+    const detectedServices = automatic.specs
+      .filter((spec) => !packageRoots.has(path.resolve(spec.rootPath)))
+      .map((spec) => makeService({
+        projectId, projectPath, id: spec.id, name: spec.name, kind: spec.kind, rootPath: spec.rootPath,
+        command: spec.command, source: spec.source, dependencies: spec.dependencies,
+        requestedPort: spec.requestedPort, healthKind: spec.healthKind, healthEndpoint: spec.healthEndpoint,
+        browserEntrypoint: spec.browserEntrypoint, browserLabel: spec.browserLabel, envRequired: spec.envRequired,
+      }));
+    services = [...packageServices, ...detectedServices];
+    const activeIds = new Set(services.map((service) => service.id));
+    registerRuntimeControls(projectId, Object.fromEntries(Object.entries(automatic.controls).filter(([id]) => activeIds.has(id))));
+  }
   const sources = new Set(services.map((service) => service.source.source));
-  if (existsSync(path.join(projectPath, "turbo.json"))) sources.add("turbo.json (workspace evidence only; service commands remain package-script backed)");
-  if (existsSync(path.join(projectPath, "nx.json"))) sources.add("nx.json (workspace evidence only; service commands remain package-script backed)");
+  automatic?.evidenceSources.forEach((source) => sources.add(source));
+  if (existsSync(path.join(projectPath, "turbo.json"))) sources.add("turbo.json (workspace evidence only; service commands remain manifest-backed)");
+  if (existsSync(path.join(projectPath, "nx.json"))) sources.add("nx.json (workspace evidence only; service commands remain manifest-backed)");
   if (existsSync(path.join(projectPath, "pnpm-workspace.yaml"))) sources.add("pnpm-workspace.yaml (workspace evidence)");
   const discovery: RuntimeTopologyDiscovery = {
     projectId, projectPath, discoveredAt: now(), state: services.length ? "DISCOVERED" : "UNAVAILABLE", services,
     evidenceSources: [...sources],
     limitations: [
-      "Automatic discovery executes no project code and exposes only manifest-backed runnable services.",
-      "Docker Compose, Procfile, framework-native Python/.NET/Java/Go/Rust/PHP topology expansion is UNAVAILABLE unless services are declared in .kforge/topology.json; root Preview detection remains available through its compatibility contract.",
-      "Static dependency edges are shown only for explicit topology configuration or runnable workspace package dependencies; all other relationships remain UNKNOWN.",
-      "Observed browser traffic requires browser instrumentation and is NOT_CAPTURED by this server-side process topology.",
+      "Discovery executes no project code. KForge accepts explicit topology configuration, package scripts, canonical Docker Compose/Procfile definitions, and evidence-backed native runtime entrypoints.",
+      ...(automatic?.limitations || ["Explicit .kforge/topology.json is authoritative when present; undeclared relationships remain UNKNOWN."]),
+      "Static dependency edges are shown only when declared by explicit topology, Compose depends_on, or runnable workspace package dependencies; all other relationships remain UNKNOWN.",
+      "Packaged Electron captures bounded browser request telemetry through session.webRequest without request bodies or credentials. Browser-hosted/server-only sessions cannot claim Chromium subresource telemetry and show only evidence actually received.",
+      "Listener PID attribution is attempted with OS evidence after a healthy listener appears. Ownership remains UNKNOWN when PID or ancestry proof is unavailable, and an unrelated proven listener is never promoted to KFORGE_SESSION.",
     ],
   };
   discoveries.set(projectId, discovery);
@@ -317,10 +341,16 @@ function reservePort() {
 }
 
 function resolveWindowsCommand(command: RuntimeService["command"]) {
-  if (process.platform !== "win32" || command.executable.toLowerCase() !== "npm.cmd") return { command: command.executable, args: command.args, runAsNode: false };
-  const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
-  if (!existsSync(npmCli)) return { command: command.executable, args: command.args, runAsNode: false };
-  return { command: process.execPath, args: [npmCli, ...command.args], runAsNode: Boolean(process.versions.electron) };
+  if (process.platform !== "win32") return { command: command.executable, args: command.args, runAsNode: false };
+  if (command.executable.toLowerCase() === "npm.cmd") {
+    const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+    if (existsSync(npmCli)) return { command: process.execPath, args: [npmCli, ...command.args], runAsNode: Boolean(process.versions.electron) };
+  }
+  if (/\.(?:cmd|bat)$/i.test(command.executable)) {
+    const quote = (value: string) => `"${value.replace(/["^&|<>]/g, (character) => `^${character}`)}"`;
+    return { command: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", [command.executable, ...command.args].map(quote).join(" ")], runAsNode: false };
+  }
+  return { command: command.executable, args: command.args, runAsNode: false };
 }
 
 function loopbackUrl(service: RuntimeService, endpoint?: string) {
@@ -350,7 +380,16 @@ async function probeService(topology: ActiveTopology, service: RuntimeService): 
     if (service.health.kind === "TCP") {
       const ok = await tcpProbe(service.port.allocated);
       service.health = { kind: "TCP", verdict: ok ? "HEALTHY" : "UNHEALTHY", checkedAt, latencyMs: Math.round(performance.now() - started), detail: ok ? `TCP listener accepted a loopback connection on ${service.port.allocated}.` : `No TCP listener responded on ${service.port.allocated}.` };
-      if (ok) { service.state = "HEALTHY"; timeline(topology.session, "listener-detected", service.health.detail, service.id); }
+      if (ok) {
+        const first = service.state !== "HEALTHY";
+        const ownership = await verifyServiceListener(topology.session.projectId, service);
+        service.port = ownership.port;
+        service.state = ownership.externalConflict ? "DEGRADED" : "HEALTHY";
+        if (ownership.externalConflict) {
+          problem(topology.session, { serviceId: service.id, kind: "PORT_CONFLICT", severity: "error", detail: `Healthy TCP response came from an OS-attributed listener outside the proven KForge process tree.`, evidence: service.port.evidence });
+          propagateDependencyFailure(topology, service);
+        } else if (first) timeline(topology.session, "listener-detected", `${service.health.detail} ${service.port.evidence}`, service.id);
+      }
       return;
     }
     const url = loopbackUrl(service);
@@ -359,9 +398,17 @@ async function probeService(topology: ActiveTopology, service: RuntimeService): 
     const latencyMs = Math.round(performance.now() - started);
     service.health = { kind: service.health.kind, verdict: response.ok ? "HEALTHY" : "UNHEALTHY", checkedAt, status: response.status, latencyMs, endpoint: url, detail: `HTTP ${response.status} ${response.statusText}` };
     if (response.ok) {
-      const first = service.state !== "HEALTHY"; service.state = "HEALTHY"; service.port.ownership = "UNKNOWN"; service.port.collision = "NONE";
-      service.port.evidence = `Port was free before spawn and responding ${service.health.kind} evidence appeared afterward. OS-level listener PID attribution is not captured, so port ownership remains UNKNOWN rather than inferred.`;
-      if (first) { timeline(topology.session, "listener-detected", `${service.health.kind} listener responded at ${url}.`, service.id); timeline(topology.session, "healthy", service.health.detail, service.id); }
+      const first = service.state !== "HEALTHY";
+      const ownership = await verifyServiceListener(topology.session.projectId, service);
+      service.port = ownership.port;
+      service.state = ownership.externalConflict ? "DEGRADED" : "HEALTHY";
+      if (ownership.externalConflict) {
+        problem(topology.session, { serviceId: service.id, kind: "PORT_CONFLICT", severity: "error", detail: `Healthy HTTP response came from an OS-attributed listener outside the proven KForge process tree.`, evidence: service.port.evidence });
+        propagateDependencyFailure(topology, service);
+      } else if (first) {
+        timeline(topology.session, "listener-detected", `${service.health.kind} listener responded at ${url}. ${service.port.evidence}`, service.id);
+        timeline(topology.session, "healthy", service.health.detail, service.id);
+      }
     } else if (service.state === "HEALTHY") {
       service.state = "DEGRADED";
       problem(topology.session, { serviceId: service.id, kind: "HEALTH_FAILURE", severity: "error", detail: service.health.detail, evidence: url });
@@ -485,35 +532,37 @@ async function startOne(topology: ActiveTopology, serviceId: string, stack = new
   const missing = service.environment.filter((item) => item.state === "MISSING");
   if (missing.length) missing.forEach((item) => problem(topology.session, { serviceId, kind: "MISSING_ENVIRONMENT", severity: "warning", detail: `${item.name} is missing.`, evidence: item.source }));
   service.state = "STARTING"; service.startedAt = now(); service.stoppedAt = undefined; service.exitCode = undefined; service.exitSignal = undefined;
-  const launch = resolveWindowsCommand(service.command);
+  const runtimeCommand = materializeRuntimeCommand(topology.session.id, service);
+  const launch = resolveWindowsCommand(runtimeCommand);
+  const runtimeEnvironment = materializeRuntimeEnvironment(topology.session.projectId, topology.session.id, service);
   const child = spawn(launch.command, launch.args, {
     cwd: service.rootPath, shell: false, windowsHide: true, detached: process.platform !== "win32",
-    env: { ...process.env, ...(launch.runAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}), ...(service.port.allocated ? { PORT: String(service.port.allocated), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${service.port.allocated}` } : {}) },
+    env: { ...process.env, ...(launch.runAsNode ? { ELECTRON_RUN_AS_NODE: "1" } : {}), ...(service.port.allocated ? { PORT: String(service.port.allocated), HOST: "127.0.0.1", ASPNETCORE_URLS: `http://127.0.0.1:${service.port.allocated}` } : {}), ...runtimeEnvironment },
   });
   if (!child.pid) {
     child.once("error", () => { /* The unavailable-command evidence is recorded synchronously below. */ });
     service.state = "FAILED"; service.health = { ...service.health, verdict: "UNHEALTHY", checkedAt: now(), detail: "The command could not be spawned and provided no PID." };
-    problem(topology.session, { serviceId, kind: "COMMAND_UNAVAILABLE", severity: "error", detail: "The service command could not be spawned and did not provide a PID.", evidence: service.command.display });
+    problem(topology.session, { serviceId, kind: "COMMAND_UNAVAILABLE", severity: "error", detail: "The service command could not be spawned and did not provide a PID.", evidence: runtimeCommand.display });
     timeline(topology.session, "failed", service.health.detail, service.id); refreshAggregate(topology); return service;
   }
   service.processId = child.pid;
-  service.processOwner = { sessionId: topology.session.id, serviceId, pid: child.pid, spawnedAt: service.startedAt, command: service.command.display };
+  service.processOwner = { sessionId: topology.session.id, serviceId, pid: child.pid, spawnedAt: service.startedAt, command: runtimeCommand.display };
   topology.active.set(service.id, { child, service });
   timeline(topology.session, "process-spawned", `KForge spawned owned PID ${child.pid} from ${service.source.source}.`, service.id);
-  log(topology, service, "system", `Spawned owned PID ${child.pid}: ${service.command.display}`);
+  log(topology, service, "system", `Spawned owned PID ${child.pid}: ${runtimeCommand.display}`);
   child.stdout?.on("data", (data: Buffer) => log(topology, service, "stdout", data.toString()));
   child.stderr?.on("data", (data: Buffer) => log(topology, service, "stderr", data.toString()));
   child.once("error", (error) => {
     service.state = "FAILED"; service.health = { ...service.health, verdict: "UNHEALTHY", checkedAt: now(), detail: error.message };
     log(topology, service, "system", error.message); timeline(topology.session, "failed", error.message, service.id);
-    problem(topology.session, { serviceId, kind: "COMMAND_UNAVAILABLE", severity: "error", detail: error.message, evidence: service.command.display }); refreshAggregate(topology);
+    problem(topology.session, { serviceId, kind: "COMMAND_UNAVAILABLE", severity: "error", detail: error.message, evidence: runtimeCommand.display }); refreshAggregate(topology);
   });
   child.once("exit", (code, signal) => {
     const requested = service.state === "STOPPING" || service.state === "STOPPED";
     service.exitCode = code; service.exitSignal = signal; service.stoppedAt = now(); service.state = requested ? "STOPPED" : "FAILED";
     service.health = { ...service.health, verdict: requested ? "NOT_CAPTURED" : "UNHEALTHY", checkedAt: now(), detail: `Process exited with code ${code ?? "unknown"}${signal ? ` and signal ${signal}` : ""}.` };
     log(topology, service, "system", service.health.detail); timeline(topology.session, requested ? "stopped" : "failed", service.health.detail, service.id);
-    if (!requested) problem(topology.session, { serviceId, kind: "UNEXPECTED_EXIT", severity: "error", detail: service.health.detail, evidence: `Owned PID ${child.pid}; ${service.command.display}` });
+    if (!requested) problem(topology.session, { serviceId, kind: "UNEXPECTED_EXIT", severity: "error", detail: service.health.detail, evidence: `Owned PID ${child.pid}; ${runtimeCommand.display}` });
     if (!requested) propagateDependencyFailure(topology, service);
     if (topology.active.get(service.id)?.child === child) topology.active.delete(service.id); refreshAggregate(topology);
   });
@@ -556,13 +605,18 @@ async function stopOne(topology: ActiveTopology, serviceId: string, timeoutMs = 
     const timer = setTimeout(() => resolve(false), timeoutMs);
     active.child.once("exit", () => { clearTimeout(timer); resolve(true); });
   });
-  await terminateOwned(active, false);
+  const controlPlan = runtimeControlPlan(topology.session.projectId, service.id);
+  const gracefulControl = await runServiceControl(topology.session.projectId, topology.session.id, service, false);
+  gracefulControl.forEach((result) => log(topology, service, "system", `${result.ok ? "Control succeeded" : "Control failed"}: ${result.command}${result.output ? ` · ${result.output}` : ""}`));
+  if (!controlPlan?.stop?.length || gracefulControl.some((result) => !result.ok)) await terminateOwned(active, false);
   if (!(await exited)) {
     const forcedExit = new Promise<boolean>((resolve) => {
       if (active.child.exitCode !== null) return resolve(true);
       const timer = setTimeout(() => resolve(false), 2_000);
       active.child.once("exit", () => { clearTimeout(timer); resolve(true); });
     });
+    const forceControl = await runServiceControl(topology.session.projectId, topology.session.id, service, true);
+    forceControl.forEach((result) => log(topology, service, "system", `${result.ok ? "Force control succeeded" : "Force control failed"}: ${result.command}${result.output ? ` · ${result.output}` : ""}`));
     await terminateOwned(active, true);
     if (!(await forcedExit)) throw new Error(`Owned process ${active.child.pid} did not exit after safe escalation.`);
   }
@@ -621,12 +675,58 @@ export async function stopTopology(projectId: string) {
   const topology = sessions.get(projectId); if (!topology) return undefined;
   const order = dependencyOrder(topology.session.services).reverse();
   for (const serviceId of order) await stopOne(topology, serviceId);
+  const cleanup = await runTopologyCleanup(projectId, topology.session.id, topology.session.services);
+  const cleanupFailures = cleanup.filter((result) => !result.ok);
+  cleanup.forEach((result) => timeline(topology.session, result.ok ? "stopped" : "failed", `${result.ok ? "Runtime cleanup succeeded" : "Runtime cleanup failed"}: ${result.command}${result.output ? ` · ${result.output}` : ""}`));
+  if (cleanupFailures.length) throw new Error(`Topology runtime cleanup failed for ${cleanupFailures.length} command(s).`);
   if (topology.scheduler) clearInterval(topology.scheduler);
   topology.session.endedAt = now(); topology.session.state = "STOPPED"; return cloneSession(topology.session);
 }
 
 export async function restartTopology(projectId: string, projectPath: string) {
   await stopTopology(projectId); sessions.delete(projectId); return startTopology(projectId, projectPath);
+}
+
+export function recordTopologyBrowserTraffic(observation: {
+  url: string;
+  sourceUrl?: string;
+  method?: string;
+  status?: number;
+  resourceType?: string;
+  fromCache?: boolean;
+  error?: string;
+}) {
+  const parse = (value?: string) => {
+    if (!value) return undefined;
+    try { const url = new URL(value); return /^https?:$/.test(url.protocol) ? url : undefined; } catch { return undefined; }
+  };
+  const targetUrl = parse(observation.url); if (!targetUrl) return false;
+  const sourceUrl = parse(observation.sourceUrl);
+  const serviceAt = (session: TopologySession, url?: URL) => {
+    if (!url || !["127.0.0.1", "localhost"].includes(url.hostname)) return undefined;
+    const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
+    return session.services.find((service) => service.port.allocated === port);
+  };
+  for (const topology of sessions.values()) {
+    if (topology.session.endedAt) continue;
+    const source = serviceAt(topology.session, sourceUrl);
+    const destination = serviceAt(topology.session, targetUrl);
+    if (!source && !destination) continue;
+    const safeUrl = `${targetUrl.origin}${targetUrl.pathname}${targetUrl.search ? "?[REDACTED_QUERY]" : ""}`;
+    const status = observation.error ? `ERROR ${observation.error}` : observation.status === undefined ? "status unavailable" : `HTTP ${observation.status}`;
+    const sourceLabel = source?.id || (destination ? "browser" : "UNKNOWN");
+    const destinationLabel = destination?.id || targetUrl.origin;
+    topology.session.networkEvidence = [...topology.session.networkEvidence, {
+      at: now(),
+      sourceServiceId: source?.id,
+      destinationServiceId: destination?.id,
+      relationship: "OBSERVED_TRAFFIC",
+      detail: `${observation.method || "GET"} ${safeUrl} · ${status} · ${sourceLabel} -> ${destinationLabel}`,
+      evidence: `Electron session.webRequest${observation.resourceType ? ` · ${observation.resourceType}` : ""}${observation.fromCache ? " · cache" : ""}; request bodies, cookies, authorization headers, and query values are not captured.`,
+    }].slice(-MAX_NETWORK);
+    return true;
+  }
+  return false;
 }
 
 export async function stopAllTopologies() {

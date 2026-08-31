@@ -76,6 +76,7 @@ await runStep("workflow-pins", process.execPath, ["scripts/verify-workflow-pins.
 const installOk = await runStep("npm-ci", "npm", ["ci"]);
 
 if (installOk) {
+  await runStep("npm-audit", "npm", ["audit", "--audit-level=moderate"]);
   await runStep("typecheck", "npm", ["run", "typecheck"]);
   await runStep("lint", "npm", ["run", "lint"]);
   await runStep("tests", "npm", ["run", "test"]);
@@ -99,6 +100,7 @@ if (installOk) {
     skipStep("e2e", "npm run test:e2e", "Production build failed; E2E server artifact is unavailable.");
   }
 } else {
+  skipStep("npm-audit", "npm audit --audit-level=moderate", "npm ci failed; dependency audit cannot run truthfully.");
   for (const [id, command] of [
     ["typecheck", "npm run typecheck"],
     ["lint", "npm run lint"],
@@ -111,7 +113,7 @@ if (installOk) {
   }
 }
 
-const required = ["workflow-pins", "npm-ci", "typecheck", "lint", "tests", "build", "e2e"];
+const required = ["workflow-pins", "npm-ci", "npm-audit", "typecheck", "lint", "tests", "build", "e2e"];
 if (installPlaywright) required.splice(required.length - 1, 0, "playwright-browser");
 const byId = new Map(evidence.steps.map((step) => [step.id, step]));
 const pass = required.every((id) => byId.get(id)?.state === "PASS");

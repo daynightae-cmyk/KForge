@@ -495,7 +495,7 @@ export async function candidateProjectPaths(root = getWorkspaceRoot()) {
   const hasProjectMarker = async (candidate: string) => {
     const entries = await fs.readdir(candidate, { withFileTypes: true }).catch(() => [] as Dirent[]);
     const names = new Set(entries.map((entry) => entry.name));
-    const markers = [".git", "package.json", "pyproject.toml", "requirements.txt", "setup.py", "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "build.gradle.kts", "composer.json"];
+    const markers = [".git", "package.json", "pyproject.toml", "requirements.txt", "setup.py", "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "build.gradle.kts", "composer.json", "Procfile", "compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"];
     return markers.some((marker) => names.has(marker)) || entries.some((entry) => entry.isFile() && (entry.name.endsWith(".csproj") || entry.name.endsWith(".sln")));
   };
   const knownPaths = [...openedPaths, ...(await listProjectCollectionEntries(root)).map((entry) => entry.path)];

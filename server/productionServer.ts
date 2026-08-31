@@ -4,7 +4,9 @@ import path from "path";
 import express from "express";
 import { createServer } from "./index";
 import { stopAllPreviews } from "./services/previewRuntime";
-import { stopAllTopologies } from "./services/topologyRuntime";
+import { recordTopologyBrowserTraffic, stopAllTopologies } from "./services/topologyRuntime";
+
+export { recordTopologyBrowserTraffic };
 
 export interface KForgeProductionServerOptions {
   applicationRoot: string;
