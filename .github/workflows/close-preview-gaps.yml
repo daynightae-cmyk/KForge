@@ -5,7 +5,8 @@ on:
     branches:
       - main
     paths:
-      - scripts/close-preview-gaps.mjs
+      - scripts/close-preview-gaps.py
+      - .github/workflows/close-preview-gaps.yml
 
 permissions:
   contents: write
