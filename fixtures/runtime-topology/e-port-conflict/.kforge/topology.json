@@ -1,0 +1,1 @@
+{"services":[{"id":"web","name":"Conflicting Web","kind":"frontend","command":["node","../server.cjs"],"port":43123,"health":{"type":"HTTP"},"browserEntrypoint":"/"}]}

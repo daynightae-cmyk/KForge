@@ -1,0 +1,1 @@
+{"services":[{"id":"crash","name":"Crashing Service","kind":"runtime","command":["node","../crash.cjs"],"health":{"type":"PROCESS"}}]}

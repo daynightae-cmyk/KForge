@@ -4,6 +4,7 @@ import type { CommandResult, ProjectSummary, WorkspaceActionDescriptor } from "@
 import type { SurfaceProps, RecordRow } from "./surfaceContracts";
 import { fetchJson, jsonRequest } from "./api";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import TopologyLab from "./TopologyLab";
 
 type PreviewStatus = {
   projectId: string;
@@ -325,7 +326,8 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
   const stageWidth = fixedViewport && viewportWidth ? Math.round(viewportWidth * fitScale) : undefined;
   const stageHeight = fixedViewport && viewportHeight ? Math.round(viewportHeight * fitScale) : undefined;
 
-  return <section className="flex min-h-0 flex-col gap-3" aria-label="KForge Preview Workbench" data-preview-state={data.state} data-preview-studio="3">
+  return <section className="flex min-h-0 flex-col gap-3" aria-label="KForge Preview Workbench" data-preview-state={data.state} data-preview-studio="3" data-preview-experience="5">
+    <TopologyLab project={project} onExecution={onExecution} onInspectorContext={onInspectorContext} />
     <header className="rounded-xl border bg-card shadow-sm">
       <div className="flex min-h-10 items-center gap-2 border-b px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">

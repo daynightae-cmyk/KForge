@@ -246,7 +246,7 @@ http.createServer((_request, response) => { response.writeHead(200, { "content-t
     $log = Get-Content -LiteralPath $logPath -Raw
     Assert-True ($log -match 'Starting KNOuX Forge .*\(packaged runtime\)') 'Installed runtime did not identify itself as packaged.'
     Assert-True ($log -match 'KNOuX Forge window loaded\.') 'Installed application window did not load.'
-    Assert-True ($log -match 'Loopback engine and managed Preview processes stopped\.') 'Installed runtime did not log controlled process cleanup.'
+    Assert-True ($log -match 'Loopback engine and managed Preview and topology processes stopped\.') 'Installed runtime did not log controlled Preview and topology process cleanup.'
     Assert-True ($log -notmatch [regex]::Escape($projectRoot)) 'Installed runtime log unexpectedly depends on the source repository path.'
     $record.installedRuntime = 'PASS'
     $record.sourceIndependence = 'PASS_LOG_AND_RESOURCE_CHECK'

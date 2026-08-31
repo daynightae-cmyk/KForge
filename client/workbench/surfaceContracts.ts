@@ -84,7 +84,7 @@ export type InspectorAction = {
 };
 
 export type InspectorContext = {
-  kind: "online-item" | "preview-runtime" | "project" | "execution" | null;
+  kind: "online-item" | "preview-runtime" | "topology-service" | "project" | "execution" | null;
   item?: MarketplaceItem | null;
   title?: string;
   view?: string;
@@ -93,6 +93,8 @@ export type InspectorContext = {
   actions?: InspectorAction[];
   operation?: RecordRow | null;
   preview?: RecordRow | null;
+  service?: RecordRow | null;
+  topologySession?: RecordRow | null;
 };
 
 export type CanonicalInspectorProps = {

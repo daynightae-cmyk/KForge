@@ -2,6 +2,7 @@ import type { ProjectSummary } from "../../shared/workspace";
 import { listTasks, cancelTask } from "./tasks";
 import { getPreviewStatus, stopPreviewAndWait } from "./previewRuntime";
 import { setProjectTrust } from "./projectTrust";
+import { getTopologySession, stopTopology } from "./topologyRuntime";
 
 export interface ProjectAuthorityRevocationReport {
   revokedAt: string;
@@ -15,6 +16,13 @@ export interface ProjectAuthorityRevocationReport {
     stoppedAt?: string;
     stopError?: string;
   };
+  topology: {
+    before: string;
+    after: string;
+    sessionId?: string;
+    ownedPids: number[];
+    stopError?: string;
+  };
   tasks: {
     cancelledBeforeExecution: Array<{ id: string; kind: string; priorStatus: string }>;
     alreadyRunning: Array<{ id: string; kind: string; status: string; startedAt: string }>;
@@ -24,6 +32,7 @@ export interface ProjectAuthorityRevocationReport {
     futureTrustGatedRequests: "BLOCKED_UNTIL_RETRUSTED";
     queuedTasks: "CANCELLED_WHEN_STILL_QUEUED";
     activePreview: "STOP_REQUESTED_AND_AWAITED";
+    activeTopology: "STOP_REQUESTED_AND_AWAITED";
     alreadyRunningCommands: "NOT_RETROACTIVELY_UNDONE";
     sourceMutationByRevocation: false;
     remoteContactByRevocation: false;
@@ -65,6 +74,13 @@ export async function revokeProjectAuthority(workspaceRoot: string, project: Pro
       previewAfter = getPreviewStatus(project.id);
     }
   }
+  const topologyBefore = getTopologySession(project.id);
+  let topologyAfter = topologyBefore;
+  let topologyStopError: string | undefined;
+  if (topologyBefore && ["STARTING", "RUNNING", "HEALTHY", "DEGRADED"].includes(topologyBefore.state)) {
+    try { topologyAfter = await stopTopology(project.id); }
+    catch (error) { topologyStopError = error instanceof Error ? error.message : String(error); topologyAfter = getTopologySession(project.id); }
+  }
 
   return {
     revokedAt,
@@ -78,11 +94,19 @@ export async function revokeProjectAuthority(workspaceRoot: string, project: Pro
       stoppedAt: previewAfter.stoppedAt,
       stopError,
     },
+    topology: {
+      before: topologyBefore?.state || "NO_SESSION",
+      after: topologyAfter?.state || "NO_SESSION",
+      sessionId: topologyBefore?.id,
+      ownedPids: topologyBefore?.services.flatMap((service) => service.processId ? [service.processId] : []) || [],
+      stopError: topologyStopError,
+    },
     tasks: { cancelledBeforeExecution, alreadyRunning, terminalUnchanged },
     guarantees: {
       futureTrustGatedRequests: "BLOCKED_UNTIL_RETRUSTED",
       queuedTasks: "CANCELLED_WHEN_STILL_QUEUED",
       activePreview: "STOP_REQUESTED_AND_AWAITED",
+      activeTopology: "STOP_REQUESTED_AND_AWAITED",
       alreadyRunningCommands: "NOT_RETROACTIVELY_UNDONE",
       sourceMutationByRevocation: false,
       remoteContactByRevocation: false,

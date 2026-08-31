@@ -4,6 +4,7 @@ import path from "path";
 import express from "express";
 import { createServer } from "./index";
 import { stopAllPreviews } from "./services/previewRuntime";
+import { stopAllTopologies } from "./services/topologyRuntime";
 
 export interface KForgeProductionServerOptions {
   applicationRoot: string;
@@ -85,7 +86,7 @@ export async function startKForgeProductionServer({
     close: async () => {
       if (closed) return;
       closed = true;
-      await stopAllPreviews();
+      await Promise.all([stopAllPreviews(), stopAllTopologies()]);
       await closeHttpServer(server);
     },
   };

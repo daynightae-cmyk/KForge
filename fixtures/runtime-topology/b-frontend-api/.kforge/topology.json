@@ -1,0 +1,1 @@
+{"services":[{"id":"api","name":"API","kind":"api","command":["node","../server.cjs"],"health":{"type":"HTTP"}},{"id":"web","name":"Web","kind":"frontend","command":["node","../server.cjs"],"dependencies":["api"],"health":{"type":"HTTP"},"browserEntrypoint":"/"}]}

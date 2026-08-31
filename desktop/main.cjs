@@ -101,7 +101,7 @@ async function stopLocalRuntime() {
   const current = productionServer;
   productionServer = null;
   await current.close();
-  writeLog("INFO", "Loopback engine and managed Preview processes stopped.");
+  writeLog("INFO", "Loopback engine and managed Preview and topology processes stopped.");
 }
 
 async function startApplication() {

@@ -41,6 +41,8 @@ pnpm-debug.log*
 
 # Local Manus audit metadata
 .kforge/
+!fixtures/runtime-topology/**/.kforge/
+!fixtures/runtime-topology/**/.kforge/topology.json
 _Knoux_Audit/
 _Knoux_Extracted/
 
