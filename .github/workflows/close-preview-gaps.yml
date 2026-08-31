@@ -1,0 +1,64 @@
+name: KForge Preview Gap Closer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/close-preview-gaps.mjs
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kforge-preview-gap-closer
+  cancel-in-progress: false
+
+jobs:
+  close-gaps:
+    name: apply verified preview gap closure
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout staging ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Apply topology and observability integration
+        run: node scripts/close-preview-gaps.mjs
+
+      - name: Refresh vulnerable transitive lock entries
+        shell: bash
+        run: |
+          npm audit --json > audit-before.json || true
+          npm audit fix --package-lock-only --ignore-scripts || true
+          npm audit --json > audit-after.json || true
+          node -e "const fs=require('fs');for(const n of ['audit-before.json','audit-after.json']){const x=JSON.parse(fs.readFileSync(n));console.log(n, x.metadata?.vulnerabilities || x.vulnerabilities || {})}"
+
+      - name: Remove one-shot bootstrap
+        shell: bash
+        run: |
+          rm -f scripts/close-preview-gaps.mjs
+          rm -f .github/workflows/close-preview-gaps.yml
+          rm -f audit-before.json audit-after.json
+
+      - name: Commit integrated implementation
+        shell: bash
+        run: |
+          git config user.name "DAY NIGHT DELIVERY SERVICES"
+          git config user.email "293348050+daynightae-cmyk@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes produced by gap closer."
+            exit 1
+          fi
+          git commit -m "feat(preview): close topology observability gaps"
+          git push origin HEAD:main
