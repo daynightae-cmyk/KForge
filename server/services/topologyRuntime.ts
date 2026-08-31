@@ -397,9 +397,34 @@ function propagateDependencyFailure(topology: ActiveTopology, failed: RuntimeSer
   }
 }
 
+function reconcileDependencyStates(topology: ActiveTopology) {
+  for (const service of topology.session.services) {
+    if (!["STARTING", "RUNNING", "HEALTHY", "DEGRADED"].includes(service.state)) continue;
+    for (const edge of service.dependencies) {
+      const dependency = topology.session.services.find((candidate) => candidate.id === edge.serviceId);
+      if (dependency && ["HEALTHY", "RUNNING"].includes(dependency.state)) continue;
+      if (["HEALTHY", "RUNNING"].includes(service.state)) service.state = "DEGRADED";
+      const dependencyName = dependency?.name || edge.serviceId;
+      const dependencyState = dependency?.state || "UNKNOWN";
+      problem(topology.session, {
+        serviceId: service.id,
+        kind: "DEPENDENCY_UNAVAILABLE",
+        severity: "error",
+        detail: `${service.name} is degraded because dependency ${dependencyName} is ${dependencyState}.`,
+        evidence: edge.evidence.source,
+      });
+    }
+  }
+}
+
 function startScheduler(topology: ActiveTopology) {
   if (topology.scheduler) return;
-  topology.scheduler = setInterval(() => { void Promise.all(topology.session.services.map((service) => probeService(topology, service))).then(() => refreshAggregate(topology)); }, HEALTH_INTERVAL_MS);
+  topology.scheduler = setInterval(() => {
+    void Promise.all(topology.session.services.map((service) => probeService(topology, service))).then(() => {
+      reconcileDependencyStates(topology);
+      refreshAggregate(topology);
+    });
+  }, HEALTH_INTERVAL_MS);
   topology.scheduler.unref();
 }
 
@@ -586,7 +611,10 @@ export async function restartTopologyService(projectId: string, projectPath: str
 
 export async function checkTopologyHealth(projectId: string) {
   const topology = sessions.get(projectId); if (!topology) return undefined;
-  await Promise.all(topology.session.services.map((service) => probeService(topology, service))); refreshAggregate(topology); return cloneSession(topology.session);
+  await Promise.all(topology.session.services.map((service) => probeService(topology, service)));
+  reconcileDependencyStates(topology);
+  refreshAggregate(topology);
+  return cloneSession(topology.session);
 }
 
 export async function stopTopology(projectId: string) {
