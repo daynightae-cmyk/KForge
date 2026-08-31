@@ -120,7 +120,7 @@ export default function TopologyLab({ project, onExecution, onInspectorContext }
       <ServerCog size={16} className="text-violet-400" /><div className="mr-auto"><h2 className="text-sm font-semibold">Full-stack Topology Lab</h2><p className="text-[11px] text-muted-foreground">Manifest-backed services · owned processes · measured health</p></div>
       <StatusBadge value={session?.state || discovery?.state || "DISCOVERING"} />
       <button title={actionReason || (busy ? "Another topology operation is in progress." : !services.length ? "No runnable services were discovered." : undefined)} disabled={project.trust !== "trusted" || !services.length || Boolean(busy)} onClick={() => void operate("start")}><Play size={13} /> Start topology</button>
-      <button title={actionReason || (busy ? "Another topology operation is in progress." : !session ? "No topology session exists." : undefined)} disabled={project.trust !== "trusted" || !session || Boolean(busy)} onClick={() => void operate("restart")}><RotateCw size={13} /> Restart</button>
+      <button title={actionReason || (busy ? "Another topology operation is in progress." : !session ? "No topology session exists." : undefined)} disabled={project.trust !== "trusted" || !session || Boolean(busy)} onClick={() => void operate("restart")}><RotateCw size={13} /> Restart topology</button>
       <button title={actionReason || (busy ? "Another topology operation is in progress." : !session ? "No topology session exists." : undefined)} disabled={project.trust !== "trusted" || !session || Boolean(busy)} onClick={() => void operate("stop")}><Square size={13} /> Stop all</button>
     </header>
 
@@ -159,7 +159,7 @@ export default function TopologyLab({ project, onExecution, onInspectorContext }
           </div>
         </section>
 
-        <aside className="border-l p-3" aria-label="Topology service inspector">
+        <section className="border-l p-3" aria-label="Topology service detail panel">
           <div className="flex items-center gap-2"><strong className="mr-auto text-xs">Service inspector</strong><StatusBadge value={selected?.state || "UNKNOWN"} /></div>
           {selected ? <dl className="mt-3 grid gap-2 text-[11px]">
             <div><dt className="text-muted-foreground">Identity / kind</dt><dd>{selected.name} · {selected.kind}</dd></div>
@@ -174,16 +174,16 @@ export default function TopologyLab({ project, onExecution, onInspectorContext }
             <div><dt className="text-muted-foreground">Network behavior</dt><dd>{selected.networkPolicy}</dd></div>
             <div><dt className="text-muted-foreground">Restart policy</dt><dd>{selected.restartPolicy} (default)</dd></div>
           </dl> : null}
-        </aside>
+        </section>
       </div>
 
       <section className="border-t" aria-label="Topology evidence dock">
         <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
           <button aria-pressed={tab === "console"} onClick={() => setTab("console")}><TerminalSquare size={12} /> Console</button>
-          <button aria-pressed={tab === "problems"} onClick={() => setTab("problems")}><TriangleAlert size={12} /> Problems {session?.problems.length || 0}</button>
+          <button aria-pressed={tab === "problems"} onClick={() => setTab("problems")}>Topology issues {session?.problems.length || 0}</button>
           <button aria-pressed={tab === "health"} onClick={() => setTab("health")}>Health</button>
           <button aria-pressed={tab === "timeline"} onClick={() => setTab("timeline")}>Timeline</button>
-          <button aria-pressed={tab === "network"} onClick={() => setTab("network")}>Network topology</button>
+          <button aria-pressed={tab === "network"} onClick={() => setTab("network")}>Topology links</button>
         </div>
         <div className="max-h-44 overflow-auto p-3 text-[11px]" tabIndex={0}>
           {tab === "console" ? <pre className="whitespace-pre-wrap break-words">{session?.logs.length ? session.logs.map((line) => `[${line.serviceId.toUpperCase()}] ${line.message}`).join("\n") : "No process output captured."}</pre> : null}
