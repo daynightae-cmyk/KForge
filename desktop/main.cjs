@@ -211,7 +211,7 @@ if (!app.requestSingleInstanceLock()) {
     const trafficFilter = { urls: ["http://*/*", "https://*/*"] };
     session.defaultSession.webRequest.onCompleted(trafficFilter, (details) => recordDesktopTraffic(details));
     session.defaultSession.webRequest.onErrorOccurred(trafficFilter, (details) => recordDesktopTraffic(details, details.error || "request failed"));
-    writeLog(    writeLog("INFO", `Starting ${PRODUCT_NAME} ${app.getVersion()} (${app.isPackaged ? "packaged" : "development"} runtime).`);
+    writeLog("INFO", `Starting ${PRODUCT_NAME} ${app.getVersion()} (${app.isPackaged ? "packaged" : "development"} runtime).`);
     await startApplication();
   });
 }
