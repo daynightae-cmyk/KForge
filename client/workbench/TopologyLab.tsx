@@ -179,10 +179,10 @@ export default function TopologyLab({ project, onExecution, onInspectorContext }
 
       <section className="border-t" aria-label="Topology evidence dock">
         <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
-          <button aria-pressed={tab === "console"} onClick={() => setTab("console")}><TerminalSquare size={12} /> Console</button>
+          <button aria-pressed={tab === "console"} onClick={() => setTab("console")}><TerminalSquare size={12} /> Topology console</button>
           <button aria-pressed={tab === "problems"} onClick={() => setTab("problems")}>Topology issues {session?.problems.length || 0}</button>
-          <button aria-pressed={tab === "health"} onClick={() => setTab("health")}>Health</button>
-          <button aria-pressed={tab === "timeline"} onClick={() => setTab("timeline")}>Timeline</button>
+          <button aria-pressed={tab === "health"} onClick={() => setTab("health")}>Topology health</button>
+          <button aria-pressed={tab === "timeline"} onClick={() => setTab("timeline")}>Topology timeline</button>
           <button aria-pressed={tab === "network"} onClick={() => setTab("network")}>Topology links</button>
         </div>
         <div className="max-h-44 overflow-auto p-3 text-[11px]" tabIndex={0}>
