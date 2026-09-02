@@ -27,14 +27,15 @@ The launcher:
 
 1. verifies Git, Node.js, and npm are available;
 2. clones `main` if the checkout is missing;
-3. normalizes `origin` to the canonical KForge repository;
-4. fetches/prunes GitHub state and switches to local `main`;
-5. stashes uncommitted tracked/untracked work before synchronization and reapplies it afterward;
+3. preserves uncommitted tracked/untracked work before any branch switch;
+4. normalizes `origin` to the canonical KForge repository;
+5. fetches/prunes GitHub state and switches to local `main`;
 6. fast-forwards with `git pull --ff-only origin main` and proves local `HEAD == origin/main`;
-7. runs `npm ci` and `npm run typecheck` by default;
-8. refuses to kill an unrelated process when the selected port is occupied;
-9. starts Vite on `127.0.0.1:8081` with `--strictPort`;
-10. waits for `/api/ping` before opening `/workspace` in the default browser.
+7. reapplies preserved work automatically only when it originated on `main`; branch-specific dirty work remains safely stashed instead of being applied to `main`;
+8. runs `npm ci` and `npm run typecheck` by default;
+9. refuses to kill an unrelated process when the selected port is occupied;
+10. starts Vite on `127.0.0.1:8081` with `--strictPort`;
+11. waits for `/api/ping` before opening `/workspace` in the default browser.
 
 Use `-Port <number>` or `-WorkspaceRoot <path>` when needed. `-SkipInstall` and `-SkipTypecheck` are available only for deliberate local bypasses.
 
