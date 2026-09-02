@@ -64,25 +64,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $RepoPath '.git'))) {
   throw "The configured RepoPath is not a Git repository: $RepoPath"
 }
 
-Write-Step 'Normalizing origin and fetching remote main'
-$origin = (& git remote get-url origin 2>$null)
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($origin)) {
-  Invoke-Git remote add origin $RemoteUrl
-} elseif ($origin.Trim() -ne $RemoteUrl) {
-  Write-Host "Updating origin from '$($origin.Trim())' to '$RemoteUrl'." -ForegroundColor Yellow
-  Invoke-Git remote set-url origin $RemoteUrl
-}
-
-Invoke-Git fetch origin --prune
-
-$hasLocalMain = $false
-& git show-ref --verify --quiet refs/heads/main
-if ($LASTEXITCODE -eq 0) { $hasLocalMain = $true }
-
-if ($hasLocalMain) {
-  Invoke-Git switch main
-} else {
-  Invoke-Git switch --create main --track origin/main
+$originalBranch = (& git branch --show-current).Trim()
+if ([string]::IsNullOrWhiteSpace($originalBranch)) {
+  $originalBranch = '(detached HEAD)'
 }
 
 $dirty = (& git status --porcelain)
@@ -90,7 +74,7 @@ $stashCreated = $false
 $stashMessage = "kforge-local-sync-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 
 if ($dirty) {
-  Write-Step 'Preserving local uncommitted work before sync'
+  Write-Step "Preserving uncommitted work from $originalBranch before branch synchronization"
   & git stash push --include-untracked --message $stashMessage
   if ($LASTEXITCODE -ne 0) {
     throw 'Unable to stash local changes safely; remote sync was not attempted.'
@@ -99,6 +83,27 @@ if ($dirty) {
 }
 
 try {
+  Write-Step 'Normalizing origin and fetching remote main'
+  $origin = (& git remote get-url origin 2>$null)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($origin)) {
+    Invoke-Git remote add origin $RemoteUrl
+  } elseif ($origin.Trim() -ne $RemoteUrl) {
+    Write-Host "Updating origin from '$($origin.Trim())' to '$RemoteUrl'." -ForegroundColor Yellow
+    Invoke-Git remote set-url origin $RemoteUrl
+  }
+
+  Invoke-Git fetch origin --prune
+
+  $hasLocalMain = $false
+  & git show-ref --verify --quiet refs/heads/main
+  if ($LASTEXITCODE -eq 0) { $hasLocalMain = $true }
+
+  if ($hasLocalMain) {
+    Invoke-Git switch main
+  } else {
+    Invoke-Git switch --create main --track origin/main
+  }
+
   Write-Step 'Fast-forwarding local main from origin/main'
   Invoke-Git pull --ff-only origin main
 
@@ -110,15 +115,25 @@ try {
 
   Write-Host "Synchronized SHA: $localSha" -ForegroundColor Green
 }
-finally {
+catch {
   if ($stashCreated) {
-    Write-Step 'Reapplying preserved local work'
+    Write-Host "Your uncommitted work remains safely stored in Git stash '$stashMessage'." -ForegroundColor Yellow
+  }
+  throw
+}
+
+if ($stashCreated) {
+  if ($originalBranch -eq 'main') {
+    Write-Step 'Reapplying preserved main-branch work'
     & git stash pop
     if ($LASTEXITCODE -ne 0) {
       Write-Host 'The remote main update is present, but your preserved local changes produced conflicts while being reapplied.' -ForegroundColor Red
-      Write-Host 'Resolve the conflicts before starting KForge. The stash entry is retained by Git when pop fails.' -ForegroundColor Yellow
-      throw 'Local changes could not be reapplied cleanly.'
+      Write-Host 'Resolve the conflicts before starting KForge. Git retains the stash entry when pop fails.' -ForegroundColor Yellow
+      throw 'Local main changes could not be reapplied cleanly.'
     }
+  } else {
+    Write-Host "Preserved local changes came from '$originalBranch' and were NOT applied onto main automatically." -ForegroundColor Yellow
+    Write-Host "They remain in Git stash '$stashMessage' to avoid contaminating main with branch-specific work." -ForegroundColor Yellow
   }
 }
 
