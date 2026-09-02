@@ -50,7 +50,9 @@ Copy values from `.env.example` into the process environment as needed. The prod
 
 ## One-command Windows sync + preview
 
-For the primary Windows development checkout, the repository includes `scripts/KForge-Local-Preview.ps1`. It safely synchronizes `main` from GitHub, preserves and reapplies uncommitted local work through a temporary Git stash, installs the exact lockfile dependency set, runs TypeScript verification, starts KForge on port `8081`, waits for `/api/ping`, and opens the engineering workspace automatically.
+For the primary Windows development checkout, the repository includes `scripts/KForge-Local-Preview.ps1`. It safely synchronizes `main` from GitHub, protects uncommitted local work through Git stash, installs the exact lockfile dependency set, runs TypeScript verification, starts KForge on port `8081`, waits for `/api/ping`, and opens the engineering workspace automatically.
+
+If uncommitted work originated on `main`, the launcher reapplies it after the fast-forward. If it originated on another branch, the launcher leaves it safely stashed instead of contaminating `main` with branch-specific changes.
 
 Its default local checkout is:
 
