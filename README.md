@@ -6,16 +6,17 @@ KForge is under active product-completion work. Verification is SHA-scoped: a gr
 
 ## Reference verification baseline
 
-A dated authoritative reference is GitHub Actions `KForge Verification Gate` **Run #208** for SHA `3c1b6f86309b8a3b8a533b0da4e5402df01935f4` on 2026-08-30. That run recorded:
+The latest fully completed authoritative reference currently recorded is GitHub Actions `KForge Verification Gate` **Run #246** for SHA `60cb2e1794701c98cdbad45dac4a27043b5b7d7d` on 2026-08-31. That run recorded:
 
 - immutable workflow-action pin verification: PASS;
+- locked dependency installation and `npm audit`: PASS with **0 vulnerabilities**;
 - typecheck: PASS;
-- lint: PASS across 224 source files;
-- Vitest: 30 test files, 146 passed, 1 explicitly skipped opt-in benchmark;
+- lint: PASS across 240 source files;
+- Vitest: 33 test files, 161 passed, 1 explicitly skipped opt-in benchmark;
 - production client/server build: PASS;
-- Playwright browser acceptance: 58/58 passed, including responsive, keyboard, Axe accessibility, offline-network, Preview, Marketplace, Release, Quality, Developer, Git, Projects, and System evidence;
-- Windows x64 NSIS build and installed-runtime/installer lifecycle: PASS;
-- installer SHA-256: `5db31b54ea8b54deb11fcff290598fe2face936f00ac6255f863d4d84facce49`.
+- Playwright browser acceptance: 61/61 passed, including responsive, keyboard, Axe accessibility, offline-network, Preview Studio, persistent Preview, topology lab, Marketplace, Release, Quality, Developer, Git, Projects, Online, Settings, and System evidence;
+- Windows x64 NSIS package gate: PASS;
+- installed Windows runtime and NSIS lifecycle verification: PASS.
 
 This is a reference snapshot, not a claim that every later HEAD is green. For a newer commit, inspect that exact SHA's Actions run and artifacts.
 
@@ -31,6 +32,7 @@ This is a reference snapshot, not a claim that every later HEAD is green. For a 
 - Global Search across real local product entities with visible coverage and safety limits.
 - An exact KForge-on-KForge Self Audit that persists evidence atomically and proves restart/reload only when a different server instance reads it.
 - Specialized Workbench surfaces across Projects, AI, Online, Intelligence, Quality, Developer Tools, Remote/Git, Release, and System; specialization describes the product UI path, not the availability of every external provider.
+- Preview Experience 5.0 topology orchestration for real multi-process project layouts with dependency ordering, owned process lifecycle, port/listener evidence, health, failure propagation, and service-scoped logs.
 
 ## Requirements and installation
 
@@ -45,6 +47,30 @@ npm ci
 Copy values from `.env.example` into the process environment as needed. The production server does not load `.env.example` automatically.
 
 `KFORGE_WORKSPACE_ROOT` should point to the parent directory whose immediate child repositories KForge should discover. If it is omitted, the server uses the parent of its current working directory.
+
+## One-command Windows sync + preview
+
+For the primary Windows development checkout, the repository includes `scripts/KForge-Local-Preview.ps1`. It safely synchronizes `main` from GitHub, preserves and reapplies uncommitted local work through a temporary Git stash, installs the exact lockfile dependency set, runs TypeScript verification, starts KForge on port `8081`, waits for `/api/ping`, and opens the engineering workspace automatically.
+
+Its default local checkout is:
+
+```text
+D:\Knoux Projects\Knoux_Project_Center\01_Ready\KForge
+```
+
+Run it from any PowerShell window:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "D:\Knoux Projects\Knoux_Project_Center\01_Ready\KForge\scripts\KForge-Local-Preview.ps1"
+```
+
+After synchronization it opens:
+
+```text
+http://127.0.0.1:8081/workspace
+```
+
+The launcher does not kill an unrelated process if port `8081` is already occupied. It stops with the owning PID/process name instead. Use `-Port <number>` to select another port, `-WorkspaceRoot <path>` to scan a different repository parent, or `-SkipInstall` / `-SkipTypecheck` only when intentionally bypassing those local preparation steps.
 
 ## Windows desktop installer
 
@@ -66,7 +92,7 @@ The current installer is an **UNSIGNED DEVELOPMENT/RELEASE ARTIFACT** for trust 
 
 ## Development and production
 
-Development uses Vite on port `8080`:
+Plain development mode uses Vite on port `8080` unless a CLI port override is supplied:
 
 ```powershell
 $env:KFORGE_WORKSPACE_ROOT='D:\Projects'
@@ -127,7 +153,7 @@ KForge-managed settings, tasks, trust decisions, collections, caches, snapshots,
 - Preview captures the local process output and KForge health probes. Its Workbench/browser acceptance is covered by Playwright in CI, but KForge still does not claim target-application browser-console or full browser-network telemetry without a dedicated telemetry bridge.
 - Remote CI and GitHub Checks cannot pass from local Git state alone.
 - Browser, responsive, keyboard, and Axe acceptance are exercised by the authoritative CI browser suite. A different host that lacks browser dependencies must report that local constraint rather than converting it into a repository-wide limitation.
-- `npm ci` currently reports 2 moderate-severity dependency vulnerabilities and pending install-script review for `@swc/core` and `esbuild`; these are not represented as remediated.
+- The latest verified baseline reports 0 dependency vulnerabilities. npm still reports pending install-script review for `@swc/core` and `esbuild`; this is not represented as an approved trust decision.
 - Branch protection, required status enforcement, trusted Windows publisher identity, and external-provider availability are separate evidence/policy domains and are not inferred from a green application test run.
 
 See [PROJECT_STATUS.md](PROJECT_STATUS.md), [RUN.md](RUN.md), [docs/KFORGE-CAPABILITY-MATRIX.md](docs/KFORGE-CAPABILITY-MATRIX.md), and [docs/DESKTOP_ARCHITECTURE_DECISION.md](docs/DESKTOP_ARCHITECTURE_DECISION.md) for evidence and capability-level status. Licensing terms are in [LICENSE](LICENSE).
