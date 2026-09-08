@@ -50,20 +50,20 @@ describe("repository documentation truth contract", () => {
 
     expect(status).toMatch(/npm audit.*0 vulnerabilities/i);
     expect(matrix).toMatch(/npm audit.*0 vulnerabilities/i);
-    expect(dependencyAudit).toContain("Run #261");
+    expect(dependencyAudit).toContain("Run #271");
     expect(dependencyAudit).toContain("0 vulnerabilities");
     expect(combined).not.toContain("dependency audit still reports 2 moderate-severity vulnerabilities");
     expect(combined).not.toContain("these are not marked fixed");
   });
 
-  it("keeps the verified Preview console boundary and closed client chunk warning aligned with Run #261", () => {
+  it("keeps the verified Preview console boundary and closed client chunk warning aligned with Run #271", () => {
     const status = rootFile("PROJECT_STATUS.md");
     const matrix = capabilityMatrix();
     const dependencyAudit = rootFile("docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md");
     const combined = `${status}\n${matrix}\n${dependencyAudit}`;
 
-    expect(status).toContain("Run #261");
-    expect(status).toContain("52e29d5340e1cedea490a57cffa774b33911efcb");
+    expect(status).toContain("Run #271");
+    expect(status).toContain("a7464f3d3f1758b1a9725304719e0ebaacb79f3b");
     expect(status).toContain("487.85 kB");
     expect(matrix).toContain("browser-console capture attributed to the active KForge-owned loopback Preview");
     expect(dependencyAudit).toContain("query vendor chunk 26.69 kB");
@@ -87,7 +87,7 @@ describe("repository documentation truth contract", () => {
     });
     expect(npmrc).toContain("strict-allow-scripts=true");
     expect(npmrc).not.toContain("dangerously-allow-all-scripts=true");
-    expect(status).toContain("Run #261");
+    expect(status).toContain("Run #271");
     expect(matrix).toContain("Dependency install-script policy");
     expect(dependencyAudit).toContain("strict-allow-scripts=true");
     expect(dependencyAudit).toContain("pending install-script review");
@@ -95,4 +95,34 @@ describe("repository documentation truth contract", () => {
     expect(activeDocs).not.toContain("pending install-script review");
     expect(activeDocs).not.toContain("approval is not inferred");
   });
+
+  it("keeps current branch topology and dependency pruning aligned with Run #271", () => {
+    const manifest = JSON.parse(rootFile("package.json")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
+    const status = rootFile("PROJECT_STATUS.md");
+    const readme = rootFile("README.md");
+    const matrix = capabilityMatrix();
+    const activeDocs = `${status}\n${readme}\n${matrix}`;
+
+    expect(status).toContain("Run #271");
+    expect(status).toContain("691 packages");
+    expect(status).toContain("692 packages");
+    expect(readme).toContain("Run #271");
+    expect(readme).toContain("strict-allow-scripts=true");
+    expect(activeDocs).not.toContain("wip/codex-workbench-handoff");
+    expect(readme).not.toContain("pending install-script review");
+    expect(readme).not.toContain("does not claim target-application browser-console");
+
+    for (const name of ["@react-three/drei", "@react-three/fiber", "@types/three", "framer-motion", "three"]) {
+      expect(manifest.dependencies?.[name]).toBeUndefined();
+      expect(manifest.devDependencies?.[name]).toBeUndefined();
+      expect(manifest.optionalDependencies?.[name]).toBeUndefined();
+      expect(manifest.peerDependencies?.[name]).toBeUndefined();
+    }
+  });
+
 });

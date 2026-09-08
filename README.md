@@ -6,17 +6,18 @@ KForge is under active product-completion work. Verification is SHA-scoped: a gr
 
 ## Reference verification baseline
 
-The latest fully completed authoritative reference currently recorded is GitHub Actions `KForge Verification Gate` **Run #246** for SHA `60cb2e1794701c98cdbad45dac4a27043b5b7d7d` on 2026-08-31. That run recorded:
+The latest fully completed authoritative reference currently recorded is GitHub Actions `KForge Verification Gate` **Run #271** for SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b` on 2026-09-08. That run recorded:
 
 - immutable workflow-action pin verification: PASS;
-- locked dependency installation and `npm audit`: PASS with **0 vulnerabilities**;
+- locked dependency installation: 691 packages added / 692 audited; `npm audit`: PASS with **0 vulnerabilities**;
 - typecheck: PASS;
-- lint: PASS across 240 source files;
-- Vitest: 33 test files, 161 passed, 1 explicitly skipped opt-in benchmark;
+- lint: PASS across 217 source files;
+- Vitest: 34 test files, 166 passed, 1 explicitly skipped opt-in benchmark;
 - production client/server build: PASS;
 - Playwright browser acceptance: 61/61 passed, including responsive, keyboard, Axe accessibility, offline-network, Preview Studio, persistent Preview, topology lab, Marketplace, Release, Quality, Developer, Git, Projects, Online, Settings, and System evidence;
 - Windows x64 NSIS package gate: PASS;
 - installed Windows runtime and NSIS lifecycle verification: PASS.
+- repository branch topology: PASS — current branch search returns only `main` after verified stale-branch deletion.
 
 This is a reference snapshot, not a claim that every later HEAD is green. For a newer commit, inspect that exact SHA's Actions run and artifacts.
 
@@ -152,10 +153,10 @@ KForge-managed settings, tasks, trust decisions, collections, caches, snapshots,
 - KForge starts in Offline Mode. Local First permits explicit metadata reads, Online Optional additionally permits confirmed transfers, and Online additionally permits explicit provider refresh. Opening a remote surface never contacts its provider. GitHub, registries, remote documentation, remote CI, remote Preview, updates, and cloud AI remain `OFFLINE`, `NOT_CONFIGURED`, `UNKNOWN`, `UNAVAILABLE`, or `BLOCKED` until a real adapter, policy, authentication, and explicit action provide evidence.
 - No trustworthy remote extension package adapter is currently configured, so remote install/update/uninstall claims remain blocked rather than simulated.
 - Local AI detection supports Ollama, LM Studio, and llama.cpp-compatible endpoints on loopback. Optional OpenAI, Anthropic, Gemini, and OpenRouter credentials/models can be configured only in the server environment. No cloud provider is auto-selected: KForge first shows provider, destination, exact data classes, source-code inclusion, redaction, purpose, confirmation, timestamp, and result, then requires a separate confirmation before sending project context. Missing configuration remains `NOT_CONFIGURED`.
-- Preview captures the local process output and KForge health probes. Its Workbench/browser acceptance is covered by Playwright in CI, but KForge still does not claim target-application browser-console or full browser-network telemetry without a dedicated telemetry bridge.
+- Preview captures local process output and KForge health probes. Packaged Electron additionally records bounded KForge-owned loopback browser traffic with query-value redaction and bounded attributed browser-console evidence with sensitive-value redaction; HTML-only inspection still does not claim a full request waterfall, screenshots, element picking, or arbitrary user-interaction telemetry.
 - Remote CI and GitHub Checks cannot pass from local Git state alone.
 - Browser, responsive, keyboard, and Axe acceptance are exercised by the authoritative CI browser suite. A different host that lacks browser dependencies must report that local constraint rather than converting it into a repository-wide limitation.
-- The latest verified baseline reports 0 dependency vulnerabilities. npm still reports pending install-script review for `@swc/core` and `esbuild`; this is not represented as an approved trust decision.
+- The latest verified baseline reports 0 dependency vulnerabilities. `.npmrc` enforces `strict-allow-scripts=true`, and `package.json` permits lifecycle scripts only for the exact reviewed versions of `@swc/core`, `esbuild`, and platform-specific `fsevents`; any new lifecycle-script package/version fails closed until reviewed.
 - Branch protection, required status enforcement, trusted Windows publisher identity, and external-provider availability are separate evidence/policy domains and are not inferred from a green application test run.
 
 See [PROJECT_STATUS.md](PROJECT_STATUS.md), [RUN.md](RUN.md), [docs/KFORGE-CAPABILITY-MATRIX.md](docs/KFORGE-CAPABILITY-MATRIX.md), and [docs/DESKTOP_ARCHITECTURE_DECISION.md](docs/DESKTOP_ARCHITECTURE_DECISION.md) for evidence and capability-level status. Licensing terms are in [LICENSE](LICENSE).
