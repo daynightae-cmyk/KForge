@@ -1,0 +1,80 @@
+name: One-shot npm dependency prune
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/dependency-prune.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kforge-one-shot-dependency-prune
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: prune unreachable dev dependencies with npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact maintenance ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Remove unreachable direct dependencies with npm
+        run: npm uninstall --save-dev @react-three/drei @react-three/fiber @types/three framer-motion three --package-lock-only
+
+      - name: Assert package manifest no longer declares removed dependencies
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const removed = ['@react-three/drei', '@react-three/fiber', '@types/three', 'framer-motion', 'three'];
+          const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+          const leftovers = removed.filter((name) => sections.some((section) => pkg[section]?.[name]));
+          if (leftovers.length) {
+            throw new Error(`Removed dependencies are still declared: ${leftovers.join(', ')}`);
+          }
+          console.log(`Confirmed removed direct dependencies: ${removed.join(', ')}`);
+          NODE
+
+      - name: Verify generated package and lock state
+        run: |
+          git diff --check
+          npm ci
+          npm audit
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Commit npm-generated manifest and lockfile only
+        shell: bash
+        run: |
+          git status --short
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo 'npm produced no dependency changes; refusing a false maintenance commit.'
+            exit 1
+          fi
+          if git status --short | grep -Ev '^(M | M|A |D ) (package.json|package-lock.json)$' | grep -q .; then
+            echo 'Unexpected repository changes detected; refusing to commit.'
+            git status --short
+            exit 1
+          fi
+          git config user.name 'DAY NIGHT DELIVERY SERVICES'
+          git config user.email '293348050+daynightae-cmyk@users.noreply.github.com'
+          git commit -m 'chore(deps): prune unreachable media rendering dependencies'
+          git push origin HEAD:main
