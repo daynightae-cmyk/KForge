@@ -1,4 +1,5 @@
 name: KForge Inspector CSS Split
+# Retry after aligning architecture ownership tests with the lazy Inspector boundary.
 
 on:
   push:
