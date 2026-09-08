@@ -1,3 +1,4 @@
+import "./preview.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ArrowLeft, ArrowRight, Clipboard, ExternalLink, Expand, Home, Monitor, Pause, Play, RefreshCcw, RotateCw, Search, ShieldCheck, Smartphone, Square, Tablet, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
 import type { CommandResult, ProjectSummary, WorkspaceActionDescriptor } from "@shared/workspace";
