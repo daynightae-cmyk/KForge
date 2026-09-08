@@ -4,6 +4,8 @@ import { KFORGE_ACTIVITY_IDS, ONLINE_EXPLORER_VIEWS } from "./KForgeWorkbench";
 
 const workbenchSource = () => readFileSync(new URL("../workbench/KForgeWorkbench.tsx", import.meta.url), "utf8");
 const surfacesSource = () => readFileSync(new URL("../workbench/surfaces.tsx", import.meta.url), "utf8");
+const canonicalInspectorSource = () => readFileSync(new URL("../workbench/CanonicalInspector.tsx", import.meta.url), "utf8");
+const marketplaceInspectorSource = () => readFileSync(new URL("../components/ui/KForgeInspector.tsx", import.meta.url), "utf8");
 const contractsSource = () => readFileSync(new URL("../workbench/surfaceContracts.ts", import.meta.url), "utf8");
 const surfaceAuditSource = () => readFileSync(new URL("../workbench/surfaceAudit.ts", import.meta.url), "utf8");
 const surfaceTypesSource = () => readFileSync(new URL("../workbench/surfaceTypes.ts", import.meta.url), "utf8");
@@ -49,10 +51,12 @@ describe("KForge contextual workbench architecture", () => {
     expect(shell).toContain("<CanonicalInspector ");
   });
 
-  it("routes Activity/View dispatch through the modular WorkbenchSurface", () => {
+  it("routes Activity/View dispatch through WorkbenchSurface and defers the canonical Inspector", () => {
     const shell = workbenchSource();
     expect(shell).toMatch(/import\s*\{[^}]*WorkbenchSurface[^}]*\}\s*from\s*"\.\/surfaces"/);
-    expect(shell).toMatch(/import\s*\{[^}]*CanonicalInspector[^}]*\}\s*from\s*"\.\/surfaces"/);
+    expect(shell).toContain('lazy(() => import("./CanonicalInspector"))');
+    expect(shell).toContain("<Suspense fallback=");
+    expect(shell).not.toMatch(/import\s*\{[^}]*CanonicalInspector[^}]*\}\s*from\s*"\.\/surfaces"/);
   });
 
   it("prevents the shell from redefining domain Surface implementations", () => {
@@ -78,14 +82,18 @@ describe("KForge contextual workbench architecture", () => {
     expect(shell).not.toMatch(/^type\s+MarketplaceData\s*=/m);
   });
 
-  it("owns a single Inspector with no mounted Online inspector fallback", () => {
+  it("owns one canonical Inspector module with no mounted Online inspector fallback", () => {
     const shell = workbenchSource();
     const surfaces = surfacesSource();
+    const inspector = canonicalInspectorSource();
     expect(shell).not.toContain("kw-online-inspector");
     expect(surfaces).not.toContain("kw-online-inspector");
-    const canonicalInspectorCount = (surfaces.match(/<aside className="kw-inspector"/g) || []).length;
-    expect(canonicalInspectorCount).toBeGreaterThanOrEqual(1);
-    expect(shell).not.toMatch(/<aside\s+className="kw-inspector"/);
+    expect(surfaces).not.toContain("CanonicalInspector");
+    expect(inspector).toContain('aria-label="Context inspector"');
+    expect(inspector).toContain('aria-label="Topology service Inspector"');
+    expect(inspector).toContain('import("@/components/ui/KForgeInspector")');
+    expect(inspector).toContain('import("./PreviewRuntimeInspector")');
+    expect(shell).toContain('aria-label="Context inspector loading"');
   });
 
   it("uses surfaceContracts as the canonical owner of every shared workbench contract", () => {
@@ -113,13 +121,14 @@ describe("KForge contextual workbench architecture", () => {
     expect(shell).not.toMatch(/function\s+SimpleFetchSurface\b/);
   });
 
-  it("routes Online selection through onInspectorContext and CanonicalInspector", () => {
+  it("routes Online selection through onInspectorContext and the lazy CanonicalInspector", () => {
     const online = onlineSurfaceSource();
+    const inspector = canonicalInspectorSource();
     expect(online).toMatch(/onInspectorContext\?/);
     expect(online).toMatch(/onInspectorContext\?\.\(\{ kind: "online-item"/);
-    const surfaces = surfacesSource();
-    expect(surfaces).toMatch(/context\?\.kind\s*===\s*"online-item"/);
-    expect(surfaces).toMatch(/className="kw-inspector"/);
+    expect(inspector).toMatch(/context\?\.kind\s*===\s*"online-item"/);
+    expect(inspector).toContain("<OnlineItemInspector");
+    expect(inspector).toContain('import("@/components/ui/KForgeInspector")');
   });
 
   it("preserves the Online global / projectless NOT_EVALUATED contract in the Online surface", () => {
@@ -130,16 +139,16 @@ describe("KForge contextual workbench architecture", () => {
     expect(online).toContain("Opening this surface performs no remote catalog refresh.");
   });
 
-  it("uses explicit authority/runtime/install evidence across Online surface and Canonical Inspector", () => {
+  it("uses explicit authority/runtime/install evidence across Online surface and its specialized Inspector", () => {
     const online = onlineSurfaceSource();
     expect(online).toContain("item.authority?.kind");
     expect(online).toContain("item.availability");
     expect(online).toContain("permission.required");
-    const surfaces = surfacesSource();
-    expect(surfaces).toContain("item.authority?.kind");
-    expect(surfaces).toContain("item.runtimeEvidence?.state");
-    expect(surfaces).toContain("item.runtimeEvidence?.sources");
-    expect(surfaces).toContain("p.required");
+    const inspector = marketplaceInspectorSource();
+    expect(inspector).toContain("item.authority?.kind");
+    expect(inspector).toContain("item.runtimeEvidence.state");
+    expect(inspector).toContain("item.runtimeEvidence.sources?.map");
+    expect(inspector).toContain("p.required");
   });
 
   it("keeps Online Downloads distinct from broader Online Activity", () => {
