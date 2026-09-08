@@ -73,6 +73,7 @@ function skipStep(id, command, reason) {
 }
 
 await runStep("workflow-pins", process.execPath, ["scripts/verify-workflow-pins.mjs"]);
+await runStep("asset-budget", process.execPath, ["scripts/verify-asset-budget.mjs"]);
 const installOk = await runStep("npm-ci", "npm", ["ci"]);
 
 if (installOk) {
@@ -113,7 +114,7 @@ if (installOk) {
   }
 }
 
-const required = ["workflow-pins", "npm-ci", "npm-audit", "typecheck", "lint", "tests", "build", "e2e"];
+const required = ["workflow-pins", "asset-budget", "npm-ci", "npm-audit", "typecheck", "lint", "tests", "build", "e2e"];
 if (installPlaywright) required.splice(required.length - 1, 0, "playwright-browser");
 const byId = new Map(evidence.steps.map((step) => [step.id, step]));
 const pass = required.every((id) => byId.get(id)?.state === "PASS");
