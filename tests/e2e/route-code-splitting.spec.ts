@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const workbenchChunk = /\/assets\/KForgeWorkbench-[^/]+\.js$/;
 
-async function hasLoadedWorkbenchChunk(page: Parameters<typeof test>[0]["page"]) {
+async function hasLoadedWorkbenchChunk(page: Page) {
   return page.evaluate((pattern) => {
     const matcher = new RegExp(pattern);
     return performance
