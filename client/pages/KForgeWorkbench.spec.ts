@@ -199,10 +199,11 @@ describe("KForge contextual workbench architecture", () => {
     for (const id of auditViewIds) expect(navViewIds, `audit view "${id}" not present in navigation`).toContain(id);
   });
 
-  it("routes production /workspace to the contextual workbench rather than the legacy flat mega-component", () => {
+  it("routes production /workspace to the lazy contextual workbench rather than the legacy flat mega-component", () => {
     const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-    expect(app).toContain('import KForgeWorkbench from "./pages/KForgeWorkbench"');
+    expect(app).toContain('const KForgeWorkbench = lazy(() => import("./pages/KForgeWorkbench"));');
     expect(app).toContain('<Route path="/workspace" element={<KForgeWorkbench />} />');
+    expect(app).not.toContain('import KForgeWorkbench from "./pages/KForgeWorkbench"');
     expect(app).not.toContain('import KForgeWorkspace from "./pages/KForgeWorkspace"');
   });
 
