@@ -1,0 +1,210 @@
+name: One-shot verification truth refresh
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/docs-truth-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    name: refresh verified repository truth
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout authoritative main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Refresh Run 271 evidence truth
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          RUN = 'Run #271'
+          SHA = 'a7464f3d3f1758b1a9725304719e0ebaacb79f3b'
+          OLD_SHA = '52e29d5340e1cedea490a57cffa774b33911efcb'
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly 1 occurrence, found {count}: {old!r}')
+              return text.replace(old, new, 1)
+
+          # PROJECT_STATUS.md — this file is a current evidence snapshot, so all Run #261/SHA references are stale.
+          path = 'PROJECT_STATUS.md'
+          text = read(path)
+          text = text.replace('Run #261', RUN).replace(OLD_SHA, SHA)
+          text = replace_once(
+              text,
+              '- Delivery branch: `main`\n',
+              '- Delivery branch: `main`\n- Branch topology gate: PASS — verified stale-branch cleanup left `main` as the only repository branch.\n',
+              path,
+          )
+          text = replace_once(
+              text,
+              '`npm ci` installed 752 packages, npm audited 753 packages',
+              '`npm ci` installed 691 packages, npm audited 692 packages',
+              path,
+          )
+          text = text.replace('241 source files', '217 source files')
+          text = replace_once(
+              text,
+              '- `main` is not branch-protected and required status-check enforcement is off. A green workflow therefore proves the tested SHA, not repository policy enforcement.',
+              '- Branch-protection and required-status enforcement remain a separate repository-administration policy domain. The current integration receives HTTP 403 from the branch-protection endpoint, so a green workflow proves the tested SHA rather than administrative enforcement.',
+              path,
+          )
+          stale_branch = '- The historical `wip/codex-workbench-handoff` branch is fully contained in `main` (`behind_by=0`; `main` is 183 commits ahead at the latest ancestry check), but the currently available GitHub write surface does not expose a delete-ref mutation. Its presence is administrative residue, not unmerged product work.\n'
+          if stale_branch not in text:
+              raise SystemExit(f'{path}: stale branch claim was not found for removal')
+          text = text.replace(stale_branch, '')
+          if 'Run #261' in text or OLD_SHA in text or '753 packages' in text or '241 source files' in text:
+              raise SystemExit(f'{path}: stale current-baseline evidence remains')
+          write(path, text)
+
+          # Capability matrix — current verification references move to Run #271; stale deleted-branch blocker is removed.
+          path = 'docs/KFORGE-CAPABILITY-MATRIX.md'
+          text = read(path)
+          text = text.replace('Run #261', RUN).replace(OLD_SHA, SHA)
+          text = text.replace('753 audited packages', '692 audited packages')
+          text = text.replace('241 source files', '217 source files')
+          stale_branch = '- The historical `wip/codex-workbench-handoff` branch has no commits outside `main`; the latest ancestry check shows `behind_by=0` and `main` 183 commits ahead. The currently available GitHub write surface does not expose branch-ref deletion, so this remains administrative residue only.\n'
+          if stale_branch not in text:
+              raise SystemExit(f'{path}: stale branch blocker was not found for removal')
+          text = text.replace(stale_branch, '')
+          text = replace_once(
+              text,
+              '- At the Run #271 capture point, `main` is not branch-protected and required status-check enforcement is off. CI success proves the tested SHA, not enforcement policy.',
+              '- Branch-protection and required-status enforcement remain a separate repository-administration policy domain. The current integration receives HTTP 403 from the protection endpoint, so CI success proves the tested SHA rather than administrative enforcement.',
+              path,
+          )
+          marker = '\n## External and policy blockers\n'
+          topology_note = '\nRepository branch topology is clean at this capture point: verified ancestry/SHA checks were performed before deleting the historical handoff branch, and the current branch search returns only `main`.\n'
+          if topology_note.strip() not in text:
+              if marker not in text:
+                  raise SystemExit(f'{path}: external blockers marker missing')
+              text = text.replace(marker, topology_note + marker, 1)
+          if 'wip/codex-workbench-handoff' in text or '753 audited packages' in text or '241 source files' in text:
+              raise SystemExit(f'{path}: stale current-baseline evidence remains')
+          write(path, text)
+
+          # Dependency/toolchain audit — preserve historical Run #260/#261 chronology, but refresh the current reference and evidence table.
+          path = 'docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md'
+          text = read(path)
+          text = replace_once(
+              text,
+              'أصبحت الحالة المرجعية الأحدث هي GitHub Actions `KForge Verification Gate` Run #261 على SHA `52e29d5340e1cedea490a57cffa774b33911efcb`.',
+              f'أصبحت الحالة المرجعية الأحدث هي GitHub Actions `KForge Verification Gate` {RUN} على SHA `{SHA}`.',
+              path,
+          )
+          text = replace_once(text, '- `npm ci` ثبّت 752 حزمة، ثم دقق npm إجمالي 753 حزمة.', '- `npm ci` ثبّت 691 حزمة، ثم دقق npm إجمالي 692 حزمة.', path)
+          text = replace_once(text, '- تم إثبات نجاح `npm ci` تحت هذه السياسة على Linux وWindows في Run #261.', '- تم إثبات نجاح `npm ci` تحت هذه السياسة على Linux وWindows في Run #271.', path)
+          text = replace_once(text, '- lint نجح عبر 241 ملف مصدر.', '- lint نجح عبر 217 ملف مصدر.', path)
+          text = text.replace('ولا ينبغي استخدامها بدل Run #261 للحكم على baseline الحالي.', 'ولا ينبغي استخدامها بدل Run #271 للحكم على baseline الحالي.')
+          text = text.replace('ويثبت Run #261 أن التدقيق الحالي أصبح صفريًا.', 'ويثبت Run #271 أن التدقيق الحالي أصبح صفريًا.')
+          text = text.replace('لا ثغرة حرجة متبقية في Run #261', 'لا ثغرة حرجة متبقية في Run #271')
+          text = text.replace('لا ثغرة عالية متبقية في Run #261', 'لا ثغرة عالية متبقية في Run #271')
+          text = text.replace('0 vulnerabilities في Run #261', '0 vulnerabilities في Run #271')
+          text = text.replace('Run #261: 0 vulnerabilities', 'Run #271: 0 vulnerabilities')
+          text = text.replace('Run #261: locked install PASS على Linux وWindows', 'Run #271: locked install PASS على Linux وWindows')
+          text = text.replace('Run #261: main entry 487.85 kB', 'Run #271: main entry 487.85 kB')
+          text = text.replace('لا تُصنَّف في Run #261 كثغرات audit', 'لا تُصنَّف في Run #271 كثغرات audit')
+          text = text.replace('| الأمر / البوابة | الدليل المرجعي في Run #261 |', '| الأمر / البوابة | الدليل المرجعي في Run #271 |')
+          text = text.replace('| `npm ci` | 752 packages added; 753 packages audited؛ PASS تحت strict allowScripts |', '| `npm ci` | 691 packages added; 692 packages audited؛ PASS تحت strict allowScripts |')
+          text = text.replace('| `npm run lint` | PASS؛ 241 source files |', '| `npm run lint` | PASS؛ 217 source files |')
+
+          insert_marker = '\n## تشريح إغلاق install-script gap\n'
+          prune_section = '''\n## تنظيف dependency graph غير القابل للوصول\n\nبعد إزالة Knoux Edita/media graph القديم وغير القابل للوصول من entrypoints الحالية، تم تشغيل `npm uninstall --save-dev @react-three/drei @react-three/fiber @types/three framer-motion three --package-lock-only` داخل GitHub Actions بدل تحرير lockfile يدويًا. لم يُسمح بالـcommit إلا بعد نجاح `npm ci` و`npm audit` وtypecheck وlint وVitest وproduction build. نتج عن ذلك حذف 5 declarations مباشرة و741 سطرًا من `package-lock.json`، وانخفضت الشجرة المقفلة إلى 691 package مثبتة / 692 package مدققة مع **0 vulnerabilities**. يؤكد Run #271 أن full aggregate gate وWindows NSIS/installed-runtime lifecycle ظلا خضراء بعد التنظيف.\n'''
+          if '## تنظيف dependency graph غير القابل للوصول' not in text:
+              if insert_marker not in text:
+                  raise SystemExit(f'{path}: install-script section marker missing')
+              text = text.replace(insert_marker, prune_section + insert_marker, 1)
+          write(path, text)
+
+          # README — replace the obsolete #246 snapshot and stale limitations with measured Run #271 truth.
+          path = 'README.md'
+          text = read(path)
+          old_baseline = 'The latest fully completed authoritative reference currently recorded is GitHub Actions `KForge Verification Gate` **Run #246** for SHA `60cb2e1794701c98cdbad45dac4a27043b5b7d7d` on 2026-08-31.'
+          new_baseline = f'The latest fully completed authoritative reference currently recorded is GitHub Actions `KForge Verification Gate` **Run #271** for SHA `{SHA}` on 2026-09-08.'
+          text = replace_once(text, old_baseline, new_baseline, path)
+          text = replace_once(text, '- locked dependency installation and `npm audit`: PASS with **0 vulnerabilities**;', '- locked dependency installation: 691 packages added / 692 audited; `npm audit`: PASS with **0 vulnerabilities**;', path)
+          text = replace_once(text, '- lint: PASS across 240 source files;', '- lint: PASS across 217 source files;', path)
+          text = replace_once(text, '- Vitest: 33 test files, 161 passed, 1 explicitly skipped opt-in benchmark;', '- Vitest: 34 test files, 166 passed, 1 explicitly skipped opt-in benchmark;', path)
+          windows_line = '- installed Windows runtime and NSIS lifecycle verification: PASS.\n'
+          text = replace_once(text, windows_line, windows_line + '- repository branch topology: PASS — current branch search returns only `main` after verified stale-branch deletion.\n', path)
+          text = replace_once(
+              text,
+              '- Preview captures the local process output and KForge health probes. Its Workbench/browser acceptance is covered by Playwright in CI, but KForge still does not claim target-application browser-console or full browser-network telemetry without a dedicated telemetry bridge.',
+              '- Preview captures local process output and KForge health probes. Packaged Electron additionally records bounded KForge-owned loopback browser traffic with query-value redaction and bounded attributed browser-console evidence with sensitive-value redaction; HTML-only inspection still does not claim a full request waterfall, screenshots, element picking, or arbitrary user-interaction telemetry.',
+              path,
+          )
+          text = replace_once(
+              text,
+              '- The latest verified baseline reports 0 dependency vulnerabilities. npm still reports pending install-script review for `@swc/core` and `esbuild`; this is not represented as an approved trust decision.',
+              '- The latest verified baseline reports 0 dependency vulnerabilities. `.npmrc` enforces `strict-allow-scripts=true`, and `package.json` permits lifecycle scripts only for the exact reviewed versions of `@swc/core`, `esbuild`, and platform-specific `fsevents`; any new lifecycle-script package/version fails closed until reviewed.',
+              path,
+          )
+          if 'Run #246' in text or '240 source files' in text or '33 test files, 161 passed' in text or 'pending install-script review' in text:
+              raise SystemExit(f'{path}: stale baseline/limitation remains')
+          write(path, text)
+
+          # Strengthen the executable documentation contract.
+          path = 'server/services/repositoryDocumentationTruth.spec.ts'
+          text = read(path)
+          text = text.replace('Run #261', 'Run #271').replace(OLD_SHA, SHA)
+          insertion = '''\n\n  it("keeps current branch topology and dependency pruning aligned with Run #271", () => {\n    const manifest = JSON.parse(rootFile("package.json")) as {\n      dependencies?: Record<string, string>;\n      devDependencies?: Record<string, string>;\n      optionalDependencies?: Record<string, string>;\n      peerDependencies?: Record<string, string>;\n    };\n    const status = rootFile("PROJECT_STATUS.md");\n    const readme = rootFile("README.md");\n    const matrix = capabilityMatrix();\n    const activeDocs = `${status}\\n${readme}\\n${matrix}`;\n\n    expect(status).toContain("Run #271");\n    expect(status).toContain("691 packages");\n    expect(status).toContain("692 packages");\n    expect(readme).toContain("Run #271");\n    expect(readme).toContain("strict-allow-scripts=true");\n    expect(activeDocs).not.toContain("wip/codex-workbench-handoff");\n    expect(readme).not.toContain("pending install-script review");\n    expect(readme).not.toContain("does not claim target-application browser-console");\n\n    for (const name of ["@react-three/drei", "@react-three/fiber", "@types/three", "framer-motion", "three"]) {\n      expect(manifest.dependencies?.[name]).toBeUndefined();\n      expect(manifest.devDependencies?.[name]).toBeUndefined();\n      expect(manifest.optionalDependencies?.[name]).toBeUndefined();\n      expect(manifest.peerDependencies?.[name]).toBeUndefined();\n    }\n  });\n'''
+          closing = '\n});\n'
+          if insertion.strip() not in text:
+              pos = text.rfind(closing)
+              if pos < 0:
+                  raise SystemExit(f'{path}: describe closing marker missing')
+              text = text[:pos] + insertion + text[pos:]
+          write(path, text)
+
+          print('Run #271 repository truth refresh prepared successfully.')
+          PY
+
+      - name: Verify refreshed truth contract
+        run: |
+          git diff --check
+          npm ci
+          npm run typecheck
+          npx vitest --run server/services/repositoryDocumentationTruth.spec.ts
+
+      - name: Commit verified documentation truth only
+        shell: bash
+        run: |
+          git status --short
+          git add PROJECT_STATUS.md README.md docs/KFORGE-CAPABILITY-MATRIX.md docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md server/services/repositoryDocumentationTruth.spec.ts
+          if git diff --cached --quiet; then
+            echo 'Truth refresh produced no changes; refusing false maintenance commit.'
+            exit 1
+          fi
+          if git status --short | grep -Ev '^(M | M|A |D ) (PROJECT_STATUS.md|README.md|docs/KFORGE-CAPABILITY-MATRIX.md|docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md|server/services/repositoryDocumentationTruth.spec.ts)$' | grep -q .; then
+            echo 'Unexpected repository changes detected; refusing to commit.'
+            git status --short
+            exit 1
+          fi
+          git config user.name 'DAY NIGHT DELIVERY SERVICES'
+          git config user.email '293348050+daynightae-cmyk@users.noreply.github.com'
+          git commit -m 'docs: refresh verified baseline to Run 271'
+          git push origin HEAD:main
