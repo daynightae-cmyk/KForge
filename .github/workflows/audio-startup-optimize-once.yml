@@ -1,0 +1,209 @@
+name: One-shot startup audio optimization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/audio-startup-optimize-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  optimize-audio:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Install FFmpeg
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
+
+      - name: Convert reveal audio to Opus and prove media invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          wav='public/audio/logo-reveal-slow.wav'
+          ogg='public/audio/logo-reveal-slow.ogg'
+
+          test -f "$wav"
+          original_bytes=$(stat -c%s "$wav")
+          original_duration=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$wav")
+          original_channels=$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=nw=1:nk=1 "$wav")
+          original_codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=nw=1:nk=1 "$wav")
+          original_rate=$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=nw=1:nk=1 "$wav")
+
+          echo "WAV codec=$original_codec channels=$original_channels rate=$original_rate duration=$original_duration bytes=$original_bytes"
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -i "$wav" \
+            -map_metadata -1 \
+            -c:a libopus \
+            -b:a 128k \
+            -vbr on \
+            -compression_level 10 \
+            -application audio \
+            "$ogg"
+
+          converted_bytes=$(stat -c%s "$ogg")
+          converted_duration=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$ogg")
+          converted_channels=$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=nw=1:nk=1 "$ogg")
+          converted_codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=nw=1:nk=1 "$ogg")
+
+          echo "OGG codec=$converted_codec channels=$converted_channels duration=$converted_duration bytes=$converted_bytes"
+
+          python3 - "$original_duration" "$converted_duration" "$original_channels" "$converted_channels" "$converted_bytes" <<'PY'
+          import sys
+          original_duration = float(sys.argv[1])
+          converted_duration = float(sys.argv[2])
+          original_channels = int(sys.argv[3])
+          converted_channels = int(sys.argv[4])
+          converted_bytes = int(sys.argv[5])
+          delta = abs(original_duration - converted_duration)
+          print(f'duration delta={delta:.6f}s')
+          if delta > 0.05:
+              raise SystemExit(f'duration drift too large: {delta:.6f}s')
+          if converted_channels != original_channels:
+              raise SystemExit(f'channel count changed: {original_channels} -> {converted_channels}')
+          if converted_bytes > 250_000:
+              raise SystemExit(f'Opus asset exceeds 250000-byte budget: {converted_bytes}')
+          PY
+
+          test "$converted_codec" = 'opus'
+          ffmpeg -hide_banner -loglevel error -i "$ogg" -f null -
+          max_volume=$(ffmpeg -hide_banner -i "$ogg" -af volumedetect -f null - 2>&1 | sed -n 's/.*max_volume: \([-0-9.]*\) dB.*/\1/p' | tail -1)
+          echo "decoded max_volume=${max_volume:-unknown} dB"
+          if [ -n "${max_volume:-}" ]; then
+            python3 - "$max_volume" <<'PY'
+          import sys
+          if float(sys.argv[1]) > 0.0:
+              raise SystemExit(f'encoded audio exceeds 0 dBFS: {sys.argv[1]} dB')
+          PY
+          fi
+
+      - name: Update runtime source, asset budget and browser decode evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          page = Path('client/pages/KnouxForgeInstallation.tsx')
+          text = page.read_text()
+          old = '/audio/logo-reveal-slow.wav'
+          new = '/audio/logo-reveal-slow.ogg'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one runtime WAV reference, found {text.count(old)}')
+          page.write_text(text.replace(old, new))
+
+          budget = Path('scripts/verify-asset-budget.mjs')
+          text = budget.read_text()
+          text = text.replace(
+              'const logoBudgetBytes = 1_050_000;\nconst pngSignature',
+              'const logoBudgetBytes = 1_050_000;\nconst revealAudioPath = path.join(root, "public", "audio", "logo-reveal-slow.ogg");\nconst retiredRevealWavPath = path.join(root, "public", "audio", "logo-reveal-slow.wav");\nconst revealAudioBudgetBytes = 250_000;\nconst oggSignature = Buffer.from("OggS", "ascii");\nconst pngSignature',
+          )
+          marker = 'const logo = await fs.readFile(logoPath);\n'
+          insertion = '''if (await exists(retiredRevealWavPath)) {\n  console.error("KForge asset budget verification: FAIL");\n  console.error("The retired PCM reveal WAV returned after Opus migration.");\n  process.exit(1);\n}\n\nconst revealAudio = await fs.readFile(revealAudioPath);\nif (revealAudio.length > revealAudioBudgetBytes) {\n  console.error("KForge asset budget verification: FAIL");\n  console.error(`Reveal audio is ${revealAudio.length} bytes; budget is ${revealAudioBudgetBytes} bytes.`);\n  process.exit(1);\n}\n\nif (!revealAudio.subarray(0, oggSignature.length).equals(oggSignature)) {\n  console.error("KForge asset budget verification: FAIL");\n  console.error("Reveal audio no longer has a valid OGG container signature.");\n  process.exit(1);\n}\n\nconst installationSource = await fs.readFile(path.join(root, "client", "pages", "KnouxForgeInstallation.tsx"), "utf8");\nif (!installationSource.includes("/audio/logo-reveal-slow.ogg") || installationSource.includes("/audio/logo-reveal-slow.wav")) {\n  console.error("KForge asset budget verification: FAIL");\n  console.error("Installation runtime must reference only the compact Opus reveal asset.");\n  process.exit(1);\n}\n\n'''
+          if marker not in text:
+              raise SystemExit('asset budget insertion marker not found')
+          text = text.replace(marker, insertion + marker, 1)
+          old_log = 'console.log(`KForge asset budget verification: PASS (official logo ${logo.length}/${logoBudgetBytes} bytes; retired reference absent).`);'
+          new_log = 'console.log(`KForge asset budget verification: PASS (official logo ${logo.length}/${logoBudgetBytes} bytes; reveal audio ${revealAudio.length}/${revealAudioBudgetBytes} bytes; retired reference/WAV absent).`);'
+          if old_log not in text:
+              raise SystemExit('asset budget PASS log marker not found')
+          budget.write_text(text.replace(old_log, new_log, 1))
+          PY
+
+          cat > tests/e2e/installation-audio-evidence.spec.ts <<'EOF'
+          import { expect, test } from "@playwright/test";
+
+          test("KForge startup reveal uses compact Opus audio that Chromium decodes", async ({ page }) => {
+            await page.goto("/", { waitUntil: "domcontentloaded" });
+
+            const support = await page.evaluate(() => document.createElement("audio").canPlayType('audio/ogg; codecs="opus"'));
+            expect(support).not.toBe("");
+
+            const decoded = await page.evaluate(async () => {
+              const response = await fetch("/audio/logo-reveal-slow.ogg", { cache: "no-store" });
+              if (!response.ok) throw new Error(`Reveal audio request failed with ${response.status}`);
+              const bytes = await response.arrayBuffer();
+              const context = new AudioContext();
+              try {
+                const audioBuffer = await context.decodeAudioData(bytes.slice(0));
+                return {
+                  bytes: bytes.byteLength,
+                  duration: audioBuffer.duration,
+                  channels: audioBuffer.numberOfChannels,
+                  sampleRate: audioBuffer.sampleRate,
+                };
+              } finally {
+                await context.close();
+              }
+            });
+
+            expect(decoded.bytes).toBeGreaterThan(0);
+            expect(decoded.bytes).toBeLessThanOrEqual(250_000);
+            expect(decoded.duration).toBeGreaterThan(9);
+            expect(decoded.duration).toBeLessThan(12);
+            expect(decoded.channels).toBeGreaterThan(0);
+            expect(decoded.sampleRate).toBeGreaterThan(0);
+          });
+          EOF
+
+          rm public/audio/logo-reveal-slow.wav
+
+      - name: Validate exact optimization diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed=$(git status --short | awk '{print $2}' | sort)
+          printf '%s\n' "$changed"
+          expected=$(printf '%s\n' \
+            'client/pages/KnouxForgeInstallation.tsx' \
+            'public/audio/logo-reveal-slow.ogg' \
+            'public/audio/logo-reveal-slow.wav' \
+            'scripts/verify-asset-budget.mjs' \
+            'tests/e2e/installation-audio-evidence.spec.ts' | sort)
+          if [ "$changed" != "$expected" ]; then
+            echo 'Unexpected startup-audio diff; refusing commit.' >&2
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify optimized startup path before commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run verify:assets
+          npm run typecheck
+          npm run build
+          npx playwright install --with-deps chromium
+          npx playwright test tests/e2e/installation-audio-evidence.spec.ts
+
+      - name: Commit optimized startup audio to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            client/pages/KnouxForgeInstallation.tsx \
+            public/audio/logo-reveal-slow.ogg \
+            public/audio/logo-reveal-slow.wav \
+            scripts/verify-asset-budget.mjs \
+            tests/e2e/installation-audio-evidence.spec.ts
+          git commit -m 'perf(startup): replace PCM reveal audio with verified Opus asset'
+          git push origin HEAD:main
