@@ -41,4 +41,18 @@ describe("repository documentation truth contract", () => {
       expect(combined).not.toContain(staleClaim);
     }
   });
+
+  it("does not regress the dependency baseline to vulnerabilities already cleared by the authoritative gate", () => {
+    const status = rootFile("PROJECT_STATUS.md");
+    const matrix = capabilityMatrix();
+    const dependencyAudit = rootFile("docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md");
+    const combined = `${status}\n${matrix}`;
+
+    expect(status).toMatch(/npm audit.*0 vulnerabilities/i);
+    expect(matrix).toMatch(/npm audit.*0 vulnerabilities/i);
+    expect(dependencyAudit).toContain("Run #254");
+    expect(dependencyAudit).toContain("0 vulnerabilities");
+    expect(combined).not.toContain("dependency audit still reports 2 moderate-severity vulnerabilities");
+    expect(combined).not.toContain("these are not marked fixed");
+  });
 });

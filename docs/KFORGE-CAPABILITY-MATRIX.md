@@ -1,10 +1,10 @@
 # KNOuX Forge capability matrix
 
-Evidence reference captured on 2026-08-30 from GitHub Actions `KForge Verification Gate` Run #208 at SHA `3c1b6f86309b8a3b8a533b0da4e5402df01935f4`. Git history and the exact-SHA Actions run remain the authority for later changes.
+Evidence reference captured on 2026-09-08 from GitHub Actions `KForge Verification Gate` Run #254 at SHA `82461f1f7782799bae09889c4523f367f9341e93`. Git history and the exact-SHA Actions run remain the authority for later changes.
 
 `COMPLETE` means the locally implementable, bounded product path and its cited verification are present. It does not convert absent provider evidence into success. `PARTIAL` means a real path exists with a known environment/provider/evidence boundary. `BLOCKED` identifies an external prerequisite that the repository cannot safely invent. `SPECIALIZED` Workbench classification describes a dedicated product surface; it does not mean every external integration behind that surface is configured.
 
-Reference verification at Run #208: workflow-pin verification PASS; typecheck PASS; lint PASS across 224 source files; 30 Vitest files with 146 passed and 1 opt-in benchmark skipped; production build PASS; 58/58 Playwright browser tests PASS; Windows x64 NSIS build and installed-runtime/installer lifecycle PASS.
+Reference verification at Run #254: workflow-pin verification PASS; `npm ci` PASS; `npm audit --audit-level=moderate` PASS with 0 vulnerabilities across 753 audited packages; typecheck PASS; lint PASS across 240 source files; 33 Vitest files with 161 passed and 1 opt-in benchmark skipped; production build PASS; 61/61 Playwright browser tests PASS; Windows x64 NSIS build and installed-runtime/installer lifecycle PASS.
 
 | Capability | Current real behavior | Verification / evidence | Status |
 | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ Reference verification at Run #208: workflow-pin verification PASS; typecheck PA
 | Developer tests/build/lint | Discovers detected commands without running them and executes only through explicit registered local authority | Dedicated Tests, Build, and Lint Workbench E2E | COMPLETE where command metadata exists |
 | Developer runtime | Executes bounded runtime verification through explicit authority and yields process ownership to live Preview when appropriate | Runtime Workbench E2E | COMPLETE where runtime metadata exists |
 | Developer logs/diagnostics | Uses real persisted tasks and bounded problem evidence rather than synthetic observability | Developer observability E2E | COMPLETE local evidence |
-| Preview | One process manager with start/health/stop/restart, bounded logs, routes, history, ownership isolation, viewport/zoom controls, and real embedded app evidence | Preview service tests plus Preview Studio and canonical Preview Playwright suites | COMPLETE local runtime/browser Workbench; target-app console/network telemetry not claimed |
+| Preview | One process manager with start/health/stop/restart, bounded logs, routes, history, ownership isolation, viewport/zoom controls, real embedded app evidence, and bounded packaged-Electron browser traffic with query redaction | Preview service tests, topology runtime tests, Preview Studio, canonical Preview and Topology Playwright suites | COMPLETE local runtime/browser Workbench; full target-app console telemetry not claimed |
 | Preview Fix and Verify | Requires current failing Preview evidence, plans, snapshots, applies only a verified safe patch, verifies, restarts, and rolls back on failure | End-to-end route test | COMPLETE for supported safe rule |
 | Git local | Uses real local Git for status, branches/tags/stashes/history, stage/unstage, and confirmed local commit; no implicit push | Isolated local Git Playwright test | COMPLETE local |
 | GitHub remote | Presents repository, pull-request, issue, Actions/checks, and release evidence without remote mutation on read | GitHub Remote Workbench Playwright evidence | COMPLETE read surface; authentication/network dependent |
@@ -39,7 +39,7 @@ Reference verification at Run #208: workflow-pin verification PASS; typecheck PA
 | Accessibility | Keyboard alternatives, focus behavior, labels, reduced motion, explicit status copy, and Axe checks across critical surfaces | Playwright keyboard suite plus Axe browser analysis | COMPLETE for tested critical surfaces |
 | Release Gate | Separates SOURCE, LOCAL, PREVIEW, DESKTOP, WINDOWS_PACKAGE, INSTALLER, GITHUB, CI, and REMOTE verdicts; one domain never manufactures another | Release Gate browser evidence and backend release engine | COMPLETE source separation |
 | Release & Distribution | Structured preparation, versioning, artifact presence, package verification, CI identity, and remote release boundaries; no tag/commit/push/publish authority is invented | Release & Distribution E2E plus Axe accessibility | COMPLETE observational/preparation path; publication provider-dependent |
-| Windows package/installer | Produces x64 NSIS package, digest evidence, installed-runtime check, lifecycle verification, and CI artifact | Windows gate Run #208; installer SHA-256 `5db31b54ea8b54deb11fcff290598fe2face936f00ac6255f863d4d84facce49` | COMPLETE unsigned package verification |
+| Windows package/installer | Produces x64 NSIS package, digest evidence, installed-runtime check, lifecycle verification, and CI artifact | Windows package gate in Run #254 plus uploaded installer/verification evidence | COMPLETE unsigned package verification |
 | Self Audit | Executes the exact KForge-on-KForge observational sequence, checks source mutation, persists atomically, and verifies reload across server instances | Service tests plus browser restart-boundary evidence | COMPLETE local |
 | Product identity and run docs | KNOuX Forge package, browser title, README, environment, run commands, ports, routes, architecture, limitations, and dated evidence semantics | Repository documentation truth regression test | COMPLETE repository-content path |
 
@@ -49,9 +49,10 @@ All currently reachable Workbench views in `client/workbench/surfaceTypes.ts` ar
 
 - No configured trustworthy remote extension registry/package adapter and integrity source exists for a real remote extension lifecycle.
 - Remote model/update registries, remote documentation, remote CI, remote Preview, product updates, GitHub operations, and cloud AI require their real providers, credentials, network policy, trust, and explicit action. Missing prerequisites remain `OFFLINE`, `NOT_CONFIGURED`, `UNKNOWN`, `UNAVAILABLE`, or `BLOCKED`.
-- Target-application browser-console and full browser-network telemetry are not inferred from Playwright acceptance of the KForge Workbench; a dedicated telemetry bridge would be separate evidence.
+- Full target-application browser-console telemetry is not inferred from Playwright acceptance of the KForge Workbench or bounded Electron browser-traffic evidence; a dedicated telemetry bridge would be separate evidence.
 - Trusted Windows publisher identity is not established. The current installer remains an unsigned development/release artifact for trust purposes even though package digest and lifecycle verification pass.
-- At the Run #208 capture point, `main` was not branch-protected and required status-check enforcement was off. CI success proves the tested SHA, not enforcement policy.
-- The dependency audit still reports 2 moderate-severity vulnerabilities and pending install-script review for `@swc/core` and `esbuild`; these are not marked fixed.
+- At the Run #254 capture point, `main` is not branch-protected and required status-check enforcement is off. CI success proves the tested SHA, not enforcement policy.
+- The authoritative Run #254 dependency gate reports 0 vulnerabilities. npm still reports pending install-script review for `@swc/core@1.16.1` and `esbuild@0.25.4`; approval is not inferred.
+- The production client build emits a non-gating chunk-size warning for the main application bundle; this remains an internal optimization target rather than a correctness/security failure.
 
 The repository must continue showing absent provider or policy evidence as `BLOCKED`, `NOT_CONFIGURED`, `OFFLINE`, `UNKNOWN`, or `UNAVAILABLE` until current evidence changes.
