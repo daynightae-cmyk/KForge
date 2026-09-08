@@ -23,8 +23,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git grep -n -- 'knoux-forge-installation-reference\.png' ':!client/assets/knoux-forge-installation-reference.png'; then
-            echo 'Reference image still has consumers; refusing deletion.' >&2
+          if git grep -n -- 'knoux-forge-installation-reference\.png' \
+            ':!client/assets/knoux-forge-installation-reference.png' \
+            ':!.github/workflows/asset-hygiene-once.yml'; then
+            echo 'Reference image still has product/repository consumers; refusing deletion.' >&2
             exit 1
           fi
           echo 'No repository consumer references the installation reference image.'
