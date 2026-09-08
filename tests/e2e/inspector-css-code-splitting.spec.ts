@@ -18,12 +18,14 @@ test("defers specialized Inspector JS and Activity CSS until the owning surface 
   expect(assets.some((path) => /PreviewStudioWorkbench-.*\.css$/.test(path))).toBeFalsy();
 
   await selectExplorerView(page, "Online", "Extensions");
-  await expect(page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]')).toBeVisible();
-  expect(assets.some((path) => /onlineSurface-.*\.css$/.test(path))).toBeTruthy();
-  expect(assets.some((path) => /KForgeInspector-.*\.js$/.test(path))).toBeFalsy();
-
-  await page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]').click();
+  const item = page.locator('.kw-capability-card[data-item-id="package:kforge:json-inspector"]');
+  await expect(item).toBeVisible();
   await expect(page.locator(".kw-inspector")).toContainText("kforge-json-inspector");
+  expect(assets.some((path) => /onlineSurface-.*\.css$/.test(path))).toBeTruthy();
   expect(assets.some((path) => /KForgeInspector-.*\.js$/.test(path))).toBeTruthy();
+  expect(assets.some((path) => /PreviewRuntimeInspector-.*\.js$/.test(path))).toBeFalsy();
+
+  await item.click();
+  await expect(page.locator(".kw-inspector")).toContainText("kforge-json-inspector");
   expect(assets.some((path) => /PreviewRuntimeInspector-.*\.js$/.test(path))).toBeFalsy();
 });
