@@ -72,13 +72,13 @@ describe("repository documentation truth contract", () => {
     expect(combined).not.toContain("حزمة التطبيق الرئيسية تتجاوز حد Vite الافتراضي البالغ 500 kB");
   });
 
-  it("enforces a pinned install-script allowlist under strict npm policy", () => {
+  it("enforces a pinned install-script allowlist under strict npm policy without erasing historical audit evidence", () => {
     const manifest = JSON.parse(rootFile("package.json")) as { allowScripts?: Record<string, boolean> };
     const npmrc = rootFile(".npmrc");
     const status = rootFile("PROJECT_STATUS.md");
     const matrix = capabilityMatrix();
     const dependencyAudit = rootFile("docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md");
-    const currentDocs = `${status}\n${matrix}\n${dependencyAudit}`;
+    const activeDocs = `${status}\n${matrix}`;
 
     expect(manifest.allowScripts).toEqual({
       "@swc/core@1.16.1": true,
@@ -90,7 +90,9 @@ describe("repository documentation truth contract", () => {
     expect(status).toContain("Run #261");
     expect(matrix).toContain("Dependency install-script policy");
     expect(dependencyAudit).toContain("strict-allow-scripts=true");
-    expect(currentDocs).not.toContain("pending install-script review");
-    expect(currentDocs).not.toContain("approval is not inferred");
+    expect(dependencyAudit).toContain("pending install-script review");
+    expect(dependencyAudit).toContain("مغلقة للـlockfile الحالي");
+    expect(activeDocs).not.toContain("pending install-script review");
+    expect(activeDocs).not.toContain("approval is not inferred");
   });
 });
