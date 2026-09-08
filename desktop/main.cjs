@@ -69,6 +69,20 @@ function recordDesktopTraffic(details, error) {
   }
 }
 
+function recordDesktopConsole(details) {
+  if (!productionServerModule || typeof productionServerModule.recordPreviewBrowserConsole !== "function") return;
+  try {
+    productionServerModule.recordPreviewBrowserConsole({
+      sourceUrl: typeof details.sourceId === "string" ? details.sourceId : "",
+      level: details.level,
+      message: typeof details.message === "string" ? details.message : "",
+      lineNumber: typeof details.lineNumber === "number" ? details.lineNumber : undefined,
+    });
+  } catch (captureError) {
+    writeLog("WARN", `Preview browser console capture failed: ${captureError instanceof Error ? captureError.message : String(captureError)}`);
+  }
+}
+
 function createWindow() {
   const icon = path.join(applicationRoot, "dist", "spa", "favicon.ico");
   mainWindow = new BrowserWindow({
@@ -98,6 +112,9 @@ function createWindow() {
     event.preventDefault();
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
   });
+  // Electron 44 exposes console-message as one details object. Keeping this
+  // listener single-argument avoids the deprecated legacy level/message/line/sourceId signature.
+  mainWindow.webContents.on("console-message", (details) => recordDesktopConsole(details));
   mainWindow.once("ready-to-show", () => mainWindow && mainWindow.show());
   mainWindow.on("closed", () => { mainWindow = null; });
   return mainWindow;

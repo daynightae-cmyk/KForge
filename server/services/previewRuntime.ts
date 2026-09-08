@@ -25,7 +25,11 @@ export interface PreviewStatus {
   routes: Array<{ path: string; source: "root" | "html-link"; checkedAt: string }>;
   history: Array<{ at: string; event: "start" | "health" | "stop" | "exit" | "error"; detail: string }>;
   runtime: { execution: "LOCAL"; network: "NOT_REQUIRED"; source: "detected-project-script"; projectSourceSent: false };
-  telemetry: { console: "process-stdout-stderr"; network: "loopback-health-probe-only"; browserConsoleCaptured: false };
+  telemetry: {
+    console: "process-stdout-stderr" | "process-stdout-stderr+electron-browser-console";
+    network: "loopback-health-probe-only";
+    browserConsoleCaptured: boolean;
+  };
   embedding: { state: "ALLOWED" | "BLOCKED" | "UNKNOWN"; reason?: string };
   logs: string[];
   error?: string;
@@ -109,6 +113,15 @@ function appendLog(status: PreviewStatus, value: string) {
   const lines = value.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
   if (!lines.length) return;
   status.logs = [...status.logs, ...lines.map((line) => line.slice(0, MAX_LOG_LINE_LENGTH))].slice(-MAX_LOG_LINES);
+}
+
+function redactBrowserConsole(value: string) {
+  return String(value)
+    .replace(/(["']?(?:api[_-]?key|token|secret|password|passwd|credential)["']?\s*[:=]\s*["']?)[^"'\s,;}]+/gi, "$1[REDACTED]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/\/(token|secret|password|passwd|credential|api[_-]?key)\/[^/?#\s]+/gi, "/$1/[REDACTED]")
+    .replace(/[\r\n]+/g, "\\n")
+    .slice(0, MAX_LOG_LINE_LENGTH);
 }
 
 function resolvePreviewCommand(command: string, args: string[]) {
@@ -229,6 +242,35 @@ export function getPreviewStatus(projectId: string): PreviewStatus {
   return cloneStatus(previewRecords.get(projectId) || baseStatus(projectId));
 }
 
+export function recordPreviewBrowserConsole(observation: {
+  sourceUrl: string;
+  level?: string;
+  message: string;
+  lineNumber?: number;
+}) {
+  let source: URL;
+  try { source = new URL(observation.sourceUrl); }
+  catch { return false; }
+  if (source.protocol !== "http:" || !isLoopbackHostname(source.hostname)) return false;
+  const port = Number(source.port || 80);
+  const active = [...activePreviews.values()].find(({ status }) => status.port === port && ["starting", "running"].includes(status.state));
+  if (!active) return false;
+
+  const requestedLevel = String(observation.level || "info").toLowerCase();
+  const level = ["debug", "info", "warning", "error"].includes(requestedLevel) ? requestedLevel : "info";
+  const lineNumber = Number.isFinite(observation.lineNumber) && Number(observation.lineNumber) > 0 ? Math.trunc(Number(observation.lineNumber)) : undefined;
+  const safeSource = redactBrowserConsole(`${source.origin}${source.pathname || "/"}`);
+  const safeMessage = redactBrowserConsole(observation.message || "[empty console message]") || "[empty console message]";
+  appendLog(active.status, `[browser:${level}] ${safeSource}${lineNumber ? `:${lineNumber}` : ""} · ${safeMessage}`);
+  active.status.telemetry = {
+    ...active.status.telemetry,
+    console: "process-stdout-stderr+electron-browser-console",
+    browserConsoleCaptured: true,
+  };
+  previewRecords.set(active.status.projectId, active.status);
+  return true;
+}
+
 export async function startPreview(projectId: string, projectPath: string, profile: ProjectProfile): Promise<PreviewStatus> {
   const existing = activePreviews.get(projectId);
   if (existing && ["starting", "running"].includes(existing.status.state)) return cloneStatus(existing.status);
@@ -315,7 +357,7 @@ export async function inspectPreviewDocument(projectId: string, route = "/"): Pr
   const checkedAt = new Date().toISOString();
   const base: PreviewDocumentInspection = { projectId, sessionId: status.sessionId, checkedAt, route, state: "UNAVAILABLE", source: "none", findings: [], limitations: [
     "This inspection reads the delivered HTML response. It does not execute application JavaScript or claim DOM, layout, contrast, keyboard, screen-reader, or overflow coverage.",
-    "Browser console, request waterfalls, screenshots, element picking, and interaction capture require a browser bridge or automation runtime and remain unavailable here.",
+    "Packaged Electron can capture bounded, redacted browser-console evidence only for an active loopback Preview. This HTML inspection does not itself capture console events, request waterfalls, screenshots, element picking, or interactions.",
   ] };
   if (!status.url || status.state !== "running" || !status.health?.ok) return { ...base, error: "A healthy canonical Preview session is required before document inspection." };
   try {

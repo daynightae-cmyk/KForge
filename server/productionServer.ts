@@ -3,10 +3,10 @@ import { createServer as createHttpServer, type Server } from "http";
 import path from "path";
 import express from "express";
 import { createServer } from "./index";
-import { stopAllPreviews } from "./services/previewRuntime";
+import { recordPreviewBrowserConsole, stopAllPreviews } from "./services/previewRuntime";
 import { recordTopologyBrowserTraffic, stopAllTopologies } from "./services/topologyRuntime";
 
-export { recordTopologyBrowserTraffic };
+export { recordPreviewBrowserConsole, recordTopologyBrowserTraffic };
 
 export interface KForgeProductionServerOptions {
   applicationRoot: string;
