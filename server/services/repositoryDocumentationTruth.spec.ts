@@ -25,7 +25,7 @@ describe("repository documentation truth contract", () => {
     const matrix = capabilityMatrix();
     const combined = `${status}\n${readme}\n${matrix}`;
 
-    expect(status).toContain("Authoritative reference baseline captured");
+    expect(status).toContain("Authoritative implementation baseline captured");
     expect(status).toMatch(/Run #\d+/);
     expect(status).toMatch(/SHA `[0-9a-f]{40}`/);
     expect(status).toContain("This file is a dated evidence snapshot");
@@ -50,20 +50,20 @@ describe("repository documentation truth contract", () => {
 
     expect(status).toMatch(/npm audit.*0 vulnerabilities/i);
     expect(matrix).toMatch(/npm audit.*0 vulnerabilities/i);
-    expect(dependencyAudit).toContain("Run #258");
+    expect(dependencyAudit).toContain("Run #261");
     expect(dependencyAudit).toContain("0 vulnerabilities");
     expect(combined).not.toContain("dependency audit still reports 2 moderate-severity vulnerabilities");
     expect(combined).not.toContain("these are not marked fixed");
   });
 
-  it("keeps the verified Preview console boundary and closed client chunk warning aligned with Run #258", () => {
+  it("keeps the verified Preview console boundary and closed client chunk warning aligned with Run #261", () => {
     const status = rootFile("PROJECT_STATUS.md");
     const matrix = capabilityMatrix();
     const dependencyAudit = rootFile("docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md");
     const combined = `${status}\n${matrix}\n${dependencyAudit}`;
 
-    expect(status).toContain("Run #258");
-    expect(status).toContain("0afad41249439fe03f81ab84f538ce47a14f3224");
+    expect(status).toContain("Run #261");
+    expect(status).toContain("52e29d5340e1cedea490a57cffa774b33911efcb");
     expect(status).toContain("487.85 kB");
     expect(matrix).toContain("browser-console capture attributed to the active KForge-owned loopback Preview");
     expect(dependencyAudit).toContain("query vendor chunk 26.69 kB");
@@ -75,6 +75,10 @@ describe("repository documentation truth contract", () => {
   it("enforces a pinned install-script allowlist under strict npm policy", () => {
     const manifest = JSON.parse(rootFile("package.json")) as { allowScripts?: Record<string, boolean> };
     const npmrc = rootFile(".npmrc");
+    const status = rootFile("PROJECT_STATUS.md");
+    const matrix = capabilityMatrix();
+    const dependencyAudit = rootFile("docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md");
+    const currentDocs = `${status}\n${matrix}\n${dependencyAudit}`;
 
     expect(manifest.allowScripts).toEqual({
       "@swc/core@1.16.1": true,
@@ -83,5 +87,10 @@ describe("repository documentation truth contract", () => {
     });
     expect(npmrc).toContain("strict-allow-scripts=true");
     expect(npmrc).not.toContain("dangerously-allow-all-scripts=true");
+    expect(status).toContain("Run #261");
+    expect(matrix).toContain("Dependency install-script policy");
+    expect(dependencyAudit).toContain("strict-allow-scripts=true");
+    expect(currentDocs).not.toContain("pending install-script review");
+    expect(currentDocs).not.toContain("approval is not inferred");
   });
 });
