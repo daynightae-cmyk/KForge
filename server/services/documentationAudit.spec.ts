@@ -45,7 +45,9 @@ describe("KForge documentation safe fixes", () => {
     expect(readme).toContain("# KNOuX Forge");
     expect(readme).toContain("http://localhost:8080/workspace");
     expect(readme).toContain("http://localhost:3000/workspace");
-    expect(readme).toContain("does not claim target-application browser-console or full browser-network telemetry");
+    expect(readme).toContain("Packaged Electron additionally records bounded KForge-owned loopback browser traffic");
+    expect(readme).toContain("bounded attributed browser-console evidence");
+    expect(readme).not.toContain("does not claim target-application browser-console or full browser-network telemetry");
     expect(runGuide).toContain("npm run lint");
     expect(runGuide).not.toContain("There is no repository `lint` script");
     expect(environment).not.toContain("API_BASE_URL");
