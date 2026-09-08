@@ -1,0 +1,133 @@
+name: One-shot lossless asset hygiene
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/asset-hygiene-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  optimize-assets:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Prove reference image is unused
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -n -- 'knoux-forge-installation-reference\.png' ':!client/assets/knoux-forge-installation-reference.png'; then
+            echo 'Reference image still has consumers; refusing deletion.' >&2
+            exit 1
+          fi
+          echo 'No repository consumer references the installation reference image.'
+
+      - name: Install lossless PNG verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y optipng python3-pil
+
+      - name: Optimize official logo without changing pixels
+        shell: bash
+        run: |
+          set -euo pipefail
+          logo='client/assets/knoux-forge-official-logo.png'
+          cp "$logo" /tmp/knoux-logo-before.png
+          before_bytes=$(stat -c%s "$logo")
+
+          python3 - <<'PY'
+          from PIL import Image
+          from hashlib import sha256
+          import json
+
+          def fingerprint(path):
+              with Image.open(path) as image:
+                  rgba = image.convert('RGBA')
+                  return {
+                      'size': list(rgba.size),
+                      'pixelSha256': sha256(rgba.tobytes()).hexdigest(),
+                  }
+
+          print('before=' + json.dumps(fingerprint('/tmp/knoux-logo-before.png'), sort_keys=True))
+          PY
+
+          optipng -o7 -strip all -quiet "$logo"
+
+          python3 - <<'PY'
+          from PIL import Image
+          from hashlib import sha256
+          import json
+          import sys
+
+          def fingerprint(path):
+              with Image.open(path) as image:
+                  rgba = image.convert('RGBA')
+                  return {
+                      'size': list(rgba.size),
+                      'pixelSha256': sha256(rgba.tobytes()).hexdigest(),
+                  }
+
+          before = fingerprint('/tmp/knoux-logo-before.png')
+          after = fingerprint('client/assets/knoux-forge-official-logo.png')
+          print('after=' + json.dumps(after, sort_keys=True))
+          if before != after:
+              print('Lossless invariant failed: dimensions or decoded pixels changed.', file=sys.stderr)
+              sys.exit(1)
+          PY
+
+          after_bytes=$(stat -c%s "$logo")
+          echo "logo bytes: $before_bytes -> $after_bytes"
+          if [ "$after_bytes" -ge "$before_bytes" ]; then
+            echo 'Optimizer produced no size reduction; restoring original logo bytes.'
+            cp /tmp/knoux-logo-before.png "$logo"
+          fi
+
+      - name: Remove unused installation reference image
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm client/assets/knoux-forge-installation-reference.png
+
+      - name: Validate exact asset diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed=$(git status --short | awk '{print $2}' | sort)
+          printf '%s\n' "$changed"
+          expected=$(printf '%s\n' \
+            'client/assets/knoux-forge-installation-reference.png' \
+            'client/assets/knoux-forge-official-logo.png' | sort)
+          if [ "$changed" != "$expected" ]; then
+            echo 'Unexpected asset diff; refusing commit.' >&2
+            exit 1
+          fi
+
+      - name: Verify production client build
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+      - shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build:client
+
+      - name: Commit optimized assets to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add client/assets/knoux-forge-official-logo.png client/assets/knoux-forge-installation-reference.png
+          git commit -m 'perf(assets): remove unused reference and losslessly optimize logo'
+          git push origin HEAD:main
