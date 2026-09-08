@@ -8,7 +8,8 @@
   "author": "DAY NIGHT DELIVERY SERVICES",
   "allowScripts": {
     "@swc/core@1.16.1": true,
-    "esbuild@0.25.4": true
+    "esbuild@0.25.4": true,
+    "fsevents@2.3.2": true
   },
   "type": "module",
   "pkg": {

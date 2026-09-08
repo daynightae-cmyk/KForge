@@ -79,6 +79,7 @@ describe("repository documentation truth contract", () => {
     expect(manifest.allowScripts).toEqual({
       "@swc/core@1.16.1": true,
       "esbuild@0.25.4": true,
+      "fsevents@2.3.2": true,
     });
     expect(npmrc).toContain("strict-allow-scripts=true");
     expect(npmrc).not.toContain("dangerously-allow-all-scripts=true");
