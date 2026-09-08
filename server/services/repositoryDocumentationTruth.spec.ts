@@ -71,4 +71,16 @@ describe("repository documentation truth contract", () => {
     expect(combined).not.toContain("production client build emits a non-gating chunk-size warning");
     expect(combined).not.toContain("حزمة التطبيق الرئيسية تتجاوز حد Vite الافتراضي البالغ 500 kB");
   });
+
+  it("enforces a pinned install-script allowlist under strict npm policy", () => {
+    const manifest = JSON.parse(rootFile("package.json")) as { allowScripts?: Record<string, boolean> };
+    const npmrc = rootFile(".npmrc");
+
+    expect(manifest.allowScripts).toEqual({
+      "@swc/core@1.16.1": true,
+      "esbuild@0.25.4": true,
+    });
+    expect(npmrc).toContain("strict-allow-scripts=true");
+    expect(npmrc).not.toContain("dangerously-allow-all-scripts=true");
+  });
 });

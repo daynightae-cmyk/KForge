@@ -6,6 +6,10 @@
   "main": "desktop/main.cjs",
   "license": "MIT",
   "author": "DAY NIGHT DELIVERY SERVICES",
+  "allowScripts": {
+    "@swc/core@1.16.1": true,
+    "esbuild@0.25.4": true
+  },
   "type": "module",
   "pkg": {
     "assets": [
