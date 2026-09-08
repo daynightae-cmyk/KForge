@@ -50,9 +50,25 @@ describe("repository documentation truth contract", () => {
 
     expect(status).toMatch(/npm audit.*0 vulnerabilities/i);
     expect(matrix).toMatch(/npm audit.*0 vulnerabilities/i);
-    expect(dependencyAudit).toContain("Run #254");
+    expect(dependencyAudit).toContain("Run #258");
     expect(dependencyAudit).toContain("0 vulnerabilities");
     expect(combined).not.toContain("dependency audit still reports 2 moderate-severity vulnerabilities");
     expect(combined).not.toContain("these are not marked fixed");
+  });
+
+  it("keeps the verified Preview console boundary and closed client chunk warning aligned with Run #258", () => {
+    const status = rootFile("PROJECT_STATUS.md");
+    const matrix = capabilityMatrix();
+    const dependencyAudit = rootFile("docs/verification/DEPENDENCY_AND_TOOLCHAIN_AUDIT.md");
+    const combined = `${status}\n${matrix}\n${dependencyAudit}`;
+
+    expect(status).toContain("Run #258");
+    expect(status).toContain("0afad41249439fe03f81ab84f538ce47a14f3224");
+    expect(status).toContain("487.85 kB");
+    expect(matrix).toContain("browser-console capture attributed to the active KForge-owned loopback Preview");
+    expect(dependencyAudit).toContain("query vendor chunk 26.69 kB");
+    expect(combined).not.toContain("Full target-application browser-console telemetry is not inferred");
+    expect(combined).not.toContain("production client build emits a non-gating chunk-size warning");
+    expect(combined).not.toContain("حزمة التطبيق الرئيسية تتجاوز حد Vite الافتراضي البالغ 500 kB");
   });
 });

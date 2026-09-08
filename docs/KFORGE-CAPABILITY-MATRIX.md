@@ -1,10 +1,10 @@
 # KNOuX Forge capability matrix
 
-Evidence reference captured on 2026-09-08 from GitHub Actions `KForge Verification Gate` Run #254 at SHA `82461f1f7782799bae09889c4523f367f9341e93`. Git history and the exact-SHA Actions run remain the authority for later changes.
+Evidence reference captured on 2026-09-08 from GitHub Actions `KForge Verification Gate` Run #258 at SHA `0afad41249439fe03f81ab84f538ce47a14f3224`. Git history and the exact-SHA Actions run remain the authority for later changes.
 
 `COMPLETE` means the locally implementable, bounded product path and its cited verification are present. It does not convert absent provider evidence into success. `PARTIAL` means a real path exists with a known environment/provider/evidence boundary. `BLOCKED` identifies an external prerequisite that the repository cannot safely invent. `SPECIALIZED` Workbench classification describes a dedicated product surface; it does not mean every external integration behind that surface is configured.
 
-Reference verification at Run #254: workflow-pin verification PASS; `npm ci` PASS; `npm audit --audit-level=moderate` PASS with 0 vulnerabilities across 753 audited packages; typecheck PASS; lint PASS across 240 source files; 33 Vitest files with 161 passed and 1 opt-in benchmark skipped; production build PASS; 61/61 Playwright browser tests PASS; Windows x64 NSIS build and installed-runtime/installer lifecycle PASS.
+Reference verification at Run #258: workflow-pin verification PASS; `npm ci` PASS; `npm audit --audit-level=moderate` PASS with 0 vulnerabilities across 753 audited packages; typecheck PASS; lint PASS across 241 source files; 34 Vitest files with 164 passed and 1 opt-in benchmark skipped; production build PASS; main application entry 487.85 kB with React Query isolated in a 26.69 kB vendor chunk; 61/61 Playwright browser tests PASS; Windows x64 NSIS build and installed-runtime/installer lifecycle PASS.
 
 | Capability | Current real behavior | Verification / evidence | Status |
 | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ Reference verification at Run #254: workflow-pin verification PASS; `npm ci` PAS
 | Developer tests/build/lint | Discovers detected commands without running them and executes only through explicit registered local authority | Dedicated Tests, Build, and Lint Workbench E2E | COMPLETE where command metadata exists |
 | Developer runtime | Executes bounded runtime verification through explicit authority and yields process ownership to live Preview when appropriate | Runtime Workbench E2E | COMPLETE where runtime metadata exists |
 | Developer logs/diagnostics | Uses real persisted tasks and bounded problem evidence rather than synthetic observability | Developer observability E2E | COMPLETE local evidence |
-| Preview | One process manager with start/health/stop/restart, bounded logs, routes, history, ownership isolation, viewport/zoom controls, real embedded app evidence, and bounded packaged-Electron browser traffic with query redaction | Preview service tests, topology runtime tests, Preview Studio, canonical Preview and Topology Playwright suites | COMPLETE local runtime/browser Workbench; full target-app console telemetry not claimed |
+| Preview | One process manager with start/health/stop/restart, bounded logs, routes, history, ownership isolation, viewport/zoom controls, real embedded app evidence, bounded packaged-Electron browser traffic with query redaction, and bounded packaged-Electron browser-console capture attributed to the active KForge-owned loopback Preview with sensitive values redacted | Preview service tests, topology runtime tests, desktop telemetry-source regression, Preview Studio, canonical Preview and Topology Playwright suites | COMPLETE local runtime/browser Workbench within the measured loopback/Electron boundary |
 | Preview Fix and Verify | Requires current failing Preview evidence, plans, snapshots, applies only a verified safe patch, verifies, restarts, and rolls back on failure | End-to-end route test | COMPLETE for supported safe rule |
 | Git local | Uses real local Git for status, branches/tags/stashes/history, stage/unstage, and confirmed local commit; no implicit push | Isolated local Git Playwright test | COMPLETE local |
 | GitHub remote | Presents repository, pull-request, issue, Actions/checks, and release evidence without remote mutation on read | GitHub Remote Workbench Playwright evidence | COMPLETE read surface; authentication/network dependent |
@@ -39,7 +39,7 @@ Reference verification at Run #254: workflow-pin verification PASS; `npm ci` PAS
 | Accessibility | Keyboard alternatives, focus behavior, labels, reduced motion, explicit status copy, and Axe checks across critical surfaces | Playwright keyboard suite plus Axe browser analysis | COMPLETE for tested critical surfaces |
 | Release Gate | Separates SOURCE, LOCAL, PREVIEW, DESKTOP, WINDOWS_PACKAGE, INSTALLER, GITHUB, CI, and REMOTE verdicts; one domain never manufactures another | Release Gate browser evidence and backend release engine | COMPLETE source separation |
 | Release & Distribution | Structured preparation, versioning, artifact presence, package verification, CI identity, and remote release boundaries; no tag/commit/push/publish authority is invented | Release & Distribution E2E plus Axe accessibility | COMPLETE observational/preparation path; publication provider-dependent |
-| Windows package/installer | Produces x64 NSIS package, digest evidence, installed-runtime check, lifecycle verification, and CI artifact | Windows package gate in Run #254 plus uploaded installer/verification evidence | COMPLETE unsigned package verification |
+| Windows package/installer | Produces x64 NSIS package, digest evidence, installed-runtime check, lifecycle verification, and CI artifact | Windows package gate in Run #258 plus uploaded installer/verification evidence | COMPLETE unsigned package verification |
 | Self Audit | Executes the exact KForge-on-KForge observational sequence, checks source mutation, persists atomically, and verifies reload across server instances | Service tests plus browser restart-boundary evidence | COMPLETE local |
 | Product identity and run docs | KNOuX Forge package, browser title, README, environment, run commands, ports, routes, architecture, limitations, and dated evidence semantics | Repository documentation truth regression test | COMPLETE repository-content path |
 
@@ -49,10 +49,10 @@ All currently reachable Workbench views in `client/workbench/surfaceTypes.ts` ar
 
 - No configured trustworthy remote extension registry/package adapter and integrity source exists for a real remote extension lifecycle.
 - Remote model/update registries, remote documentation, remote CI, remote Preview, product updates, GitHub operations, and cloud AI require their real providers, credentials, network policy, trust, and explicit action. Missing prerequisites remain `OFFLINE`, `NOT_CONFIGURED`, `UNKNOWN`, `UNAVAILABLE`, or `BLOCKED`.
-- Full target-application browser-console telemetry is not inferred from Playwright acceptance of the KForge Workbench or bounded Electron browser-traffic evidence; a dedicated telemetry bridge would be separate evidence.
+- Packaged-Electron browser-console evidence is intentionally limited to an active KForge-owned loopback Preview and redacted before persistence. HTML-only inspection still does not claim executed-JavaScript DOM coverage, rendered layout/contrast, request waterfalls, screenshots, element picking, or user-interaction telemetry.
 - Trusted Windows publisher identity is not established. The current installer remains an unsigned development/release artifact for trust purposes even though package digest and lifecycle verification pass.
-- At the Run #254 capture point, `main` is not branch-protected and required status-check enforcement is off. CI success proves the tested SHA, not enforcement policy.
-- The authoritative Run #254 dependency gate reports 0 vulnerabilities. npm still reports pending install-script review for `@swc/core@1.16.1` and `esbuild@0.25.4`; approval is not inferred.
-- The production client build emits a non-gating chunk-size warning for the main application bundle; this remains an internal optimization target rather than a correctness/security failure.
+- At the Run #258 capture point, `main` is not branch-protected and required status-check enforcement is off. CI success proves the tested SHA, not enforcement policy.
+- The authoritative Run #258 dependency gate reports 0 vulnerabilities. npm still reports pending install-script review for `@swc/core@1.16.1` and `esbuild@0.25.4`; approval is not inferred.
+- The prior production-client >500 kB warning target is closed in Run #258: the main application entry is 487.85 kB after minification, with React Query isolated in a 26.69 kB vendor chunk. This does not turn asset-size optimization into a release claim; it only records the measured build result.
 
 The repository must continue showing absent provider or policy evidence as `BLOCKED`, `NOT_CONFIGURED`, `OFFLINE`, `UNKNOWN`, or `UNAVAILABLE` until current evidence changes.
