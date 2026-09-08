@@ -120,7 +120,8 @@ test.describe("KForge Preview Studio 3.0 browser and QA evidence", () => {
     const qa = studio.locator('[aria-label="Preview visual and accessibility QA"]');
     await expect(qa).toContainText("COMPLETED");
     await expect(qa).toContainText("A non-empty document title was delivered");
-    await expect(qa).toContainText("Browser console, request waterfalls, screenshots");
+    await expect(qa).toContainText("Packaged Electron can capture bounded, redacted browser-console evidence");
+    await expect(qa).toContainText("This HTML inspection does not itself capture console events, request waterfalls, screenshots");
 
     await studio.getByRole("button", { name: /Network/ }).click();
     await expect(studio.locator('[aria-label="Preview network observations"]')).toContainText("loopback health probes only");
