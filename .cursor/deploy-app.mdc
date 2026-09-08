@@ -1,12 +1,28 @@
 ---
-description: Deploy the app to production using Netlify.
-globs: 
+description: Evidence-first deployment policy for KNOuX Forge.
+globs:
 alwaysApply: true
 ---
-Deploying the app to production is powered by Netlify, however, it's only possible as long as there are several tools from netlify available:
+# KNOuX Forge deployment policy
 
-- if the tools are not available, tell the user to connect the netlify MCP in: https://builder.io/app/mcp-servers
+Deployment is an explicit release action, not a substitute for repository verification.
 
-If the user asks to deploy the app, use the appropiete netlify MCP tools to deploy the app.
+Before changing or deploying production state:
 
-Notice that, netlify builds the source code in their own servers, so while it's a good idea to check if `npm run build` works locally, it's not a requirement.
+1. Treat `main` as authoritative and confirm the exact commit being released.
+2. Run the repository verification appropriate to the change. At minimum preserve `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, and `npm audit`; production UI/runtime changes must also preserve Playwright evidence.
+3. For desktop/release work, preserve the Windows NSIS packaging and installed-runtime lifecycle gates. Do not claim a signed installer unless signing evidence actually exists.
+4. Do not deploy from an unverified local modification or from removed/legacy product code.
+5. Never invent deployment credentials, provider availability, domain state, release URLs, or successful cloud publication. Report unavailable credentials/providers truthfully.
+
+## Netlify
+
+`netlify.toml` and `netlify/functions/api.ts` are repository deployment adapters. Use them only when Netlify deployment is explicitly requested and the required authorized deployment capability is actually available.
+
+- Do not tell the user to connect unrelated third-party MCP servers as a generic workaround.
+- Do not weaken the build or verification contract because Netlify builds remotely.
+- Do not treat Netlify as the authority for the Electron/Windows release path.
+
+## Release evidence
+
+A deployment/release report must identify the exact commit SHA and the verification evidence that passed for that SHA. Environmental limits such as unavailable signing certificates, clean-machine Windows validation, remote provider credentials, or repository administration permissions must remain explicitly classified as external/environmental limits rather than simulated as complete.
