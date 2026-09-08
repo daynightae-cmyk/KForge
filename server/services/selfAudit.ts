@@ -5,7 +5,8 @@ import type { ProjectSummary, SelfAuditRecord, SelfAuditStageId, SelfAuditStageS
 import { KFORGE_SELF_AUDIT_STAGES } from "../../shared/workspace";
 
 const requiredIdentityFiles = [
-  "client/pages/KForgeWorkspace.tsx",
+  "client/workbench/KForgeWorkbench.tsx",
+  "client/workbench/navigation.ts",
   "server/routes/workspace.ts",
   "server/services/platformSettings.ts",
   "shared/workspace.ts",
@@ -29,7 +30,7 @@ export async function inspectKForgeIdentity(projectPath: string) {
     matched: matchedFiles.length === requiredIdentityFiles.length,
     matchedFiles,
     missingFiles: requiredIdentityFiles.filter((relative) => !matchedFiles.includes(relative)),
-    source: "KForge repository identity files",
+    source: "KForge canonical Workbench/server identity files",
   };
 }
 

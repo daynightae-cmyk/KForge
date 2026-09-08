@@ -5,6 +5,14 @@ import type { ProjectSummary } from "../../shared/workspace";
 import { KFORGE_SELF_AUDIT_STAGES } from "../../shared/workspace";
 import { createSelfAuditRecord, inspectKForgeIdentity, markSelfAuditWaitingForRestart, readSelfAuditRecord, recordSelfAuditStage, selfAuditEvidencePath } from "./selfAudit";
 
+const CANONICAL_IDENTITY_FILES = [
+  "client/workbench/KForgeWorkbench.tsx",
+  "client/workbench/navigation.ts",
+  "server/routes/workspace.ts",
+  "server/services/platformSettings.ts",
+  "shared/workspace.ts",
+] as const;
+
 async function withRoot(run: (root: string) => Promise<void>) {
   const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-self-audit-"));
   try { await run(root); }
@@ -46,14 +54,28 @@ describe("KForge Self Audit persistence", () => {
     ]);
   });
 
-  it("recognizes KForge from its canonical existing architecture instead of its package name", async () => withRoot(async (root) => {
+  it("recognizes KForge from the canonical contextual Workbench architecture and ignores the superseded shell", async () => withRoot(async (root) => {
     const selected = project(root);
     expect((await inspectKForgeIdentity(selected.path)).matched).toBe(false);
-    for (const relative of ["client/pages/KForgeWorkspace.tsx", "server/routes/workspace.ts", "server/services/platformSettings.ts", "shared/workspace.ts"]) {
+
+    const legacyShell = path.join(selected.path, "client/pages/KForgeWorkspace.tsx");
+    await fs.mkdir(path.dirname(legacyShell), { recursive: true });
+    await fs.writeFile(legacyShell, "// superseded shell must not satisfy identity\n", "utf8");
+    expect(await inspectKForgeIdentity(selected.path)).toMatchObject({
+      matched: false,
+      missingFiles: expect.arrayContaining(["client/workbench/KForgeWorkbench.tsx", "client/workbench/navigation.ts"]),
+    });
+
+    for (const relative of CANONICAL_IDENTITY_FILES) {
       await fs.mkdir(path.dirname(path.join(selected.path, relative)), { recursive: true });
       await fs.writeFile(path.join(selected.path, relative), "// identity evidence\n", "utf8");
     }
-    expect(await inspectKForgeIdentity(selected.path)).toMatchObject({ matched: true, missingFiles: [] });
+    expect(await inspectKForgeIdentity(selected.path)).toMatchObject({
+      matched: true,
+      matchedFiles: [...CANONICAL_IDENTITY_FILES],
+      missingFiles: [],
+      source: "KForge canonical Workbench/server identity files",
+    });
   }));
 
   it("does not claim restart until a different server instance reloads the atomic evidence", async () => withRoot(async (root) => {
