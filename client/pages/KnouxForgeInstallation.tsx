@@ -52,7 +52,7 @@ export default function KnouxForgeInstallation() {
 
   const playRevealMusic = useCallback(() => {
     if (!soundEnabledRef.current || audioRef.current) return;
-    const audio = new Audio("/audio/logo-reveal-slow.wav");
+    const audio = new Audio("/audio/logo-reveal-slow.ogg");
     audio.preload = "auto";
     audio.volume = 0.12;
     audioRef.current = audio;
