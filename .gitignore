@@ -29,6 +29,10 @@ pnpm-debug.log*
 !.env.example
 *.pem
 *.key
+# Code-signing certificate bundles must never be committed; signing material
+# arrives only via CI secrets (WIN_CSC_LINK / CSC_LINK).
+*.pfx
+*.p12
 
 # Editors and OS
 .vscode/*
