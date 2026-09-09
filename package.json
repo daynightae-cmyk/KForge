@@ -116,7 +116,7 @@
     "tsx": "^4.7.0",
     "vaul": "^0.9.3",
     "vite": "^6.3.5",
-    "vitest": "^3.1.4"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "tailwindcss": {

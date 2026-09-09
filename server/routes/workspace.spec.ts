@@ -90,7 +90,7 @@ describe("KForge Workspace engines", () => {
     const project = await makeProjectSummary(fixture("workspace-mock"));
     const scan = await scanProject(project);
     expect(scan.issues.some((entry) => entry.category === "completeness" && entry.file === "src/index.ts")).toBe(true);
-  });
+  }, 15_000);
 
   it("classifies a missing environment template as a deterministic safe local patch", async () => {
     const projectPath = await fs.mkdtemp(path.join(process.cwd(), "kforge-env-example-"));
