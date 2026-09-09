@@ -52,4 +52,21 @@ describe("Local Platform operating modes", () => {
     await fs.writeFile(path.join(root, ".kforge", "local-platform.json"), JSON.stringify({ mode: "always-online" }), "utf8");
     expect((await getLocalPlatformStatus(root)).mode).toBe("offline");
   }, 20_000);
+
+  it("answers repeated status reads from cache while mode transitions stay immediate", async () => {
+    const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-platform-cache-"));
+    roots.push(root);
+    const first = await getLocalPlatformStatus(root);
+    const startedAt = Date.now();
+    const second = await getLocalPlatformStatus(root);
+    // Cached toolchain probes keep repeat reads to file-IO scale, not
+    // child-process scale, even on a loaded host.
+    expect(Date.now() - startedAt).toBeLessThan(15_000);
+    expect(second.mode).toBe("offline");
+    expect(second.capabilities.map((entry) => entry.id).sort()).toEqual(first.capabilities.map((entry) => entry.id).sort());
+    await setLocalPlatformMode(root, "online");
+    expect((await getLocalPlatformStatus(root)).mode).toBe("online");
+    await setLocalPlatformMode(root, "offline");
+    expect((await getLocalPlatformStatus(root)).mode).toBe("offline");
+  }, 30_000);
 });

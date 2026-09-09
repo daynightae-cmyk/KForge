@@ -36,6 +36,7 @@
     "verify:assets": "node scripts/verify-asset-budget.mjs",
     "verify:gate": "node scripts/verify-gate.mjs",
     "verify:desktop": "npm run build && node scripts/verify-desktop.mjs",
+    "verify:signing": "node scripts/verify-signing.mjs",
     "verify:release": "npm run verify:assets && npm run typecheck && npm run lint && npm run test && npm run build && npm run test:e2e && node scripts/verify-desktop.mjs && node scripts/package-windows.mjs && npm run verify:installer",
     "desktop": "npm run build && electron .",
     "package:windows": "npm run build && node scripts/package-windows.mjs",

@@ -7,8 +7,20 @@ import workspaceRouter from "./routes/workspace";
 export function createServer() {
   const app = express();
 
+  // Loopback-first desktop runtime: disable fingerprinting, bound body sizes,
+  // normalize malformed-JSON errors without leaking stacks. HSTS/CSP-at-edge
+  // are intentionally not applied here: this API is served over loopback HTTP
+  // by the packaged Electron shell (which applies its own CSP frame policy),
+  // so internet-edge headers would be security decoration, not a boundary.
+  app.disable("x-powered-by");
   app.use(express.json({ limit: "2mb" }));
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.urlencoded({ extended: true, limit: "100kb" }));
+  app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (error instanceof SyntaxError && "body" in (error as unknown as Record<string, unknown>)) {
+      return res.status(400).json({ error: "Malformed JSON body." });
+    }
+    return next(error);
+  });
 
   app.get("/api/ping", (_req, res) => {
     res.json({ message: "KForge server is online." });

@@ -85,6 +85,14 @@ jobs:
       - name: Build signed-state-transparent NSIS installer
         run: npm run package:windows
 
+      - name: Record Authenticode signing evidence (truthful, non-escalating)
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter 'KNOuX-Forge-Setup-*-Windows-x64.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer was not produced; signing evidence cannot be recorded.' }
+          node scripts/verify-signing.mjs $installer.FullName
+        continue-on-error: true
+
       - name: Verify installed Windows runtime and NSIS lifecycle
         run: npm run verify:installer
 

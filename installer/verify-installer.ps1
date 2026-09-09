@@ -112,7 +112,39 @@ Assert-True ((Get-Content -LiteralPath $hashFile -Raw).ToLowerInvariant() -match
 $manifestPath = Join-Path $releaseDirectory 'installer-manifest.json'
 Assert-True (Test-Path -LiteralPath $manifestPath -PathType Leaf) 'installer-manifest.json is missing.'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-Assert-True ($manifest.artifactFilename -eq $installer.Name -and $manifest.sha256 -eq $hash -and $manifest.signatureState -eq 'UNSIGNED' -and $manifest.installerType -eq 'NSIS') 'Installer manifest is inconsistent with the built artifact.'
+Assert-True ($manifest.artifactFilename -eq $installer.Name -and $manifest.sha256 -eq $hash -and $manifest.installerType -eq 'NSIS') 'Installer manifest is inconsistent with the built artifact.'
+# Authenticode observation is best-effort OS evidence: on constrained hosts the
+# Security module may fail to load, in which case the signature state is
+# UNAVAILABLE rather than fabricated. A configured-signing claim still requires
+# a Valid observation; only the explicitly-unsigned path tolerates UNAVAILABLE.
+$observedSignature = $null
+$authenticodeCommand = Get-Command Get-AuthenticodeSignature -ErrorAction SilentlyContinue
+if ($null -eq $authenticodeCommand) { try { Import-Module Microsoft.PowerShell.Security -ErrorAction Stop } catch { } }
+$authenticodeCommand = Get-Command Get-AuthenticodeSignature -ErrorAction SilentlyContinue
+if ($null -ne $authenticodeCommand) {
+  try { $observedSignature = Get-AuthenticodeSignature -LiteralPath $InstallerPath } catch { $observedSignature = $null }
+}
+$observedStatus = if ($null -eq $observedSignature) { 'UNAVAILABLE' } else { $observedSignature.Status.ToString() }
+$manifestSigningConfigured = $false
+$manifestSignatureStatus = ''
+try {
+  $manifestSigningConfigured = [bool]$manifest.signing.configured
+  $manifestSignatureStatus = [string]$manifest.signing.status
+} catch { $manifestSigningConfigured = $false; $manifestSignatureStatus = '' }
+if ($manifestSigningConfigured) {
+  Assert-True ($observedStatus -eq 'Valid') "Manifest claims signing is configured but Authenticode status is '$observedStatus'."
+  Assert-True ($manifestSignatureStatus -eq $observedStatus -or $manifestSignatureStatus -eq 'Valid') 'Installer manifest signing status does not match OS Authenticode evidence.'
+} else {
+  Assert-True ($manifest.signatureState -eq 'UNSIGNED') 'Unsigned manifest must keep signatureState UNSIGNED.'
+  Assert-True ($observedStatus -eq 'NotSigned' -or $observedStatus -eq 'UNAVAILABLE') "Unsigned installer shows unexpected Authenticode status '$observedStatus'."
+}
+$effectiveSignatureState = if ($manifestSigningConfigured) { $observedStatus } else { 'UNSIGNED' }
+$signerSubject = $null; $signerIssuer = $null; $timestamped = $false
+if ($null -ne $observedSignature -and $observedSignature.SignerCertificate) {
+  $signerSubject = $observedSignature.SignerCertificate.Subject
+  $signerIssuer = $observedSignature.SignerCertificate.Issuer
+}
+if ($null -ne $observedSignature -and $observedSignature.TimeStamperCertificate) { $timestamped = $true }
 
 $unpacked = Join-Path $releaseDirectory 'win-unpacked'
 if (Test-Path -LiteralPath $unpacked) {
@@ -127,7 +159,14 @@ $record = [ordered]@{
   sha256 = $hash
   manifestVerified = $true
   unpackedSecretCheck = if (Test-Path -LiteralPath $unpacked) { 'PASS' } else { 'NOT_AVAILABLE' }
-  signatureState = 'UNSIGNED'
+  signatureState = $effectiveSignatureState
+  signing = [ordered]@{
+    configured = $manifestSigningConfigured
+    status = $effectiveSignatureState
+    subject = $signerSubject
+    issuer = $signerIssuer
+    timestamped = $timestamped
+  }
   lifecycle = 'SKIPPED'
   appsAndFeatures = 'NOT_TESTED'
   startMenuShortcut = 'NOT_TESTED'

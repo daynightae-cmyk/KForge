@@ -70,6 +70,24 @@ async function locateExecutable(id: SecurityToolId) {
   return undefined;
 }
 
+// Version probes spawn real processes (npm boots a second Node runtime), and
+// detectSecurityTools runs inside every project scan. Executable presence and
+// version are process-environment facts, so cache successful probes briefly.
+// Failures are never cached: a load-timed-out probe must retry on the next
+// call instead of reporting FAILED for minutes after the host recovers.
+interface VersionProbe { ok: boolean; code: number; stdout: string; stderr: string }
+const versionProbeCache = new Map<SecurityToolId, { at: number; version: VersionProbe }>();
+const VERSION_PROBE_TTL_MS = 5 * 60_000;
+
+async function probedVersion(id: SecurityToolId, executable: string): Promise<VersionProbe> {
+  const cached = versionProbeCache.get(id);
+  if (cached && Date.now() - cached.at < VERSION_PROBE_TTL_MS && cached.version.ok) return cached.version;
+  const version = await execute(executable, ["--version"], undefined, 5_000);
+  if (version.ok) versionProbeCache.set(id, { at: Date.now(), version });
+  else versionProbeCache.delete(id);
+  return version;
+}
+
 async function execute(executable: string, args: string[], cwd?: string, timeout = 90_000) {
   try {
     const npmCli = process.platform === "win32" && /^npm\.cmd$/i.test(path.basename(executable)) ? path.join(path.dirname(executable), "node_modules", "npm", "bin", "npm-cli.js") : undefined;
@@ -136,7 +154,7 @@ export async function detectSecurityTools(projectPath: string, trusted: boolean)
     const executable = await locateExecutable(id);
     if (!executable) return { id, label: definition.label, state: "UNAVAILABLE", detail: `${definition.label} was not found on PATH. Set ${definition.env} to an explicit local executable path or install it yourself; KForge will never download it automatically.` };
     if (!trusted) return { id, label: definition.label, state: "BLOCKED", executable, detail: "Executable was located, but version probing and project scanning are blocked in Untrusted Project Mode." };
-    const version = await execute(executable, ["--version"], undefined, 5_000);
+    const version = await probedVersion(id, executable);
     if (!version.ok) return { id, label: definition.label, state: "FAILED", executable, exitCode: version.code, stdout: version.stdout, stderr: version.stderr, detail: "Executable was found but could not report its version." };
     if (id === "npm-audit" && !(await isFile(path.join(projectPath, "package-lock.json")))) return { id, label: definition.label, state: "CONFIGURED", executable, version: version.stdout.split(/\r?\n/)[0], detail: "npm is available, but this project has no package-lock.json. KForge will not invent or modify a lockfile for an audit." };
     if (id === "semgrep" && !(await localSemgrepConfig(projectPath))) return { id, label: definition.label, state: "CONFIGURED", executable, version: version.stdout.split(/\r?\n/)[0], detail: "Executable is available. Add a local .semgrep.yml/.yaml rule file before running; KForge will not fetch remote rules automatically." };
@@ -146,10 +164,18 @@ export async function detectSecurityTools(projectPath: string, trusted: boolean)
 }
 
 export async function runSecurityTool(projectPath: string, trusted: boolean, onlineOptional: boolean, id: SecurityToolId): Promise<SecurityToolStatus> {
+  // Network-capable tools are refused before any executable probing so the
+  // Offline verdict is deterministic and never depends on host load or probe
+  // timing. Probing first could surface FAILED instead of BLOCKED when a
+  // version check times out on a busy host.
+  if ((id === "sonar" || id === "npm-audit") && !onlineOptional) {
+    const executable = await locateExecutable(id);
+    const label = definitions[id].label;
+    return { id, label, state: "BLOCKED", ...(executable ? { executable } : {}), detail: `${label} can contact a remote service and is blocked in Offline Mode. Enable Online Optional explicitly before running it.` };
+  }
   const current = (await detectSecurityTools(projectPath, trusted)).find((entry) => entry.id === id)!;
   if (!trusted || current.state === "BLOCKED") return { ...current, state: "BLOCKED", detail: "Security tool execution is blocked until the project is explicitly trusted." };
   if (current.state === "UNAVAILABLE" || current.state === "FAILED") return current;
-  if ((id === "sonar" || id === "npm-audit") && !onlineOptional) return { ...current, state: "BLOCKED", detail: `${current.label} can contact a remote service and is blocked in Offline Mode. Enable Online Optional explicitly before running it.` };
   if (!current.executable) return { ...current, state: "FAILED", detail: "Executable path is unavailable." };
   const args = id === "gitleaks" ? ["detect", "--no-git", "--report-format", "json", "--report-path", "-"] : id === "semgrep" ? ["--json", "--config", await localSemgrepConfig(projectPath) || ".semgrep.yml", "--quiet"] : id === "npm-audit" ? ["audit", "--json", "--omit=dev", "--package-lock-only"] : [];
   const result = await execute(current.executable, args, projectPath, id === "sonar" ? 120_000 : 90_000);

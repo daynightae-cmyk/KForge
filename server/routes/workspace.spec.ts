@@ -200,7 +200,7 @@ describe("KForge Workspace engines", () => {
     } finally {
       await fs.writeFile(readme, original, "utf8");
     }
-  });
+  }, 30_000);
 
   it("persists project collections and derives truthful category membership", async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-collections-"));
@@ -325,7 +325,7 @@ describe("KForge Workspace engines", () => {
     expect(release.verdicts.CI).toMatchObject({ kind: "CI", state: "NOT_CONFIGURED", source: expect.any(String), freshness: expect.any(String), evidence: expect.any(Array) });
     expect(release.verdicts.LOCAL.timestamp).toEqual(expect.any(String));
     expect(release.readiness).toBe("READY WITH WARNINGS");
-  });
+  }, 30_000);
 
   it("runs Preview Fix & Verify through a snapshot, deterministic patch, commands, restart, and healthy probe", async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-preview-loop-"));

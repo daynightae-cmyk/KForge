@@ -20,4 +20,18 @@ describe("Security Tool Manager network policy", () => {
       await fs.rm(projectPath, { recursive: true, force: true });
     }
   }, 15_000);
+
+  it("reports identical tool states across repeated detection without re-probing", async () => {
+    const projectPath = await fs.mkdtemp(path.join(process.cwd(), "kforge-security-tools-"));
+    try {
+      await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "audit-fixture", version: "1.0.0" }), "utf8");
+      await fs.writeFile(path.join(projectPath, "package-lock.json"), JSON.stringify({ name: "audit-fixture", version: "1.0.0", lockfileVersion: 3, packages: { "": { name: "audit-fixture", version: "1.0.0" } } }), "utf8");
+      const first = await detectSecurityTools(projectPath, true);
+      const second = await detectSecurityTools(projectPath, true);
+      expect(second.map((tool) => `${tool.id}:${tool.state}`)).toEqual(first.map((tool) => `${tool.id}:${tool.state}`));
+      expect(second.find((tool) => tool.id === "npm-audit")).toMatchObject({ label: "npm audit", state: "AVAILABLE" });
+    } finally {
+      await fs.rm(projectPath, { recursive: true, force: true });
+    }
+  }, 15_000);
 });

@@ -91,7 +91,7 @@ The package command creates the NSIS installer, checksum, artifact manifest, rel
 
 To permanently remove retained KForge-managed user data after uninstalling, explicitly run `powershell -ExecutionPolicy Bypass -File installer/purge-kforge-user-data.ps1 -ConfirmPurge`. The purge command refuses to delete anything unless `-ConfirmPurge` is supplied and targets only `%LOCALAPPDATA%\KNOuX Forge`.
 
-The current installer is an **UNSIGNED DEVELOPMENT/RELEASE ARTIFACT** for trust purposes. It does not claim a Trusted Publisher, SmartScreen reputation, or trusted code-signing identity. A build log showing `signtool.exe` invocation is not sufficient evidence of a trusted publisher. See [DESKTOP_ARCHITECTURE_DECISION.md](docs/DESKTOP_ARCHITECTURE_DECISION.md) for the architecture, trust boundaries, and signing-readiness constraints.
+The current installer is an **UNSIGNED DEVELOPMENT/RELEASE ARTIFACT** for trust purposes. It does not claim a Trusted Publisher, SmartScreen reputation, or trusted code-signing identity. A build log showing `signtool.exe` invocation is not sufficient evidence of a trusted publisher. See [docs/SIGNING.md](docs/SIGNING.md) for the release modes (`DEVELOPMENT`, `RELEASE_CANDIDATE`, `TRUSTED_RELEASE`), the CI-secrets signing contract (`WIN_CSC_LINK`/`CSC_LINK`), and the Authenticode verification evidence, and [DESKTOP_ARCHITECTURE_DECISION.md](docs/DESKTOP_ARCHITECTURE_DECISION.md) for the architecture and trust boundaries.
 
 ## Development and production
 

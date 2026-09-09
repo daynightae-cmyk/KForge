@@ -383,6 +383,10 @@ async function probeService(topology: ActiveTopology, service: RuntimeService): 
       if (ok) {
         const first = service.state !== "HEALTHY";
         const ownership = await verifyServiceListener(topology.session.projectId, service);
+        // Listener attribution shells out to the OS and can outlive the
+        // probed process: an exit, stop, or failure recorded mid-probe owns
+        // the terminal state and must never be revived by stale success.
+        if (!["STARTING", "RUNNING", "HEALTHY", "DEGRADED"].includes(service.state)) return;
         service.port = ownership.port;
         service.state = ownership.externalConflict ? "DEGRADED" : "HEALTHY";
         if (ownership.externalConflict) {
@@ -400,6 +404,9 @@ async function probeService(topology: ActiveTopology, service: RuntimeService): 
     if (response.ok) {
       const first = service.state !== "HEALTHY";
       const ownership = await verifyServiceListener(topology.session.projectId, service);
+      // Same race as the TCP branch: slow OS attribution must not revive a
+      // service that exited, stopped, or failed while the probe was in flight.
+      if (!["STARTING", "RUNNING", "HEALTHY", "DEGRADED"].includes(service.state)) return;
       service.port = ownership.port;
       service.state = ownership.externalConflict ? "DEGRADED" : "HEALTHY";
       if (ownership.externalConflict) {
@@ -593,6 +600,10 @@ async function terminateOwned(active: ActiveService, force = false) {
   }
 }
 
+function finishStop(topology: ActiveTopology, service: RuntimeService, active: ActiveService): RuntimeService {
+  service.state = "STOPPED"; service.stoppedAt ||= now(); topology.active.delete(service.id); refreshAggregate(topology); return service;
+}
+
 async function stopOne(topology: ActiveTopology, serviceId: string, timeoutMs = 4_000): Promise<RuntimeService> {
   const service = topology.session.services.find((candidate) => candidate.id === serviceId);
   if (!service) throw new Error(`Unknown topology service ${serviceId}.`);
@@ -600,12 +611,18 @@ async function stopOne(topology: ActiveTopology, serviceId: string, timeoutMs = 
   if (!active) { if (service.state !== "FAILED" && service.state !== "BLOCKED") service.state = "STOPPED"; refreshAggregate(topology); return service; }
   if (!service.processOwner || service.processOwner.sessionId !== topology.session.id || service.processOwner.serviceId !== service.id || service.processOwner.pid !== active.child.pid) throw new Error(`Process ownership mismatch refused stop for ${service.id}.`);
   service.state = "STOPPING"; timeline(topology.session, "stop-requested", `Stop requested for owned PID ${active.child.pid}.`, service.id); log(topology, service, "system", "Stop requested by KForge.");
+  const controlPlan = runtimeControlPlan(topology.session.projectId, service.id);
+  // Without an app-level stop hook the only graceful mechanism is the OS
+  // signal itself: a process that ignores it for a short bounded window will
+  // not exit gracefully at all, so waiting the full escalation budget first
+  // is pure shutdown latency. Keep the full budget only when control-plan
+  // hooks need time to run.
+  const gracefulBudgetMs = controlPlan?.stop?.length ? timeoutMs : Math.min(timeoutMs, 1_500);
   const exited = new Promise<boolean>((resolve) => {
     if (active.child.exitCode !== null) return resolve(true);
-    const timer = setTimeout(() => resolve(false), timeoutMs);
+    const timer = setTimeout(() => resolve(false), gracefulBudgetMs);
     active.child.once("exit", () => { clearTimeout(timer); resolve(true); });
   });
-  const controlPlan = runtimeControlPlan(topology.session.projectId, service.id);
   const gracefulControl = await runServiceControl(topology.session.projectId, topology.session.id, service, false);
   gracefulControl.forEach((result) => log(topology, service, "system", `${result.ok ? "Control succeeded" : "Control failed"}: ${result.command}${result.output ? ` · ${result.output}` : ""}`));
   if (!controlPlan?.stop?.length || gracefulControl.some((result) => !result.ok)) await terminateOwned(active, false);
@@ -618,10 +635,17 @@ async function stopOne(topology: ActiveTopology, serviceId: string, timeoutMs = 
     const forceControl = await runServiceControl(topology.session.projectId, topology.session.id, service, true);
     forceControl.forEach((result) => log(topology, service, "system", `${result.ok ? "Force control succeeded" : "Force control failed"}: ${result.command}${result.output ? ` · ${result.output}` : ""}`));
     await terminateOwned(active, true);
-    if (!(await forcedExit)) throw new Error(`Owned process ${active.child.pid} did not exit after safe escalation.`);
+    if (!(await forcedExit)) {
+      // A starved event loop can report the escalation window before the OS
+      // reaps the process: re-check once and re-issue forced termination a
+      // final time instead of failing shutdown on a scheduling artifact.
+      if (active.child.exitCode !== null) return finishStop(topology, service, active);
+      await terminateOwned(active, true);
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      if (active.child.exitCode === null) throw new Error(`Owned process ${active.child.pid} did not exit after safe escalation.`);
+    }
   }
-  if (active.child.exitCode === null && topology.active.has(service.id)) throw new Error(`Owned process ${active.child.pid} did not exit after safe escalation.`);
-  service.state = "STOPPED"; service.stoppedAt ||= now(); topology.active.delete(service.id); refreshAggregate(topology); return service;
+  return finishStop(topology, service, active);
 }
 
 function dependencyOrder(services: RuntimeService[]) {
@@ -673,8 +697,31 @@ export async function checkTopologyHealth(projectId: string) {
 
 export async function stopTopology(projectId: string) {
   const topology = sessions.get(projectId); if (!topology) return undefined;
-  const order = dependencyOrder(topology.session.services).reverse();
-  for (const serviceId of order) await stopOne(topology, serviceId);
+  // Stop in reverse-dependency waves: dependents terminate concurrently first,
+  // then the dependencies they relied on. Sequential per-service stops each
+  // carry their own graceful-escalation budget, so a multi-service session
+  // could exceed lifecycle timeouts; wave-parallel shutdown bounds total stop
+  // time to the slowest wave instead of the sum of every service.
+  const depthOf = (serviceId: string, visiting = new Set<string>()): number => {
+    if (visiting.has(serviceId)) return 0;
+    visiting.add(serviceId);
+    const service = topology.session.services.find((candidate) => candidate.id === serviceId);
+    const depth = service && service.dependencies.length
+      ? 1 + Math.max(...service.dependencies.map((dependency) => depthOf(dependency.serviceId, visiting)))
+      : 0;
+    visiting.delete(serviceId);
+    return depth;
+  };
+  const byDepth = new Map<number, string[]>();
+  for (const service of topology.session.services) {
+    const depth = depthOf(service.id);
+    byDepth.set(depth, [...(byDepth.get(depth) || []), service.id]);
+  }
+  for (const depth of [...byDepth.keys()].sort((a, b) => b - a)) {
+    const outcomes = await Promise.allSettled((byDepth.get(depth) || []).map((serviceId) => stopOne(topology, serviceId)));
+    const failure = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+    if (failure) throw failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
+  }
   const cleanup = await runTopologyCleanup(projectId, topology.session.id, topology.session.services);
   const cleanupFailures = cleanup.filter((result) => !result.ok);
   cleanup.forEach((result) => timeline(topology.session, result.ok ? "stopped" : "failed", `${result.ok ? "Runtime cleanup succeeded" : "Runtime cleanup failed"}: ${result.command}${result.output ? ` · ${result.output}` : ""}`));

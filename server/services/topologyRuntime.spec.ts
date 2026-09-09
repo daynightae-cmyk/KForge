@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { discoverRuntimeTopology, getTopologySession, recordTopologyBrowserTraffic, restartTopologyService, startTopology, startTopologyService, stopTopology, stopTopologyService } from "./topologyRuntime";
+import { checkTopologyHealth, discoverRuntimeTopology, getTopologySession, recordTopologyBrowserTraffic, restartTopologyService, startTopology, startTopologyService, stopTopology, stopTopologyService } from "./topologyRuntime";
 
 const roots: string[] = [];
 const projectIds: string[] = [];
@@ -22,8 +22,13 @@ function id() { const value = `topology-${Date.now()}-${Math.random()}`; project
 
 afterEach(async () => {
   await Promise.allSettled(projectIds.splice(0).map((projectId) => stopTopology(projectId)));
-  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
-});
+  // Windows keeps executable/script handles briefly after process exit; retry
+  // removal instead of failing cleanup on transient EBUSY/ENOTEMPTY locks.
+  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 })));
+  // Real OS process-tree termination plus temp-dir removal must survive
+  // parallel-worker scheduling pressure; the product-side stop budget itself
+  // stays bounded inside stopTopology/stopOne.
+}, 30_000);
 
 describe("canonical runtime topology", () => {
   it("discovers explicit services and dependency evidence without executing project code", async () => {
@@ -76,6 +81,33 @@ describe("canonical runtime topology", () => {
     expect(stopped.services.find((service) => service.id === "api")?.state).toBe("STOPPED");
     expect(stopped.services.find((service) => service.id === "web")?.state).toBe("HEALTHY");
   }, 30_000);
+
+  it("never revives a service that exited unexpectedly across repeated health checks", async () => {
+    const root = await fixture([
+      { id: "api", kind: "api", command: command("server.cjs"), health: { type: "HTTP" } },
+      { id: "web", kind: "frontend", command: command("server.cjs"), dependencies: ["api"], health: { type: "HTTP" }, browserEntrypoint: "/" },
+    ]);
+    await write(root, "server.cjs", "require('node:http').createServer((_q,r)=>r.end('ok')).listen(Number(process.env.PORT),'127.0.0.1'); setInterval(()=>{},1000);");
+    const projectId = id();
+    const started = await startTopology(projectId, root);
+    expect(started.services.find((service) => service.id === "api")?.state).toBe("HEALTHY");
+    process.kill(started.services.find((service) => service.id === "api")!.processId!);
+    let observed = await checkTopologyHealth(projectId);
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline && observed?.services.find((service) => service.id === "api")?.state !== "FAILED") {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      observed = await checkTopologyHealth(projectId);
+    }
+    expect(observed?.services.find((service) => service.id === "api")?.state).toBe("FAILED");
+    expect(observed?.problems.map((entry) => `${entry.serviceId}:${entry.kind}`)).toEqual(expect.arrayContaining(["api:UNEXPECTED_EXIT"]));
+    // Slow in-flight probes must not overwrite the recorded terminal state:
+    // every later observation keeps FAILED instead of reviving HEALTHY.
+    for (let round = 0; round < 3; round += 1) {
+      const again = await checkTopologyHealth(projectId);
+      expect(again?.services.find((service) => service.id === "api")?.state).toBe("FAILED");
+      expect(again?.problems.map((entry) => `${entry.serviceId}:${entry.kind}`)).toEqual(expect.arrayContaining(["api:UNEXPECTED_EXIT"]));
+    }
+  }, 60_000);
 
   it("reports a requested port conflict and never terminates the unrelated listener", async () => {
     const listener = createServer();

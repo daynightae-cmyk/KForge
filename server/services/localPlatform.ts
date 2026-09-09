@@ -63,6 +63,23 @@ async function commandAvailable(command: string, args: string[]) {
   }
 }
 
+// Toolchain presence is a process-environment fact: executables do not appear
+// or vanish between requests while the server runs. Probing git/npm/ollama on
+// every status call costs multiple child-process spawns per request (npm alone
+// boots a second Node runtime), which stacked into multi-second surface loads.
+// Cache only availability; the mode file itself is always read live so mode
+// transitions remain immediate.
+const availabilityCache = new Map<string, { at: number; available: boolean }>();
+const AVAILABILITY_TTL_MS = 5 * 60_000;
+
+async function cachedCommandAvailable(key: string, command: string, args: string[]) {
+  const cached = availabilityCache.get(key);
+  if (cached && Date.now() - cached.at < AVAILABILITY_TTL_MS) return cached.available;
+  const available = await commandAvailable(command, args);
+  availabilityCache.set(key, { at: Date.now(), available });
+  return available;
+}
+
 function capability(id: LocalCapability["id"], label: string, state: LocalCapability["state"], detail: string): LocalCapability {
   return { id, label, state, detail };
 }
@@ -70,9 +87,9 @@ function capability(id: LocalCapability["id"], label: string, state: LocalCapabi
 export async function getLocalPlatformStatus(workspaceRoot: string): Promise<LocalPlatformStatus> {
   const [settings, gitAvailable, npmAvailable, ollamaAvailable] = await Promise.all([
     readSettings(workspaceRoot),
-    commandAvailable("git", ["--version"]),
-    commandAvailable("npm", ["--version"]),
-    commandAvailable(process.platform === "win32" ? "ollama.exe" : "ollama", ["--version"]),
+    cachedCommandAvailable("git", "git", ["--version"]),
+    cachedCommandAvailable("npm", "npm", ["--version"]),
+    cachedCommandAvailable("ollama", process.platform === "win32" ? "ollama.exe" : "ollama", ["--version"]),
   ]);
   const mode: LocalPlatformMode = settings.mode && modes.has(settings.mode) ? settings.mode : "offline";
   const policy = localPlatformPolicy(mode);
