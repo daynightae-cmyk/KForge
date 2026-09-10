@@ -28,6 +28,24 @@ function Get-Sha256([string]$Path) {
   }
 }
 
+function ConvertTo-NormalizedSignatureStatus([string]$Status, [bool]$Inspected) {
+  if (-not $Inspected) { return 'UNAVAILABLE' }
+  switch (($Status ?? '').Trim().ToLowerInvariant()) {
+    'valid' { return 'VALID' }
+    'notsigned' { return 'UNSIGNED' }
+    'unsigned' { return 'UNSIGNED' }
+    'unknownerror' { return 'UNSIGNED' }
+    'hashmismatch' { return 'INVALID' }
+    'nottrusted' { return 'INVALID' }
+    'invalid' { return 'INVALID' }
+    'unavailable' { return 'UNAVAILABLE' }
+    'notsupported' { return 'UNAVAILABLE' }
+    'unknown' { return 'UNKNOWN' }
+    '' { return 'UNKNOWN' }
+    default { return 'UNKNOWN' }
+  }
+}
+
 function Get-KForgeUninstallEntries {
   $roots = @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -113,10 +131,10 @@ $manifestPath = Join-Path $releaseDirectory 'installer-manifest.json'
 Assert-True (Test-Path -LiteralPath $manifestPath -PathType Leaf) 'installer-manifest.json is missing.'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 Assert-True ($manifest.artifactFilename -eq $installer.Name -and $manifest.sha256 -eq $hash -and $manifest.installerType -eq 'NSIS') 'Installer manifest is inconsistent with the built artifact.'
-# Authenticode observation is best-effort OS evidence: on constrained hosts the
-# Security module may fail to load, in which case the signature state is
-# UNAVAILABLE rather than fabricated. A configured-signing claim still requires
-# a Valid observation; only the explicitly-unsigned path tolerates UNAVAILABLE.
+
+# Authenticode observation is artifact truth. Build signing configuration is a
+# separate fact and must never rewrite a Valid existing EXE to UNSIGNED merely
+# because this verification machine does not possess CI signing material.
 $observedSignature = $null
 $authenticodeCommand = Get-Command Get-AuthenticodeSignature -ErrorAction SilentlyContinue
 if ($null -eq $authenticodeCommand) { try { Import-Module Microsoft.PowerShell.Security -ErrorAction Stop } catch { } }
@@ -124,27 +142,49 @@ $authenticodeCommand = Get-Command Get-AuthenticodeSignature -ErrorAction Silent
 if ($null -ne $authenticodeCommand) {
   try { $observedSignature = Get-AuthenticodeSignature -LiteralPath $InstallerPath } catch { $observedSignature = $null }
 }
-$observedStatus = if ($null -eq $observedSignature) { 'UNAVAILABLE' } else { $observedSignature.Status.ToString() }
-$manifestSigningConfigured = $false
-$manifestSignatureStatus = ''
-try {
-  $manifestSigningConfigured = [bool]$manifest.signing.configured
-  $manifestSignatureStatus = [string]$manifest.signing.status
-} catch { $manifestSigningConfigured = $false; $manifestSignatureStatus = '' }
-if ($manifestSigningConfigured) {
-  Assert-True ($observedStatus -eq 'Valid') "Manifest claims signing is configured but Authenticode status is '$observedStatus'."
-  Assert-True ($manifestSignatureStatus -eq $observedStatus -or $manifestSignatureStatus -eq 'Valid') 'Installer manifest signing status does not match OS Authenticode evidence.'
-} else {
-  Assert-True ($manifest.signatureState -eq 'UNSIGNED') 'Unsigned manifest must keep signatureState UNSIGNED.'
-  Assert-True ($observedStatus -eq 'NotSigned' -or $observedStatus -eq 'UNAVAILABLE') "Unsigned installer shows unexpected Authenticode status '$observedStatus'."
+$observedInspected = $null -ne $observedSignature
+$rawObservedStatus = if ($observedInspected) { $observedSignature.Status.ToString() } else { 'UNAVAILABLE' }
+$normalizedObservedStatus = ConvertTo-NormalizedSignatureStatus $rawObservedStatus $observedInspected
+
+$manifestBuildSigningConfigured = $false
+if ($null -ne $manifest.buildSigningConfigured) {
+  $manifestBuildSigningConfigured = [bool]$manifest.buildSigningConfigured
+} elseif ($null -ne $manifest.signing -and $null -ne $manifest.signing.configured) {
+  $manifestBuildSigningConfigured = [bool]$manifest.signing.configured
 }
-$effectiveSignatureState = if ($manifestSigningConfigured) { $observedStatus } else { 'UNSIGNED' }
-$signerSubject = $null; $signerIssuer = $null; $timestamped = $false
+$manifestObservedStatus = ''
+if ($null -ne $manifest.observedSignature -and $null -ne $manifest.observedSignature.status) {
+  $manifestObservedStatus = ([string]$manifest.observedSignature.status).ToUpperInvariant()
+} elseif ($null -ne $manifest.signatureState) {
+  $manifestObservedStatus = ([string]$manifest.signatureState).ToUpperInvariant()
+} elseif ($null -ne $manifest.signing -and $null -ne $manifest.signing.status) {
+  $manifestObservedStatus = ConvertTo-NormalizedSignatureStatus ([string]$manifest.signing.status) $true
+}
+
+if ($manifestBuildSigningConfigured) {
+  Assert-True ($normalizedObservedStatus -eq 'VALID') "Manifest says build signing was configured but Authenticode status is '$rawObservedStatus'."
+}
+if ($observedInspected -and $manifestObservedStatus -and $manifestObservedStatus -ne 'UNAVAILABLE') {
+  # Legacy manifests may have incorrectly projected UNSIGNED from missing build
+  # secrets. A real Valid OS observation wins; all other mismatches are rejected.
+  if (-not ($normalizedObservedStatus -eq 'VALID' -and $manifestObservedStatus -eq 'UNSIGNED')) {
+    Assert-True ($manifestObservedStatus -eq $normalizedObservedStatus) "Manifest signature state '$manifestObservedStatus' does not match observed artifact state '$normalizedObservedStatus'."
+  }
+}
+$effectiveSignatureState = if ($observedInspected) { $normalizedObservedStatus } elseif ($manifestObservedStatus) { $manifestObservedStatus } else { 'UNAVAILABLE' }
+
+$signerSubject = $null; $signerIssuer = $null; $signerThumbprint = $null; $timestamped = $false
 if ($null -ne $observedSignature -and $observedSignature.SignerCertificate) {
   $signerSubject = $observedSignature.SignerCertificate.Subject
   $signerIssuer = $observedSignature.SignerCertificate.Issuer
+  $signerThumbprint = $observedSignature.SignerCertificate.Thumbprint
 }
 if ($null -ne $observedSignature -and $observedSignature.TimeStamperCertificate) { $timestamped = $true }
+
+if ([string]$manifest.releaseMode -eq 'TRUSTED_RELEASE') {
+  Assert-True ($effectiveSignatureState -eq 'VALID') "TRUSTED_RELEASE requires observed Valid Authenticode; effective state is '$effectiveSignatureState'."
+  Assert-True (-not [string]::IsNullOrWhiteSpace($signerSubject)) 'TRUSTED_RELEASE requires signer identity evidence.'
+}
 
 $unpacked = Join-Path $releaseDirectory 'win-unpacked'
 if (Test-Path -LiteralPath $unpacked) {
@@ -159,9 +199,18 @@ $record = [ordered]@{
   sha256 = $hash
   manifestVerified = $true
   unpackedSecretCheck = if (Test-Path -LiteralPath $unpacked) { 'PASS' } else { 'NOT_AVAILABLE' }
+  buildSigningConfigured = $manifestBuildSigningConfigured
+  observedSignature = [ordered]@{
+    inspected = $observedInspected
+    status = $effectiveSignatureState
+    subject = $signerSubject
+    issuer = $signerIssuer
+    thumbprint = $signerThumbprint
+    timestamped = $timestamped
+  }
   signatureState = $effectiveSignatureState
   signing = [ordered]@{
-    configured = $manifestSigningConfigured
+    configured = $manifestBuildSigningConfigured
     status = $effectiveSignatureState
     subject = $signerSubject
     issuer = $signerIssuer
@@ -351,5 +400,5 @@ http.createServer((_request, response) => { response.writeHead(200, { "content-t
   }
 }
 
-$record | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $evidenceDirectory 'installer-verification.json') -Encoding UTF8
-Write-Output "Installer verification passed. SHA-256: $hash"
+$record | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $evidenceDirectory 'installer-verification.json') -Encoding UTF8
+Write-Output "Installer verification passed. SHA-256: $hash; observed signature: $effectiveSignatureState"
