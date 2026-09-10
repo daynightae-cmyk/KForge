@@ -6,6 +6,15 @@ import { randomUUID } from "crypto";
 
 const execFileAsync = promisify(execFile);
 
+export interface CredentialBackendContract {
+  kind: "windows-dpapi" | "ephemeral" | "environment" | "in-memory";
+  store(providerId: string, secret: string): Promise<void>;
+  read(providerId: string): Promise<string | null>;
+  delete(providerId: string): Promise<void>;
+  exists(providerId: string): Promise<boolean>;
+  capability(): Promise<"AVAILABLE" | "UNAVAILABLE" | "ENVIRONMENT_ONLY">;
+}
+
 export type CredentialBackend = "OS_DPAPI" | "EPHEMERAL" | "ENVIRONMENT";
 export type VaultAvailability = "AVAILABLE" | "UNAVAILABLE" | "ENVIRONMENT_ONLY";
 export type MigrationOutcome = "MIGRATION_SUCCESS" | "MIGRATION_FAILED" | "NOT_REQUIRED";
@@ -137,14 +146,28 @@ export function environmentSecret(providerId: string): string {
   return "";
 }
 
-export function createCredentialVault(root: string): CredentialVault {
+export function createCredentialVault(root: string, backend?: CredentialBackendContract): CredentialVault {
+  const forcedTest = process.env.KFORGE_TEST_BACKEND ? createInMemoryCredentialBackend() : undefined;
+  const backendImpl = backend || forcedTest;
   return {
     async availability(): Promise<VaultAvailability> {
+      if (backendImpl) {
+        const cap = await backend.capability();
+        if (cap === "AVAILABLE") return "AVAILABLE";
+        if (cap === "ENVIRONMENT_ONLY") return "ENVIRONMENT_ONLY";
+        return "UNAVAILABLE";
+      }
       if (await dpapiRoundTrip()) return "AVAILABLE";
       if (process.platform === "win32") return "UNAVAILABLE";
       return "ENVIRONMENT_ONLY";
     },
     async backend(): Promise<CredentialBackend | "NONE"> {
+      if (backendImpl) {
+        if (backendImpl.kind === "in-memory") return "EPHEMERAL";
+        if (backendImpl.kind === "windows-dpapi") return "OS_DPAPI";
+        if (backendImpl.kind === "ephemeral") return "EPHEMERAL";
+        return "ENVIRONMENT";
+      }
       const availability = await this.availability();
       if (availability === "AVAILABLE") return "OS_DPAPI";
       if (availability === "ENVIRONMENT_ONLY") return "ENVIRONMENT";
@@ -153,6 +176,14 @@ export function createCredentialVault(root: string): CredentialVault {
     async set(providerId: string, secret: string): Promise<void> {
       if (!validId(providerId)) throw new Error("Invalid credential identifier.");
       if (!secret.trim() || secret.trim().length < 8) throw new Error("Replacement key must include at least 8 characters.");
+      if (backendImpl) {
+        await backendImpl.store(providerId, secret.trim());
+        const meta = await readJson<VaultMeta>(metaPath(root), { entries: {} });
+        const suffix = secret.trim().slice(-4);
+        meta.entries[providerId] = { backend: "EPHEMERAL", updatedAt: new Date().toISOString(), suffix };
+        await writeJson(metaPath(root), meta);
+        return;
+      }
       const availability = await this.availability();
       const meta = await readJson<VaultMeta>(metaPath(root), { entries: {} });
       const suffix = secret.trim().slice(-4);
@@ -175,12 +206,14 @@ export function createCredentialVault(root: string): CredentialVault {
     },
     async has(providerId: string): Promise<boolean> {
       if (!validId(providerId)) return false;
+      if (backendImpl) return await backendImpl.exists(providerId);
       const meta = await readJson<VaultMeta>(metaPath(root), { entries: {} });
       if (meta.entries[providerId]) return true;
       return Boolean(environmentSecret(providerId));
     },
     async reveal(providerId: string): Promise<string | null> {
       if (!validId(providerId)) return null;
+      if (backendImpl) return await backendImpl.read(providerId);
       const meta = await readJson<VaultMeta>(metaPath(root), { entries: {} });
       const entry = meta.entries[providerId];
       if (entry?.backend === "OS_DPAPI") {
@@ -196,6 +229,13 @@ export function createCredentialVault(root: string): CredentialVault {
     },
     async delete(providerId: string): Promise<void> {
       if (!validId(providerId)) throw new Error("Invalid credential identifier.");
+      if (backendImpl) {
+        await backendImpl.delete(providerId);
+        const meta = await readJson<VaultMeta>(metaPath(root), { entries: {} });
+        delete meta.entries[providerId];
+        await writeJson(metaPath(root), meta);
+        return;
+      }
       const meta = await readJson<VaultMeta>(metaPath(root), { entries: {} });
       delete meta.entries[providerId];
       await writeJson(metaPath(root), meta);
@@ -207,6 +247,11 @@ export function createCredentialVault(root: string): CredentialVault {
       ephemeralMap(root).delete(providerId);
     },
     async source(providerId: string): Promise<"OS_VAULT" | "ENVIRONMENT" | "EPHEMERAL" | "NONE"> {
+      if (backendImpl) {
+        const exists = await backendImpl.exists(providerId);
+        if (exists) return backendImpl.kind === "in-memory" ? "EPHEMERAL" : (backendImpl.kind === "windows-dpapi" ? "OS_VAULT" : "ENVIRONMENT");
+        return "NONE";
+      }
       const meta = await readJson<VaultMeta>(metaPath(root), { entries: {} });
       const entry = meta.entries[providerId];
       if (entry?.backend === "OS_DPAPI") return "OS_VAULT";
@@ -278,6 +323,29 @@ async function secureRemove(target: string) {
 
 export function legacySecretPath(root: string) {
   return legacyPath(root);
+}
+
+const inMemoryStore = new Map<string, string>();
+
+export function createInMemoryCredentialBackend(): CredentialBackendContract {
+  return {
+    kind: "in-memory",
+    async store(providerId: string, secret: string) {
+      inMemoryStore.set(providerId, secret.trim());
+    },
+    async read(providerId: string) {
+      return inMemoryStore.get(providerId) || null;
+    },
+    async delete(providerId: string) {
+      inMemoryStore.delete(providerId);
+    },
+    async exists(providerId: string) {
+      return inMemoryStore.has(providerId);
+    },
+    async capability() {
+      return "AVAILABLE";
+    },
+  };
 }
 
 export interface CredentialDisplay {

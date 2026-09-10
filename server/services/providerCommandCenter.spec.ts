@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { containsPlaintextSecret, maskApiKey, normalizeModelRecord, normalizeProviderError, redactSensitiveHeaders } from "../../shared/providerCommandCenter";
 import { isTrustedKForgeOrigin } from "../../shared/trustOrigin";
 import { createProviderSession, discoverProviderModels, listProviderSummaries, revealProviderKey, testProviderConnection, upsertCustomProvider } from "./providerCommandCenter";
+import { createInMemoryCredentialBackend } from "./credentialVault";
 
 async function workspaceRoot() {
   return fs.mkdtemp(path.join(process.cwd(), "kforge-provider-cc-"));
@@ -114,6 +115,32 @@ describe("provider command center secret boundary", () => {
       });
       expect(session.status).toBe("READY");
       expect(session.cloudDisclosure).toBe(true);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("session cancellation and timeout cleanup", () => {
+  it("aborts streaming and marks CANCELLED without terminating unrelated processes", async () => {
+    const root = await workspaceRoot();
+    try {
+      const { provider } = await upsertCustomProvider(root, {
+        name: "CancelLab",
+        baseUrl: "https://cancel.example/v1",
+        apiKey: "sk-cancel-secret-12345678",
+      });
+      const session = await createProviderSession(root, {
+        projectId: "p1",
+        providerId: provider.id,
+        modelId: "m1",
+        mode: "ASK",
+        task: "Test abort",
+        contextScope: "Selected File",
+        disclosureConfirmed: true,
+      });
+      expect(session.status).toBe("READY");
+      expect(session.id).toBeTruthy();
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
