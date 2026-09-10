@@ -38,7 +38,9 @@ import type {
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
 import { checkForModelUpdates, deleteOllamaModel, detectLocalAIProvider, generateWithLocalAI, getCloudAIConfiguration, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, isCloudAIProviderId, listAIProviders, listCloudAIProviders, requestLocalPlan, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
-import { createProviderSession, discoverProviderModels, listDiscoveredModels, listProviderSessions, listProviderSummaries, replaceProviderKey, revealProviderKey, testProviderConnection, upsertCustomProvider } from "../services/providerCommandCenter";
+import { createProviderSession, deleteProviderKey, discoverProviderModels, getProviderSession, listDiscoveredModels, listProviderSessions, listProviderSummaries, providerRuntimeConfig, refreshProviderModels, replaceProviderKey, revealProviderKey, testProviderConnection, upsertCustomProvider } from "../services/providerCommandCenter";
+import { createCredentialVault, migrateLegacyPlaintextSecrets } from "../services/credentialVault";
+import { approveSessionAction, cancelSessionRun, emitSessionEvent, rejectSessionAction, rollbackSession, sessionEvents, sessionPatches, applySessionPatch, startSessionRun, subscribeSession, switchSessionModel } from "../services/providerSessions";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
 import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
@@ -1503,6 +1505,15 @@ router.post("/ai/command-center/providers/:providerId/reveal", async (req, res) 
   }
 });
 
+router.delete("/ai/command-center/providers/:providerId/key", async (req, res) => {
+  try {
+    return res.json({ provider: await deleteProviderKey(getWorkspaceRoot(), req.params.providerId, req.body?.confirmed === true) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Credential deletion failed.";
+    return res.status(message.includes("confirmation") ? 428 : 400).json({ error: message, permission: "ask" });
+  }
+});
+
 router.post("/ai/command-center/providers/:providerId/discover", async (req, res) => {
   try {
     return res.json(await discoverProviderModels(getWorkspaceRoot(), req.params.providerId));
@@ -1510,6 +1521,15 @@ router.post("/ai/command-center/providers/:providerId/discover", async (req, res
     const detail = error instanceof Error ? error.message : "Discovery failed.";
     const kind = (error as { errorKind?: string }).errorKind;
     return res.status(detail.startsWith("NOT_CONFIGURED") ? 428 : 502).json({ error: detail, errorKind: kind || "PROVIDER_ERROR" });
+  }
+});
+
+router.post("/ai/command-center/providers/:providerId/refresh", async (req, res) => {
+  try {
+    return res.json(await refreshProviderModels(getWorkspaceRoot(), req.params.providerId));
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : "Refresh failed.";
+    return res.status(detail.startsWith("NOT_CONFIGURED") ? 428 : 502).json({ error: detail });
   }
 });
 
@@ -1527,8 +1547,194 @@ router.post("/ai/command-center/providers/:providerId/test", async (req, res) =>
   }
 });
 
+router.get("/ai/command-center/vault", async (_req, res) => {
+  const vault = createCredentialVault(getWorkspaceRoot());
+  res.json({ availability: await vault.availability(), backend: await vault.backend(), migration: await migrateLegacyPlaintextSecrets(getWorkspaceRoot()).catch(() => ({ outcome: "NOT_REQUIRED", migrated: 0, detail: "Migration check deferred." })) });
+});
+
+router.post("/ai/command-center/vault/migrate", async (_req, res) => {
+  res.json(await migrateLegacyPlaintextSecrets(getWorkspaceRoot()));
+});
+
 router.get("/ai/command-center/sessions", async (_req, res) => {
   res.json({ sessions: await listProviderSessions(getWorkspaceRoot()) });
+});
+
+router.get("/ai/command-center/sessions/:sessionId", async (req, res) => {
+  const session = await getProviderSession(getWorkspaceRoot(), req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  return res.json({ session });
+});
+
+router.get("/ai/command-center/sessions/:sessionId/events", async (req, res) => {
+  const session = await getProviderSession(getWorkspaceRoot(), req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  if (req.headers.accept?.includes("text/event-stream")) {
+    res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+    const replay = await sessionEvents(getWorkspaceRoot(), session.id);
+    for (const event of replay.slice(-50)) res.write(`data: ${JSON.stringify(event)}\n\n`);
+    const unsubscribe = subscribeSession(session.id, (event) => {
+      try {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      } catch {
+        /* closed streams are cleaned up below */
+      }
+    });
+    req.on("close", () => unsubscribe());
+    return;
+  }
+  res.json({ events: await sessionEvents(getWorkspaceRoot(), session.id, typeof req.query.since === "string" ? req.query.since : undefined) });
+});
+
+router.get("/ai/command-center/sessions/:sessionId/patches", async (req, res) => {
+  const session = await getProviderSession(getWorkspaceRoot(), req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  res.json({ patches: await sessionPatches(getWorkspaceRoot(), session.id) });
+});
+
+router.post("/ai/command-center/sessions/:sessionId/start", async (req, res) => {
+  const root = getWorkspaceRoot();
+  const session = await getProviderSession(root, req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  if (!session.projectId) return res.status(400).json({ error: "Session has no project context." });
+  const project = await resolveProject(session.projectId);
+  if (!project) return res.status(404).json({ error: "Project for this session is no longer available." });
+  try {
+    const config = await providerRuntimeConfig(root, session.providerId);
+    const profile = await detectProjectProfile(project);
+    const body = (req.body || {}) as Record<string, unknown>;
+    const selectedFiles = Array.isArray(body.selectedFiles) ? body.selectedFiles.filter((entry): entry is string => typeof entry === "string").slice(0, 40) : [];
+    const started = await startSessionRun({
+      workspaceRoot: root,
+      session,
+      project,
+      handlers: projectToolHandlers(project),
+      profile,
+      selectedFiles,
+      autonomy: typeof body.autonomy === "string" ? body.autonomy : session.autonomy,
+      startPreviewForSession: body.startPreview === true,
+      providerBaseUrl: config.baseUrl,
+      providerKind: config.kind,
+      organization: config.organization,
+      headerNames: config.headerNames,
+      timeoutMs: config.timeoutMs,
+    });
+    return res.status(202).json({ session: started });
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Session start failed." });
+  }
+});
+
+router.post("/ai/command-center/sessions/:sessionId/cancel", async (req, res) => {
+  try {
+    const session = await cancelSessionRun(getWorkspaceRoot(), req.params.sessionId, req.body?.stopOwnedRuntime === true);
+    return res.json({ session });
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Session cancel failed." });
+  }
+});
+
+router.post("/ai/command-center/sessions/:sessionId/approve", async (req, res) => {
+  const root = getWorkspaceRoot();
+  const session = await getProviderSession(root, req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  if (!session.projectId) return res.status(400).json({ error: "Session has no project context." });
+  const project = await resolveProject(session.projectId);
+  if (!project) return res.status(404).json({ error: "Project for this session is no longer available." });
+  try {
+    const approvalId = typeof req.body?.approvalId === "string" ? req.body.approvalId : "";
+    return res.json({ session: await approveSessionAction(root, session.id, approvalId, project.path) });
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Approval failed." });
+  }
+});
+
+router.post("/ai/command-center/sessions/:sessionId/reject", async (req, res) => {
+  try {
+    const approvalId = typeof req.body?.approvalId === "string" ? req.body.approvalId : "";
+    return res.json({ session: await rejectSessionAction(getWorkspaceRoot(), req.params.sessionId, approvalId) });
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Rejection failed." });
+  }
+});
+
+router.post("/ai/command-center/sessions/:sessionId/patches/:patchId/apply", async (req, res) => {
+  const root = getWorkspaceRoot();
+  const session = await getProviderSession(root, req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  if (!session.projectId) return res.status(400).json({ error: "Session has no project context." });
+  const project = await resolveProject(session.projectId);
+  if (!project) return res.status(404).json({ error: "Project for this session is no longer available." });
+  if (project.trust !== "trusted") return res.status(428).json({ error: "UNTRUSTED PROJECT: patch apply requires explicit project trust.", permission: "ask" });
+  try {
+    return res.json({ patch: await applySessionPatch(root, session.id, req.params.patchId, project.path) });
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Patch apply failed." });
+  }
+});
+
+router.post("/ai/command-center/sessions/:sessionId/rollback", async (req, res) => {
+  const root = getWorkspaceRoot();
+  const session = await getProviderSession(root, req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  if (!session.projectId) return res.status(400).json({ error: "Session has no project context." });
+  const project = await resolveProject(session.projectId);
+  if (!project) return res.status(404).json({ error: "Project for this session is no longer available." });
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Rollback restores the session checkpoint and requires explicit confirmation.", permission: "ask" });
+  try {
+    return res.json({ session: await rollbackSession(root, session.id, project.path) });
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Rollback failed." });
+  }
+});
+
+router.post("/ai/command-center/sessions/:sessionId/switch", async (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  try {
+    const destination = typeof body.destination === "string" ? body.destination : typeof body.providerId === "string" ? body.providerId : "";
+    return res.json({ session: await switchSessionModel(getWorkspaceRoot(), req.params.sessionId, typeof body.providerId === "string" ? body.providerId : "", typeof body.modelId === "string" ? body.modelId : "", body.disclosureConfirmed === true, destination) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Model switch failed.";
+    return res.status(message.includes("disclosure") ? 428 : 400).json({ error: message, permission: message.includes("disclosure") ? "ask" : undefined });
+  }
+});
+
+router.get("/ai/command-center/sessions/:sessionId/context", async (req, res) => {
+  const root = getWorkspaceRoot();
+  const session = await getProviderSession(root, req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  if (!session.projectId) return res.status(400).json({ error: "Session has no project context." });
+  const project = await resolveProject(session.projectId);
+  if (!project) return res.status(404).json({ error: "Project for this session is no longer available." });
+  const scan = await scanProject(project);
+  const bounded = await buildAgentContext(project, scan);
+  const config = await providerRuntimeConfig(root, session.providerId).catch(() => null);
+  return res.json({
+    context: {
+      project: { id: project.id, name: project.name, path: project.path, branch: project.branch },
+      task: session.task,
+      model: session.modelId,
+      provider: session.providerId,
+      destination: session.disclosureDestination || config?.baseUrl || "local runtime",
+      filesIncluded: bounded.files.map((file) => ({ path: file.path, reason: file.reason, characters: file.content.length })),
+      totalCharacters: bounded.totalCharacters,
+      diagnostics: bounded.diagnostics,
+      git: bounded.git,
+      technology: bounded.technology,
+      disclosureConfirmed: session.disclosureConfirmed,
+      sourceCodeIncluded: bounded.files.length > 0,
+    },
+  });
+});
+
+router.post("/ai/command-center/sessions/:sessionId/note", async (req, res) => {
+  const root = getWorkspaceRoot();
+  const session = await getProviderSession(root, req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found." });
+  const text = typeof req.body?.text === "string" ? req.body.text.slice(0, 2_000) : "";
+  if (!text.trim()) return res.status(400).json({ error: "Note text is required." });
+  await emitSessionEvent(root, session.id, "MODEL_MESSAGE", `Operator note: ${text.trim()}`, { operator: true });
+  res.status(201).json({ ok: true });
 });
 
 router.post("/ai/command-center/sessions", async (req, res) => {

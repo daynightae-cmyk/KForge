@@ -81,7 +81,7 @@ export interface ProviderSummary {
   baseUrl: string | null;
   authState: "CONFIGURED" | "NOT_CONFIGURED";
   credentialState: "CONFIGURED" | "NOT_CONFIGURED";
-  credentialSource: "server-environment" | "provider-secret-store" | "none";
+  credentialSource: "server-environment" | "provider-secret-store" | "os-vault" | "ephemeral-memory" | "none";
   modelsDiscovered: number;
   favoriteModel: string | null;
   health: "HEALTHY" | "DEGRADED" | "UNREACHABLE" | "NOT_EVALUATED" | "NOT_CONFIGURED";
@@ -104,7 +104,7 @@ export interface ConnectionTestEvidence {
   httpStatus: number | null;
   ok: boolean;
   streamingOutcome: "SUPPORTED" | "UNSUPPORTED" | "UNKNOWN" | "NOT_TESTED";
-  toolOutcome: "SUPPORTED" | "UNSUPPORTED" | "UNKNOWN" | "NOT_TESTED";
+  toolOutcome: "SUPPORTED" | "UNSUPPORTED" | "UNKNOWN" | "FAILED" | "NOT_TESTED";
   tokenEvidence: { input: number | null; output: number | null; total: number | null } | null;
   providerRequestId: string | null;
   errorKind: NormalizedErrorKind | null;
