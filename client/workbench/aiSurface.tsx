@@ -2,22 +2,15 @@ import { useState, useEffect } from "react";
 import type { SurfaceProps, RecordRow, TaskRow } from "./surfaceContracts";
 import type { ProjectSummary } from "@shared/workspace";
 import { fetchJson, jsonRequest } from "./api";
-import { EmptyState, StatusBadge, EvidenceCards, TaskTable } from "./ui";
+import { EvidenceCards, TaskTable } from "./ui";
 import { SimpleFetchSurface } from "./surfaceShared";
+import ProviderStudio from "./ProviderStudio";
 
 function AISurface(props: SurfaceProps) {
   const { view, project } = props;
   if (view === "agents") return project ? <AgentMissionSurface project={project} /> : <SimpleFetchSurface url="/api/workspace/marketplace" title="Global agent catalog" />;
   if (view === "tasks") return <AITasks />;
-  return <AISource view={view} />;
-}
-
-function AISource({ view }: { view: string }) {
-  const [data, setData] = useState<RecordRow | null>(null); const [message, setMessage] = useState("Loading AI evidence…");
-  useEffect(() => { void fetchJson<RecordRow>(view === "providers" ? "/api/workspace/ai/providers" : "/api/workspace/ai/models").then((next) => { setData(next); setMessage(""); }).catch((error) => setMessage(error instanceof Error ? error.message : "AI evidence unavailable.")); }, [view]);
-  if (message) return <p className="kw-message">{message}</p>; if (!data) return null;
-  if (view === "providers") return <section className="kw-surface-section"><h2>Provider runtime and configuration evidence</h2><p>Local project context stays on this machine. Opening Providers does not contact cloud providers or expose credentials.</p><EvidenceCards rows={(data.providers as RecordRow[] || [])} /></section>;
-  return <section className="kw-surface-section"><h2>Local Model Center</h2><p>Installed runtime inventory is distinct from catalog recommendations. Unknown capabilities remain UNKNOWN.</p><h3>Provider evidence</h3><EvidenceCards rows={(data.providers as RecordRow[] || [])} /><h3>Recommended catalog models</h3><EvidenceCards rows={(data.recommendations as RecordRow[] || [])} /><details><summary>Hardware and model-family evidence</summary><pre>{JSON.stringify({ hardware: data.hardware, families: data.families, onboarding: data.onboarding, active: data.active }, null, 2)}</pre></details></section>;
+  return <ProviderStudio view={view} project={project} />;
 }
 
 function AgentMissionSurface({ project }: { project: ProjectSummary }) {
