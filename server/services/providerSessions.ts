@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import type { AgentPatch } from "./agent";
 import { validateAndApplyPatch } from "./agent";
 import { createSnapshot, restoreSnapshot } from "./snapshots";
-import { getAdapter, type AdapterContext, type AdapterMessage, type AdapterToolDefinition, type ModelEvent } from "./providerAdapters";
+import { getAdapter, type AdapterContext, type AdapterMessage, type AdapterToolDefinition } from "./providerAdapters";
 import { getProviderSession, updateProviderSession, type ProviderRuntimeConfig } from "./providerCommandCenter";
 import type {
   ProviderSessionEvent,
@@ -99,7 +99,7 @@ function safeSessionText(value: string, secrets: string[] = []) {
   return result.slice(0, 32_000);
 }
 
-function safeEventData(value: Record<string, unknown> | undefined, secrets: string[] = {}) {
+function safeEventData(value: Record<string, unknown> | undefined, secrets: string[] = []) {
   if (!value) return undefined;
   let text = JSON.stringify(value);
   for (const secret of secrets.filter((entry) => entry.length >= 8)) text = text.split(secret).join("[REDACTED]");
@@ -119,23 +119,19 @@ export async function emitSessionEvent(root: string, sessionId: string, type: Pr
   current.events = [...current.events, event].slice(-600);
   await writeJson(eventPath(root, sessionId), current);
   for (const listener of listeners.get(sessionId) || []) {
-    try { listener(event); } catch { /* a disconnected SSE listener is removed by its close handler */ }
+    try { listener(event); } catch { /* disconnected listener cleanup belongs to its owner */ }
   }
   return event;
 }
 
 export async function sessionEvents(root: string, sessionId: string, since?: string) {
   const events = (await readJson<{ events: ProviderSessionEvent[] }>(eventPath(root, sessionId), { events: [] })).events;
-  if (!since) return events;
-  return events.filter((event) => event.at > since);
+  return since ? events.filter((event) => event.at > since) : events;
 }
 
 export function subscribeSession(sessionId: string, listener: (event: ProviderSessionEvent) => void) {
   let set = listeners.get(sessionId);
-  if (!set) {
-    set = new Set();
-    listeners.set(sessionId, set);
-  }
+  if (!set) { set = new Set(); listeners.set(sessionId, set); }
   set.add(listener);
   return () => {
     const current = listeners.get(sessionId);
@@ -188,16 +184,7 @@ export async function applySessionPatch(root: string, sessionId: string, patchId
   if (patch.risk === "blocked") throw new Error("Blocked patches cannot be applied.");
   await ensureCheckpoint(root, session, projectPath);
   await updateProviderSession(root, sessionId, { status: "APPLYING" });
-  const agentPatch: AgentPatch = {
-    id: patch.id,
-    file: patch.file,
-    oldText: patch.oldText,
-    newText: patch.newText,
-    reason: patch.reason,
-    confidence: "medium",
-    risk: patch.risk,
-    verification: ["typecheck", "test", "build", "preview"],
-  };
+  const agentPatch: AgentPatch = { id: patch.id, file: patch.file, oldText: patch.oldText, newText: patch.newText, reason: patch.reason, confidence: "medium", risk: patch.risk, verification: ["typecheck", "test", "build", "preview"] };
   const applied = await validateAndApplyPatch(projectPath, agentPatch);
   const next = await savePatch(root, { ...patch, state: "APPLIED", appliedAt: new Date().toISOString() });
   const latest = await getProviderSession(root, sessionId);
@@ -245,19 +232,7 @@ function autonomyAllowsTool(autonomy: string, tool: string) {
 
 function contextPrompt(context: SessionContextPayload) {
   const boundedFiles = context.filesIncluded.map((file) => ({ path: file.path, reason: file.reason, characters: file.characters, ...(file.content !== undefined ? { content: file.content } : {}) }));
-  return JSON.stringify({
-    project: context.project,
-    task: context.task,
-    model: context.model,
-    provider: context.provider,
-    destination: context.destination,
-    filesIncluded: boundedFiles,
-    filesExcluded: context.filesExcluded || [],
-    estimatedTokens: context.estimatedTokens,
-    diagnostics: context.diagnostics,
-    git: context.git,
-    technology: context.technology,
-  });
+  return JSON.stringify({ project: context.project, task: context.task, model: context.model, provider: context.provider, destination: context.destination, filesIncluded: boundedFiles, filesExcluded: context.filesExcluded || [], estimatedTokens: context.estimatedTokens, diagnostics: context.diagnostics, git: context.git, technology: context.technology });
 }
 
 function systemPrompt(autonomy: string) {
@@ -278,8 +253,9 @@ function appendToolResult(messages: AdapterMessage[], tool: string, result: unkn
 
 async function executeToolCall(input: StartSessionInput, toolName: string, args: Record<string, unknown>, secrets: string[]) {
   const { workspaceRoot, session, project, handlers } = input;
-  if (!autonomyAllowsTool(input.autonomy || session.autonomy, toolName)) {
-    const result = { ok: false, tool: toolName, output: null, message: `Tool ${toolName} is blocked by autonomy level ${input.autonomy || session.autonomy}.` };
+  const autonomy = input.autonomy || session.autonomy;
+  if (!autonomyAllowsTool(autonomy, toolName)) {
+    const result = { ok: false, tool: toolName, output: null, message: `Tool ${toolName} is blocked by autonomy level ${autonomy}.` };
     await emitSessionEvent(workspaceRoot, session.id, "TOOL_FINISHED", result.message, result, secrets);
     return result;
   }
@@ -290,7 +266,7 @@ async function executeToolCall(input: StartSessionInput, toolName: string, args:
   if (toolName === "propose_patch") {
     const patch = await proposePatch(workspaceRoot, session.id, args);
     await emitSessionEvent(workspaceRoot, session.id, "PATCH_PROPOSED", `Patch proposed for ${patch.file}.`, { patchId: patch.id, file: patch.file, risk: patch.risk, reason: patch.reason }, secrets);
-    const autoApply = (input.autonomy || session.autonomy) === "FULL PROJECT MISSION" && patch.risk === "safe";
+    const autoApply = autonomy === "FULL PROJECT MISSION" && patch.risk === "safe";
     if (autoApply) {
       const applied = await applySessionPatch(workspaceRoot, session.id, patch.id, project.path);
       const result = { ok: true, tool: toolName, output: { patch: applied, autoApplied: true }, message: `Safe patch ${patch.id} applied under FULL PROJECT MISSION authority.` };
@@ -305,7 +281,8 @@ async function executeToolCall(input: StartSessionInput, toolName: string, args:
 
   if (toolName === "start_preview") {
     const preview = await handlers.startPreview();
-    await updateProviderSession(workspaceRoot, session.id, { status: "PREVIEWING", previewSessionId: session.id, telemetry: { ...((await getProviderSession(workspaceRoot, session.id)) || session).telemetry, previewState: "STARTED" } });
+    const latest = (await getProviderSession(workspaceRoot, session.id)) || session;
+    await updateProviderSession(workspaceRoot, session.id, { status: "PREVIEWING", previewSessionId: session.id, telemetry: { ...latest.telemetry, previewState: "STARTED", toolCalls: latest.telemetry.toolCalls + 1 } });
     const result = { ok: true, tool: toolName, output: preview, message: "Canonical Preview start requested." };
     await emitSessionEvent(workspaceRoot, session.id, "PREVIEW_STATE", result.message, { preview }, secrets);
     await emitSessionEvent(workspaceRoot, session.id, "TOOL_FINISHED", result.message, result, secrets);
@@ -391,21 +368,11 @@ async function runSession(input: StartSessionInput, abort: AbortController) {
         } else if (event.type === "tool_call") calls.push(event.toolCall);
         else if (event.type === "usage") {
           const latest = (await getProviderSession(workspaceRoot, session.id)) || session;
-          const telemetry = {
-            ...latest.telemetry,
-            inputTokens: event.usage.input,
-            outputTokens: event.usage.output,
-            totalTokens: event.usage.total,
-            reasoningTokens: event.usage.reasoning,
-            cachedTokens: event.usage.cached,
-            costSource: "UNKNOWN" as const,
-          };
+          const telemetry = { ...latest.telemetry, inputTokens: event.usage.input, outputTokens: event.usage.output, totalTokens: event.usage.total, reasoningTokens: event.usage.reasoning, cachedTokens: event.usage.cached, costSource: "UNKNOWN" as const };
           await updateProviderSession(workspaceRoot, session.id, { telemetry });
           await emitSessionEvent(workspaceRoot, session.id, "USAGE_UPDATE", "Provider usage evidence updated.", { usage: event.usage }, secrets);
-        } else if (event.type === "done") {
-          finishReason = event.finishReason;
-          requestId = event.requestId;
-        } else if (event.type === "error") throw new Error(`${event.errorKind}: ${event.detail}`);
+        } else if (event.type === "done") { finishReason = event.finishReason; requestId = event.requestId; }
+        else if (event.type === "error") throw new Error(`${event.errorKind}: ${event.detail}`);
       }
       if (modelText.trim()) {
         messages.push({ role: "assistant", content: modelText });
@@ -461,9 +428,9 @@ export async function startSessionRun(input: StartSessionInput) {
   if (activeRuns.has(input.session.id)) throw new Error("Session is already running.");
   if (["COMPLETED", "CANCELLED", "ROLLED_BACK"].includes(input.session.status)) throw new Error(`Session cannot start from ${input.session.status}.`);
   const abort = new AbortController();
-  const promise = runSession(input, abort);
-  activeRuns.set(input.session.id, { abort, promise, stopPreview: input.handlers.stopPreview, ownsPreview: Boolean(input.startPreviewForSession) });
   const next = await updateProviderSession(input.workspaceRoot, input.session.id, { status: "CONTEXT_PREPARING", autonomy: input.autonomy || input.session.autonomy, error: null });
+  const promise = runSession({ ...input, session: next }, abort);
+  activeRuns.set(input.session.id, { abort, promise, stopPreview: input.handlers.stopPreview, ownsPreview: Boolean(input.startPreviewForSession) });
   void promise;
   return next;
 }
@@ -484,8 +451,7 @@ export async function approveSessionAction(root: string, sessionId: string, appr
   if (!session) throw new Error("Session not found.");
   if (!session.pendingApproval || session.pendingApproval.id !== approvalId) throw new Error("Pending approval does not match this request.");
   if (session.pendingApproval.kind !== "patch") throw new Error("Unsupported approval kind.");
-  const patches = await sessionPatches(root, sessionId);
-  const patch = patches.find((entry) => entry.state === "PROPOSED");
+  const patch = (await sessionPatches(root, sessionId)).find((entry) => entry.state === "PROPOSED");
   if (!patch) throw new Error("No proposed patch remains for this approval.");
   await applySessionPatch(root, sessionId, patch.id, projectPath);
   const next = await updateProviderSession(root, sessionId, { status: "READY", pendingApproval: null, error: null });
@@ -497,8 +463,7 @@ export async function rejectSessionAction(root: string, sessionId: string, appro
   const session = await getProviderSession(root, sessionId);
   if (!session) throw new Error("Session not found.");
   if (!session.pendingApproval || session.pendingApproval.id !== approvalId) throw new Error("Pending approval does not match this request.");
-  const patches = await sessionPatches(root, sessionId);
-  const patch = patches.find((entry) => entry.state === "PROPOSED");
+  const patch = (await sessionPatches(root, sessionId)).find((entry) => entry.state === "PROPOSED");
   if (patch) await savePatch(root, { ...patch, state: "REJECTED" });
   const next = await updateProviderSession(root, sessionId, { status: "READY", pendingApproval: null, error: null });
   await emitSessionEvent(root, sessionId, "MODEL_MESSAGE", `Approval ${approvalId} rejected. No project mutation occurred.`, { approvalId, patchId: patch?.id || null });
@@ -513,15 +478,7 @@ export async function switchSessionModel(root: string, sessionId: string, provid
   const boundaryChanged = providerId !== session.providerId || destination !== session.disclosureDestination;
   const destinationIsLocal = /^local\b|127\.0\.0\.1|localhost/i.test(destination);
   if (boundaryChanged && !destinationIsLocal && disclosureConfirmed !== true) throw new Error("Fresh cloud disclosure confirmation is required because the model destination changed.");
-  const next = await updateProviderSession(root, sessionId, {
-    providerId,
-    modelId,
-    disclosureDestination: destination,
-    disclosureConfirmed: destinationIsLocal ? true : disclosureConfirmed,
-    cloudDisclosure: !destinationIsLocal,
-    status: "READY",
-    error: null,
-  });
+  const next = await updateProviderSession(root, sessionId, { providerId, modelId, disclosureDestination: destination, disclosureConfirmed: destinationIsLocal ? true : disclosureConfirmed, cloudDisclosure: !destinationIsLocal, status: "READY", error: null });
   await emitSessionEvent(root, sessionId, "MODEL_MESSAGE", `Model switched from ${session.providerId}/${session.modelId} to ${providerId}/${modelId}.`, { from: { providerId: session.providerId, modelId: session.modelId }, to: { providerId, modelId }, destination, disclosureConfirmed: next.disclosureConfirmed });
   return next;
 }
