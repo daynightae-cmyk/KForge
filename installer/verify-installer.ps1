@@ -30,7 +30,7 @@ function Get-Sha256([string]$Path) {
 
 function ConvertTo-NormalizedSignatureStatus([string]$Status, [bool]$Inspected) {
   if (-not $Inspected) { return 'UNAVAILABLE' }
-  switch (($Status ?? '').Trim().ToLowerInvariant()) {
+  switch ($Status.Trim().ToLowerInvariant()) {
     'valid' { return 'VALID' }
     'notsigned' { return 'UNSIGNED' }
     'unsigned' { return 'UNSIGNED' }
