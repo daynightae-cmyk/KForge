@@ -2,6 +2,7 @@ import express from "express";
 import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
 import operationEvidenceRouter from "./routes/operationEvidence";
 import productTruthRouter from "./routes/productTruth";
+import providerCommandRouter from "./routes/providerCommandRouter";
 import workspaceRouter from "./routes/workspace";
 
 export function createServer() {
@@ -37,6 +38,10 @@ export function createServer() {
   // response and persists its already-computed transparency contract. It never
   // executes a project action or changes the workspace authority decision.
   app.use("/api/workspace", operationEvidenceRouter);
+  // Provider Command Center Phase 2 owns only the /ai/command-center subtree.
+  // It is mounted before the historical workspace endpoints so upgraded secure
+  // vault/session routes take ownership without duplicating core project engines.
+  app.use("/api/workspace", providerCommandRouter);
   app.use("/api/workspace", workspaceRouter);
 
   return app;
