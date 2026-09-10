@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildArtifactSigningEvidence,
   isSigningConfigured,
+  normalizeObservedSignature,
   normalizeReleaseMode,
   normalizeSigningEvidence,
   resolveReleaseState,
@@ -45,9 +47,14 @@ describe("releaseState", () => {
     expect(trustedReleaseBlocker(resolveReleaseState({ mode: "RELEASE_CANDIDATE" }), "UNSIGNED")).toBeNull();
   });
 
-  it("normalizes unsigned evidence without fabricated identity", () => {
-    const evidence = normalizeSigningEvidence({ configured: false, status: "Valid", subject: "spoof" });
-    expect(evidence).toEqual({ configured: false, status: "UNSIGNED" });
+  it("preserves artifact-observed evidence independently of build signing material", () => {
+    expect(normalizeObservedSignature("Valid", true)).toBe("VALID");
+    expect(normalizeObservedSignature("NotSigned", true)).toBe("UNSIGNED");
+    expect(normalizeObservedSignature(undefined, false)).toBe("UNAVAILABLE");
+    const signedElsewhere = buildArtifactSigningEvidence({ buildSigningConfigured: false, inspected: true, rawStatus: "Valid", subject: "CN=KNOuX Forge" });
+    expect(signedElsewhere.buildSigningConfigured).toBe(false);
+    expect(signedElsewhere.observedSignature.status).toBe("VALID");
+    expect(signedElsewhere.observedSignature.subject).toBe("CN=KNOuX Forge");
   });
 
   it("keeps signed identity evidence when configured", () => {

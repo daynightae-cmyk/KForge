@@ -38,6 +38,7 @@ import type {
 } from "../../shared/workspace";
 import { isWorkspaceAction } from "../../shared/workspace";
 import { checkForModelUpdates, deleteOllamaModel, detectLocalAIProvider, generateWithLocalAI, getCloudAIConfiguration, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, isCloudAIProviderId, listAIProviders, listCloudAIProviders, requestLocalPlan, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
+import { createProviderSession, discoverProviderModels, listDiscoveredModels, listProviderSessions, listProviderSummaries, replaceProviderKey, revealProviderKey, testProviderConnection, upsertCustomProvider } from "../services/providerCommandCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
 import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
@@ -1459,6 +1460,93 @@ router.post("/ai/test", async (req, res) => {
     return res.json(result);
   } catch (error: unknown) {
     return res.status(503).json({ ok: false, error: error instanceof Error ? error.message : "AI connection test failed." });
+  }
+});
+
+router.get("/ai/command-center/providers", async (_req, res) => {
+  res.json({ providers: await listProviderSummaries(getWorkspaceRoot()) });
+});
+
+router.post("/ai/command-center/providers", async (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  try {
+    const result = await upsertCustomProvider(getWorkspaceRoot(), {
+      name: typeof body.name === "string" ? body.name : "",
+      baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : "",
+      apiKey: typeof body.apiKey === "string" ? body.apiKey : "",
+      organization: typeof body.organization === "string" ? body.organization : undefined,
+      customHeaders: typeof body.customHeaders === "object" && body.customHeaders !== null ? body.customHeaders as Record<string, string> : {},
+      timeoutMs: typeof body.timeoutMs === "number" ? body.timeoutMs : 30_000,
+      streaming: body.streaming !== false,
+    });
+    return res.status(201).json(result);
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Provider registration failed." });
+  }
+});
+
+router.post("/ai/command-center/providers/:providerId/key", async (req, res) => {
+  const apiKey = typeof req.body?.apiKey === "string" ? req.body.apiKey : "";
+  try {
+    return res.json({ provider: await replaceProviderKey(getWorkspaceRoot(), req.params.providerId, apiKey) });
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Credential replacement failed." });
+  }
+});
+
+router.post("/ai/command-center/providers/:providerId/reveal", async (req, res) => {
+  try {
+    return res.json(await revealProviderKey(getWorkspaceRoot(), req.params.providerId, req.body?.confirmed === true));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Reveal failed.";
+    return res.status(message.includes("confirmation") ? 428 : 404).json({ error: message, permission: "ask" });
+  }
+});
+
+router.post("/ai/command-center/providers/:providerId/discover", async (req, res) => {
+  try {
+    return res.json(await discoverProviderModels(getWorkspaceRoot(), req.params.providerId));
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : "Discovery failed.";
+    const kind = (error as { errorKind?: string }).errorKind;
+    return res.status(detail.startsWith("NOT_CONFIGURED") ? 428 : 502).json({ error: detail, errorKind: kind || "PROVIDER_ERROR" });
+  }
+});
+
+router.get("/ai/command-center/providers/:providerId/models", async (req, res) => {
+  res.json({ models: await listDiscoveredModels(getWorkspaceRoot(), req.params.providerId) });
+});
+
+router.post("/ai/command-center/providers/:providerId/test", async (req, res) => {
+  const kind = typeof req.body?.kind === "string" ? req.body.kind as "connection" | "model" | "stream" | "tools" : "connection";
+  const modelId = typeof req.body?.modelId === "string" ? req.body.modelId : null;
+  try {
+    return res.json(await testProviderConnection(getWorkspaceRoot(), req.params.providerId, kind, modelId));
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Provider test failed." });
+  }
+});
+
+router.get("/ai/command-center/sessions", async (_req, res) => {
+  res.json({ sessions: await listProviderSessions(getWorkspaceRoot()) });
+});
+
+router.post("/ai/command-center/sessions", async (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  try {
+    const session = await createProviderSession(getWorkspaceRoot(), {
+      projectId: typeof body.projectId === "string" ? body.projectId : null,
+      providerId: typeof body.providerId === "string" ? body.providerId : "",
+      modelId: typeof body.modelId === "string" ? body.modelId : "",
+      mode: (typeof body.mode === "string" ? body.mode : "ASK") as "ASK" | "PLAN" | "IMPLEMENT" | "REVIEW" | "DEBUG" | "TEST" | "REFACTOR" | "SECURITY_AUDIT" | "FULL_MISSION",
+      task: typeof body.task === "string" ? body.task : "",
+      contextScope: typeof body.contextScope === "string" ? body.contextScope : "Repository",
+      disclosureConfirmed: body.disclosureConfirmed === true,
+    });
+    return res.status(201).json({ session });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Session creation failed.";
+    return res.status(message.includes("disclosure") ? 428 : 400).json({ error: message, permission: message.includes("disclosure") ? "ask" : undefined });
   }
 });
 

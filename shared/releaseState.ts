@@ -95,6 +95,29 @@ export function trustedReleaseBlocker(state: ReleaseState, signatureStatus: stri
   return null;
 }
 
+export type ObservedSignatureStatus = "VALID" | "UNSIGNED" | "INVALID" | "UNKNOWN" | "UNAVAILABLE";
+
+export interface ObservedSignature {
+  inspected: boolean;
+  status: ObservedSignatureStatus;
+  subject?: string;
+  issuer?: string;
+  thumbprint?: string;
+  timestamped?: boolean;
+}
+
+export function normalizeObservedSignature(rawStatus: string | undefined, inspected: boolean): ObservedSignatureStatus {
+  if (!inspected) return "UNAVAILABLE";
+  const normalized = (rawStatus || "").trim().toLowerCase();
+  if (normalized === "valid") return "VALID";
+  if (normalized === "notsigned" || normalized === "unsigned" || normalized === "unknownerror") return "UNSIGNED";
+  if (normalized === "hashmismatch" || normalized === "nottrusted" || normalized === "invalid" || normalized === "unknown") {
+    return normalized === "unknown" ? "UNKNOWN" : "INVALID";
+  }
+  if (!normalized) return "UNKNOWN";
+  return "UNKNOWN";
+}
+
 export function normalizeSigningEvidence(raw: {
   configured: boolean;
   status?: string | undefined;
@@ -111,12 +134,23 @@ export function normalizeSigningEvidence(raw: {
   if (raw.issuer) evidence.issuer = raw.issuer;
   if (typeof raw.timestamped === "boolean") evidence.timestamped = raw.timestamped;
   if (raw.thumbprint) evidence.thumbprint = raw.thumbprint;
-  if (!raw.configured) {
-    evidence.status = "UNSIGNED";
-    delete evidence.subject;
-    delete evidence.issuer;
-    delete evidence.timestamped;
-    delete evidence.thumbprint;
-  }
   return evidence;
+}
+
+export function buildArtifactSigningEvidence(input: {
+  buildSigningConfigured: boolean;
+  inspected: boolean;
+  rawStatus?: string | undefined;
+  subject?: string | undefined;
+  issuer?: string | undefined;
+  thumbprint?: string | undefined;
+  timestamped?: boolean | undefined;
+}): { buildSigningConfigured: boolean; observedSignature: ObservedSignature } {
+  const status = normalizeObservedSignature(input.rawStatus, input.inspected);
+  const observedSignature: ObservedSignature = { inspected: input.inspected, status };
+  if (input.subject) observedSignature.subject = input.subject;
+  if (input.issuer) observedSignature.issuer = input.issuer;
+  if (input.thumbprint) observedSignature.thumbprint = input.thumbprint;
+  if (typeof input.timestamped === "boolean") observedSignature.timestamped = input.timestamped;
+  return { buildSigningConfigured: input.buildSigningConfigured, observedSignature };
 }

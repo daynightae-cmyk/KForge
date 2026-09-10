@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, shell, session } = require("electro
 const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
+const { isTrustedKForgeOrigin } = require("./trustOrigin.cjs");
 
 const PRODUCT_NAME = "KNOuX Forge";
 const DESKTOP_CHANNELS = new Set(["kforge:runtime"]);
@@ -48,7 +49,8 @@ function desktopMetadata() {
     platform: process.platform,
     architecture: process.arch,
     packaged: app.isPackaged,
-    signature: "UNSIGNED",
+    signature: "UNVERIFIED",
+    signatureDetail: "Runtime self-verification is not performed; use scripts/verify-signing.mjs against the built artifact for Authenticode evidence.",
   };
 }
 
@@ -108,7 +110,7 @@ function createWindow() {
     return { action: "deny" };
   });
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (productionServer && url.startsWith(productionServer.url)) return;
+    if (productionServer && isTrustedKForgeOrigin(url, productionServer.url)) return;
     event.preventDefault();
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
   });
@@ -213,7 +215,7 @@ if (!app.requestSingleInstanceLock()) {
     fs.mkdirSync(workspaceRoot, { recursive: true });
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      const isLocalKForge = productionServer && details.url.startsWith(productionServer.url);
+      const isLocalKForge = Boolean(productionServer) && isTrustedKForgeOrigin(details.url, productionServer.url);
       if (!isLocalKForge) {
         callback({ responseHeaders: details.responseHeaders });
         return;

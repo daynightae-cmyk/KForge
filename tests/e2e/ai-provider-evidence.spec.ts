@@ -17,11 +17,13 @@ test.describe("KForge AI provider truth in contextual workbench", () => {
     page.on("request", (request) => { if (external(request.url())) externalRequests.push(request.url()); });
     await selectExplorerView(page, "AI", "Providers");
     const surface = page.locator(".kw-workbench-scroll");
+    await expect(surface.getByTestId("provider-studio")).toBeVisible({ timeout: 30_000 });
     for (const provider of ["Ollama", "LM Studio", "llama.cpp", "OpenAI", "Anthropic", "Gemini", "OpenRouter"]) await expect(surface).toContainText(provider, { timeout: 30_000 });
-    await expect(surface).toContainText(/NOT_DETECTED|REACHABLE|CONFIGURED|NOT_CONFIGURED|DETECTED/i);
-    await expect(surface).toContainText("Opening Providers does not contact cloud providers or expose credentials.");
+    await expect(surface).toContainText(/NOT_EVALUATED|NOT_CONFIGURED|CONFIGURED|HEALTHY|NEVER_RUN/i);
+    await expect(surface).toContainText("Credentials stay masked");
     await selectExplorerView(page, "AI", "Models");
-    await expect(page.locator(".kw-workbench-scroll")).toContainText(/Installed runtime inventory|Recommended catalog models|UNKNOWN/i, { timeout: 30_000 });
+    await expect(page.locator(".kw-workbench-scroll").getByTestId("provider-studio")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".kw-workbench-scroll")).toContainText(/Discover all models|Unknown stays UNKNOWN/i, { timeout: 30_000 });
     const body = (await page.locator("body").innerText()).toLowerCase();
     for (const marker of FORBIDDEN) expect(body).not.toContain(marker);
     expect(externalRequests).toEqual([]);
