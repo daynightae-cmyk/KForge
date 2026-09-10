@@ -1,12 +1,13 @@
 // Verifies a Windows artifact's Authenticode state and emits artifact-based evidence.
 // Usage: node scripts/verify-signing.mjs <artifact-path> [--require-valid] [--json <out-path>]
 // Distinguishes build signing material from observed artifact signature.
-// Exit code 0 when the requested policy passes; 1 when --require-valid fails.
+// Exit code 0 when the requested policy passes; 1 when --require-valid/TRUSTED_RELEASE fails.
+import { createHash } from "crypto";
 import { execFileSync } from "child_process";
 import { existsSync, promises as fs } from "fs";
 import path from "path";
 import process from "process";
-import { resolveReleaseStateFromEnv, trustedReleaseBlocker } from "./release-state.mjs";
+import { normalizeObservedSignature, resolveReleaseStateFromEnv, trustedArtifactBlocker } from "./release-state.mjs";
 
 const [, , artifactArg, ...rest] = process.argv;
 
@@ -25,15 +26,6 @@ const jsonOut = jsonIndex >= 0 ? path.resolve(rest[jsonIndex + 1] || "") : null;
 if (jsonIndex >= 0 && !rest[jsonIndex + 1]) fail("Provide an output path after --json.");
 
 const releaseState = resolveReleaseStateFromEnv(process.env);
-
-function normalizeObserved(rawStatus, inspected) {
-  if (!inspected) return "UNAVAILABLE";
-  const normalized = String(rawStatus || "").trim().toLowerCase();
-  if (normalized === "valid") return "VALID";
-  if (normalized === "notsigned" || normalized === "unsigned" || normalized === "unknownerror") return "UNSIGNED";
-  if (!normalized || normalized === "unknown") return "UNKNOWN";
-  return "INVALID";
-}
 
 function queryWindowsSignature(target) {
   const script = [
@@ -69,21 +61,33 @@ function queryWindowsSignature(target) {
   }
 }
 
+async function sha256(target) {
+  const buffer = await fs.readFile(target);
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+const artifactSha256 = await sha256(artifactPath);
 let evidence;
 if (process.platform === "win32") {
   const observed = queryWindowsSignature(artifactPath);
-  const observedStatus = normalizeObserved(observed.status, true);
+  const observedStatus = normalizeObservedSignature(observed.status, observed.status !== "UNAVAILABLE");
+  const observedSignature = {
+    inspected: observed.status !== "UNAVAILABLE",
+    status: observedStatus,
+    ...(observed.subject ? { subject: observed.subject } : {}),
+    ...(observed.issuer ? { issuer: observed.issuer } : {}),
+    ...(observed.thumbprint ? { thumbprint: observed.thumbprint } : {}),
+    timestamped: observed.timestamped === true,
+  };
+  const signedValid = observedStatus === "VALID";
   evidence = {
     artifact: path.basename(artifactPath),
+    sha256: artifactSha256,
     buildSigningConfigured: releaseState.signingConfigured,
-    observedSignature: {
-      inspected: true,
-      status: observedStatus,
-      ...(observed.subject ? { subject: observed.subject } : {}),
-      ...(observed.issuer ? { issuer: observed.issuer } : {}),
-      ...(observed.thumbprint ? { thumbprint: observed.thumbprint } : {}),
-      timestamped: observed.timestamped === true,
-    },
+    observedSignature,
+    // Legacy compatibility projection. `configured` means build material was
+    // present in this process; `status` is always the independently observed
+    // artifact status and is never rewritten to UNSIGNED from env state.
     signing: {
       configured: releaseState.signingConfigured,
       status: observedStatus,
@@ -93,12 +97,15 @@ if (process.platform === "win32") {
       ...(observed.thumbprint ? { thumbprint: observed.thumbprint } : {}),
     },
     releaseMode: releaseState.mode,
-    trustStatus: observedStatus === "VALID" && releaseState.signingConfigured ? "TRUSTED_RELEASE_CANDIDATE" : "DEVELOPMENT_ARTIFACT",
-    trustDecision: observedStatus === "VALID" ? "ARTIFACT_SIGNED_VALID" : "ARTIFACT_NOT_VALID_SIGNED",
+    trustStatus: signedValid
+      ? (releaseState.mode === "TRUSTED_RELEASE" ? "TRUSTED_RELEASE_VERIFIED" : "SIGNED_VALID_ARTIFACT")
+      : "DEVELOPMENT_ARTIFACT",
+    trustDecision: signedValid ? "ARTIFACT_SIGNED_VALID" : "ARTIFACT_NOT_VALID_SIGNED",
   };
 } else {
   evidence = {
     artifact: path.basename(artifactPath),
+    sha256: artifactSha256,
     buildSigningConfigured: releaseState.signingConfigured,
     observedSignature: {
       inspected: false,
@@ -116,11 +123,14 @@ if (process.platform === "win32") {
 }
 
 const effectiveRequireValid = requireValid || releaseState.trustedGateRequiresSignature;
-if (effectiveRequireValid && process.platform === "win32") {
-  const blocker = trustedReleaseBlocker(releaseState, evidence.observedSignature.status);
+if (effectiveRequireValid) {
+  const blocker = trustedArtifactBlocker(evidence.observedSignature, {
+    // A formal TRUSTED_RELEASE additionally requires signer identity evidence.
+    // --require-valid alone is intentionally a pure artifact validity check.
+    requireSigner: releaseState.mode === "TRUSTED_RELEASE",
+    requireTimestamp: false,
+  });
   if (blocker) fail(blocker);
-} else if (effectiveRequireValid && process.platform !== "win32") {
-  fail("TRUSTED_RELEASE verification requires Windows Authenticode evidence; this host cannot prove a Valid signature.");
 }
 
 if (jsonOut) {
