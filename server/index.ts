@@ -5,6 +5,31 @@ import productTruthRouter from "./routes/productTruth";
 import providerCommandRouter from "./routes/providerCommandRouter";
 import workspaceRouter from "./routes/workspace";
 
+const PROVIDER_STORAGE_ROUTE_PREFIX = "/api/workspace/ai/command-center/";
+const SAFE_PROVIDER_STORAGE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
+
+function rejectUnsafeProviderStorageIdentifiers(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const rawPath = req.originalUrl.split("?", 1)[0] || "";
+  if (!rawPath.startsWith(PROVIDER_STORAGE_ROUTE_PREFIX)) return next();
+
+  const segments = rawPath.split("/").filter(Boolean);
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    if (segments[index] !== "providers" && segments[index] !== "sessions") continue;
+    const rawId = segments[index + 1];
+    let decodedId: string;
+    try {
+      decodedId = decodeURIComponent(rawId);
+    } catch {
+      return res.status(400).json({ error: "Invalid provider command identifier." });
+    }
+    if (!SAFE_PROVIDER_STORAGE_ID.test(decodedId) || decodedId === "." || decodedId === ".." || decodedId.includes("..")) {
+      return res.status(400).json({ error: "Invalid provider command identifier." });
+    }
+  }
+
+  return next();
+}
+
 export function createServer() {
   const app = express();
 
@@ -26,6 +51,11 @@ export function createServer() {
   app.get("/api/ping", (_req, res) => {
     res.json({ message: "KForge server is online." });
   });
+
+  // Provider/session identifiers are later reused as local .kforge storage keys.
+  // Reject traversal/path-separator payloads at the HTTP boundary before any
+  // provider-command service can derive a filesystem path from route input.
+  app.use(rejectUnsafeProviderStorageIdentifiers);
 
   // Marketplace lifecycle mutations reuse the canonical Marketplace service.
   // The router intentionally defines no root GET route, so the existing
