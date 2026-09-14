@@ -1,0 +1,16 @@
+{
+  "branchPrefix": "kforge/",
+  "updatedAt": 1789341409842,
+  "setup": {
+    "default": "",
+    "macos": null,
+    "windows": "npm ci",
+    "linux": null
+  },
+  "teardown": {
+    "default": "",
+    "macos": null,
+    "windows": "npm run cleanup",
+    "linux": null
+  }
+}
