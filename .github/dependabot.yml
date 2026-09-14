@@ -43,9 +43,6 @@ updates:
       prefix: "chore(deps)"
       include: "scope"
 
-    labels:
-      - "dependencies"
-
   # ============================================================
   # KNOuX Forge — GitHub Actions
   # Keeps pinned Action SHAs current through reviewed PRs.
@@ -68,7 +65,3 @@ updates:
 
     commit-message:
       prefix: "chore(ci)"
-
-    labels:
-      - "dependencies"
-      - "github-actions"
