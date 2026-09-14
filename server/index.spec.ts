@@ -41,6 +41,24 @@ describe("server hardening boundaries", () => {
     expect(response.headers.get("x-powered-by")).toBeNull();
   });
 
+  it("rejects provider identifiers that decode to filesystem traversal", async () => {
+    const response = await fetch(`${baseUrl}/api/workspace/ai/command-center/providers/..%2Fescape/models`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid provider command identifier." });
+  });
+
+  it("rejects session identifiers that decode to filesystem traversal", async () => {
+    const response = await fetch(`${baseUrl}/api/workspace/ai/command-center/sessions/..%5Cescape/events`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid provider command identifier." });
+  });
+
+  it("rejects malformed percent-encoded provider command identifiers", async () => {
+    const response = await fetch(`${baseUrl}/api/workspace/ai/command-center/sessions/%E0%A4%A/events`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid provider command identifier." });
+  });
+
   it("exposes unsigned release truth without trusted-publisher claims", async () => {
     const { resolveReleaseState } = await import("../shared/releaseState");
     const state = resolveReleaseState({});
