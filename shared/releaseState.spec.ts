@@ -6,11 +6,12 @@ import {
   normalizeReleaseMode,
   normalizeSigningEvidence,
   resolveReleaseState,
+  trustedArtifactBlocker,
   trustedReleaseBlocker,
 } from "./releaseState";
 
 describe("releaseState", () => {
-  it("defaults to DEVELOPMENT/UNSIGNED when no signing material is configured", () => {
+  it("defaults to DEVELOPMENT/UNSIGNED build configuration when no signing material is configured", () => {
     const state = resolveReleaseState({});
     expect(state.mode).toBe("DEVELOPMENT");
     expect(state.signingConfigured).toBe(false);
@@ -33,7 +34,7 @@ describe("releaseState", () => {
     expect(normalizeReleaseMode("bogus")).toBe("DEVELOPMENT");
   });
 
-  it("requires a Valid signature for TRUSTED_RELEASE", () => {
+  it("requires build signing material plus a Valid signature when producing TRUSTED_RELEASE", () => {
     const state = resolveReleaseState({ mode: "TRUSTED_RELEASE", winCscLink: "C:\\certs\\kforge.pfx" });
     expect(state.trustedGateRequiresSignature).toBe(true);
     expect(trustedReleaseBlocker(state, "Valid")).toBeNull();
@@ -55,6 +56,15 @@ describe("releaseState", () => {
     expect(signedElsewhere.buildSigningConfigured).toBe(false);
     expect(signedElsewhere.observedSignature.status).toBe("VALID");
     expect(signedElsewhere.observedSignature.subject).toBe("CN=KNOuX Forge");
+    expect(trustedArtifactBlocker(signedElsewhere.observedSignature)).toBeNull();
+    expect(trustedArtifactBlocker(signedElsewhere.observedSignature, { requireSigner: true })).toBeNull();
+  });
+
+  it("fails closed when trusted artifact evidence is unavailable, invalid, or missing required identity", () => {
+    expect(trustedArtifactBlocker({ inspected: false, status: "UNAVAILABLE" })).toContain("inspection");
+    expect(trustedArtifactBlocker({ inspected: true, status: "UNSIGNED" })).toContain("Valid Authenticode");
+    expect(trustedArtifactBlocker({ inspected: true, status: "VALID" }, { requireSigner: true })).toContain("signer identity");
+    expect(trustedArtifactBlocker({ inspected: true, status: "VALID", subject: "CN=KNOuX Forge", timestamped: false }, { requireTimestamp: true })).toContain("timestamp");
   });
 
   it("keeps signed identity evidence when configured", () => {

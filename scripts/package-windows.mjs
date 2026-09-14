@@ -3,7 +3,7 @@ import { existsSync, promises as fs } from "fs";
 import path from "path";
 import { execFileSync, spawnSync } from "child_process";
 import process from "process";
-import { resolveReleaseStateFromEnv, trustedReleaseBlocker } from "./release-state.mjs";
+import { normalizeObservedSignature, resolveReleaseStateFromEnv, trustedReleaseBlocker } from "./release-state.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const packageJson = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
@@ -35,10 +35,9 @@ async function sha256(target) {
 async function observeSigningEvidence(target, state) {
   if (process.platform !== "win32") {
     return {
-      signing: {
-        configured: state.signingConfigured,
-        status: state.signingConfigured ? "NOT_VERIFIED_ON_THIS_PLATFORM" : "UNSIGNED",
-      },
+      buildSigningConfigured: state.signingConfigured,
+      observedSignature: { inspected: false, status: "UNAVAILABLE" },
+      signing: { configured: state.signingConfigured, status: "UNAVAILABLE" },
     };
   }
   try {
@@ -60,11 +59,24 @@ async function observeSigningEvidence(target, state) {
       env: { ...process.env, KFORGE_PACKAGE_SIGNING_TARGET: target },
     }).trim();
     const observed = JSON.parse(output);
-    if (!state.signingConfigured) return { signing: { configured: false, status: "UNSIGNED" } };
+    const inspected = String(observed.status || "").toUpperCase() !== "UNAVAILABLE";
+    const status = normalizeObservedSignature(observed.status, inspected);
+    const observedSignature = {
+      inspected,
+      status,
+      ...(observed.subject ? { subject: observed.subject } : {}),
+      ...(observed.issuer ? { issuer: observed.issuer } : {}),
+      ...(observed.thumbprint ? { thumbprint: observed.thumbprint } : {}),
+      timestamped: observed.timestamped === true,
+    };
     return {
+      buildSigningConfigured: state.signingConfigured,
+      observedSignature,
+      // Compatibility shape: configured is build configuration; status is
+      // independently observed artifact truth.
       signing: {
-        configured: true,
-        status: String(observed.status || "Unknown"),
+        configured: state.signingConfigured,
+        status,
         ...(observed.subject ? { subject: observed.subject } : {}),
         ...(observed.issuer ? { issuer: observed.issuer } : {}),
         timestamped: observed.timestamped === true,
@@ -72,8 +84,11 @@ async function observeSigningEvidence(target, state) {
       },
     };
   } catch {
-    if (!state.signingConfigured) return { signing: { configured: false, status: "UNSIGNED" } };
-    return { signing: { configured: true, status: "Unknown" } };
+    return {
+      buildSigningConfigured: state.signingConfigured,
+      observedSignature: { inspected: false, status: "UNAVAILABLE" },
+      signing: { configured: state.signingConfigured, status: "UNAVAILABLE" },
+    };
   }
 }
 
@@ -85,9 +100,11 @@ if (releaseState.trustedGateRequiresSignature && !releaseState.signingConfigured
 }
 const electronBuilderCli = path.join(root, "node_modules", "electron-builder", "cli.js");
 if (!existsSync(electronBuilderCli)) throw new Error("electron-builder is not installed. Run npm ci before packaging Windows.");
-// electron-builder reads WIN_CSC_LINK/CSC_LINK/CSC_KEY_PASSWORD directly from the
-// environment; no certificate material is stored in git. When unconfigured the
-// build proceeds as an explicitly unsigned development/release-candidate artifact.
+// electron-builder reads signing material directly from the environment; no
+// certificate material is stored in git. When unconfigured, DEVELOPMENT and
+// RELEASE_CANDIDATE builds remain allowed, but the produced EXE is still
+// inspected independently so an existing/externally signed artifact is never
+// rewritten to UNSIGNED merely because this process lacks a signing secret.
 run(process.execPath, [electronBuilderCli, "--win", "nsis", "--x64", "--publish", "never"]);
 
 if (!existsSync(installerPath)) throw new Error(`Expected NSIS installer was not produced: ${installerPath}`);
@@ -96,8 +113,13 @@ if (stat.size < 10 * 1024 * 1024) throw new Error(`NSIS installer is unexpectedl
 const checksum = await sha256(installerPath);
 const generatedAt = new Date().toISOString();
 const signingEvidence = await observeSigningEvidence(installerPath, releaseState);
-const trustedBlocker = trustedReleaseBlocker(releaseState, signingEvidence.signing.status);
+const trustedBlocker = trustedReleaseBlocker(releaseState, signingEvidence.observedSignature.status);
 if (trustedBlocker) throw new Error(`Trusted release gate failed: ${trustedBlocker}`);
+const observedStatus = signingEvidence.observedSignature.status;
+const observedValid = observedStatus === "VALID";
+const trustStatus = observedValid
+  ? (releaseState.trustedGateRequiresSignature ? "TRUSTED_RELEASE_CANDIDATE" : "SIGNED_VALID_ARTIFACT")
+  : "DEVELOPMENT_ARTIFACT";
 const manifest = {
   name: "KNOuX Forge",
   version: packageJson.version,
@@ -107,10 +129,12 @@ const manifest = {
   artifactFilename: expectedInstaller,
   size: stat.size,
   sha256: checksum,
-  signatureState: signingEvidence.signing.configured ? signingEvidence.signing.status.toUpperCase() : "UNSIGNED",
+  signatureState: observedStatus,
+  buildSigningConfigured: signingEvidence.buildSigningConfigured,
+  observedSignature: signingEvidence.observedSignature,
   signing: signingEvidence.signing,
   releaseMode: releaseState.mode,
-  trustStatus: releaseState.trustStatus,
+  trustStatus,
   installerType: "NSIS",
   runtimeType: "Electron + embedded Node/Express loopback server",
   installScope: "per-user",
@@ -118,11 +142,16 @@ const manifest = {
 
 await fs.writeFile(path.join(releaseDir, "SHA256SUMS.txt"), `${checksum} *${expectedInstaller}\n`, "utf8");
 await fs.writeFile(path.join(releaseDir, "installer-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-const signingNotes = manifest.signing.configured
-  ? `**SIGNED BUILD.** Authenticode status \`${manifest.signing.status}\`${manifest.signing.subject ? `, subject \`${manifest.signing.subject}\`` : ""}${manifest.signing.timestamped ? ", RFC3161 timestamp present" : ", timestamp state recorded in verification evidence"}. See \`release/verification/package-windows.json\` for measured evidence.`
-  : `**UNSIGNED DEVELOPMENT/RELEASE ARTIFACT.** No code-signing certificate was supplied or verified for this build (SIGNING_STATUS=UNSIGNED, TRUST_STATUS=DEVELOPMENT_ARTIFACT). Windows reputation and publisher trust are not claimed.`;
-await fs.writeFile(path.join(releaseDir, "RELEASE-NOTES.md"), `# KNOuX Forge ${packageJson.version}\n\n## Included changes\n\nThis release introduces the KNOuX Forge Windows desktop shell, a loopback-only embedded production server, safe shutdown of KForge-managed Preview and topology processes, per-user NSIS installation, user-data separation under LocalAppData, runtime diagnostics, and a Settings Center About card sourced from the desktop runtime.\n\n## Installation\n\nRun \`${expectedInstaller}\` from a trusted local download. The installer is a per-user installation and does not require administrator elevation. A Start Menu shortcut and a Desktop shortcut are created by the NSIS installer on first installation.\n\n## Offline and online behavior\n\nKForge still starts in Offline mode. Network use remains opt-in and capability-specific; opening remote surfaces does not itself contact a provider.\n\n## Release mode\n\nMode \`${releaseState.mode}\`. Signing configured: ${releaseState.signingConfigured ? "yes" : "no"}.\n\n## Signing status\n\n${signingNotes}\n\n## Known limitations\n\nA clean-machine Windows VM or Sandbox was not attached to the build environment. The included verification covers the produced artifact and local silent installation path; it does not claim SmartScreen reputation, signing, or external-provider verification.\n`, "utf8");
+let signingNotes;
+if (observedStatus === "VALID") {
+  signingNotes = `**AUTHENTICODE VALID ARTIFACT.** Windows observed a Valid signature${manifest.observedSignature.subject ? `, subject \`${manifest.observedSignature.subject}\`` : ""}${manifest.observedSignature.timestamped ? ", timestamp present" : ", timestamp not observed"}. Build signing material configured in this process: ${manifest.buildSigningConfigured ? "yes" : "no/unknown"}. See \`release/verification/package-windows.json\` for measured evidence.`;
+} else if (observedStatus === "UNSIGNED") {
+  signingNotes = `**UNSIGNED DEVELOPMENT/RELEASE-CANDIDATE ARTIFACT.** Windows observed no valid Authenticode signature (OBSERVED_SIGNATURE=UNSIGNED, TRUST_STATUS=DEVELOPMENT_ARTIFACT). Windows publisher trust is not claimed.`;
+} else {
+  signingNotes = `**SIGNATURE NOT VERIFIED.** Artifact observation is \`${observedStatus}\`; KForge does not convert that state to signed or unsigned without evidence. TRUST_STATUS=DEVELOPMENT_ARTIFACT.`;
+}
+await fs.writeFile(path.join(releaseDir, "RELEASE-NOTES.md"), `# KNOuX Forge ${packageJson.version}\n\n## Included changes\n\nThis release introduces the KNOuX Forge Windows desktop shell, a loopback-only embedded production server, safe shutdown of KForge-managed Preview and topology processes, per-user NSIS installation, user-data separation under LocalAppData, runtime diagnostics, and a Settings Center About card sourced from the desktop runtime.\n\n## Installation\n\nRun \`${expectedInstaller}\` from a trusted local download. The installer is a per-user installation and does not require administrator elevation. A Start Menu shortcut and a Desktop shortcut are created by the NSIS installer on first installation.\n\n## Offline and online behavior\n\nKForge still starts in Offline mode. Network use remains opt-in and capability-specific; opening remote surfaces does not itself contact a provider.\n\n## Release mode\n\nMode \`${releaseState.mode}\`. Build signing material configured: ${releaseState.signingConfigured ? "yes" : "no"}.\n\n## Signing status\n\n${signingNotes}\n\n## Known limitations\n\nA clean-machine Windows VM or Sandbox was not attached to the build environment. The included verification covers the produced artifact and local silent installation path; it does not claim SmartScreen reputation or external-provider verification.\n`, "utf8");
 await fs.writeFile(path.join(verificationDir, "package-windows.json"), `${JSON.stringify({ ...manifest, verifiedAt: generatedAt, checks: { installerExists: true, installerSizeBytes: stat.size, sha256Recorded: true, signatureState: manifest.signatureState } }, null, 2)}\n`, "utf8");
 console.log(`Created ${expectedInstaller}`);
 console.log(`SHA-256: ${checksum}`);
-console.log(`Release mode: ${releaseState.mode}; signing: ${manifest.signing.configured ? manifest.signing.status : "UNSIGNED"}`);
+console.log(`Release mode: ${releaseState.mode}; observed signature: ${manifest.observedSignature.status}; build signing configured: ${manifest.buildSigningConfigured ? "yes" : "no"}`);

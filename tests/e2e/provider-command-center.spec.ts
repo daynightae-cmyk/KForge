@@ -28,13 +28,14 @@ test.describe("Provider + Model Command Center acceptance", () => {
     const unconfirmed = await request.post(`/api/workspace/ai/command-center/providers/${createdBody.provider.id}/reveal`, { data: { confirmed: false } });
     expect(unconfirmed.status()).toBe(428);
 
+    const projectId = "e2e-disclosure-project";
     const sessionDenied = await request.post("/api/workspace/ai/command-center/sessions", {
-      data: { providerId: createdBody.provider.id, modelId: "e2e-model", mode: "PLAN", task: "Inspect export flow", contextScope: "Repository", disclosureConfirmed: false },
+      data: { projectId, providerId: createdBody.provider.id, modelId: "e2e-model", mode: "PLAN", task: "Inspect export flow", contextScope: "Repository", disclosureConfirmed: false },
     });
     expect(sessionDenied.status()).toBe(428);
 
     const sessionOk = await request.post("/api/workspace/ai/command-center/sessions", {
-      data: { providerId: createdBody.provider.id, modelId: "e2e-model", mode: "PLAN", task: "Inspect export flow", contextScope: "Repository", disclosureConfirmed: true },
+      data: { projectId, providerId: createdBody.provider.id, modelId: "e2e-model", mode: "PLAN", task: "Inspect export flow", contextScope: "Repository", disclosureConfirmed: true },
     });
     expect(sessionOk.ok()).toBeTruthy();
 

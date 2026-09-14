@@ -18,13 +18,13 @@ describe("provider command center secret boundary", () => {
         baseUrl: "https://provider.example/v1",
         apiKey: "sk-test-secret-value-1234567890",
       });
-      expect(provider.maskedKey).toBe("sk-••••••••••••••••••••••••7890");
+      expect(provider.maskedKey).toBe("••••••••••••••••••••••••7890");
       expect(provider.maskedKey).not.toContain("sk-test-secret");
       const summaries = await listProviderSummaries(root);
       const found = summaries.find((entry) => entry.id === provider.id);
       expect(found?.maskedKey).toContain("••••");
       expect(containsPlaintextSecret(summaries, ["sk-test-secret-value-1234567890"])).toBe(false);
-      expect(maskApiKey("sk-test-secret-value-1234567890")).toBe("sk-••••••••••••••••••••••••7890");
+      expect(maskApiKey("sk-test-secret-value-1234567890")).toBe("••••••••••••••••••••••••7890");
       await expect(revealProviderKey(root, provider.id, false)).rejects.toThrow("confirmation");
       const revealed = await revealProviderKey(root, provider.id, true);
       expect(revealed.value).toBe("sk-test-secret-value-1234567890");

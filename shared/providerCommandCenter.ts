@@ -81,7 +81,7 @@ export interface ProviderSummary {
   baseUrl: string | null;
   authState: "CONFIGURED" | "NOT_CONFIGURED";
   credentialState: "CONFIGURED" | "NOT_CONFIGURED";
-  credentialSource: "server-environment" | "provider-secret-store" | "none";
+  credentialSource: "os-vault" | "ephemeral-memory" | "server-environment" | "none";
   modelsDiscovered: number;
   favoriteModel: string | null;
   health: "HEALTHY" | "DEGRADED" | "UNREACHABLE" | "NOT_EVALUATED" | "NOT_CONFIGURED";
@@ -103,12 +103,129 @@ export interface ConnectionTestEvidence {
   latencyMs: number;
   httpStatus: number | null;
   ok: boolean;
-  streamingOutcome: "SUPPORTED" | "UNSUPPORTED" | "UNKNOWN" | "NOT_TESTED";
-  toolOutcome: "SUPPORTED" | "UNSUPPORTED" | "UNKNOWN" | "NOT_TESTED";
+  streamingOutcome: "SUPPORTED" | "UNSUPPORTED" | "UNKNOWN" | "FAILED" | "NOT_TESTED";
+  toolOutcome: "SUPPORTED" | "UNSUPPORTED" | "UNKNOWN" | "FAILED" | "NOT_TESTED";
   tokenEvidence: { input: number | null; output: number | null; total: number | null } | null;
   providerRequestId: string | null;
   errorKind: NormalizedErrorKind | null;
   errorDetail: string | null;
+}
+
+export type ProviderSessionStatus =
+  | "READY"
+  | "CONTEXT_PREPARING"
+  | "WAITING_FOR_DISCLOSURE"
+  | "PLANNING"
+  | "WAITING_FOR_APPROVAL"
+  | "RUNNING"
+  | "TOOL_EXECUTING"
+  | "APPLYING"
+  | "VERIFYING"
+  | "PREVIEW_STARTING"
+  | "PREVIEWING"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELLED"
+  | "ROLLED_BACK";
+
+export interface ProviderSessionTelemetry {
+  ttftMs: number | null;
+  latencyMs: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  reasoningTokens: number | null;
+  cachedTokens: number | null;
+  totalTokens: number | null;
+  costSource: "PROVIDER_REPORTED" | "ESTIMATED" | "UNKNOWN";
+  estimatedCost: number | null;
+  toolCalls: number;
+  filesChanged: number;
+  testState: string | null;
+  buildState: string | null;
+  previewState: string | null;
+  retries: number;
+  providerRequestId: string | null;
+  finishReason: string | null;
+}
+
+export interface ProviderSessionSummary {
+  id: string;
+  projectId: string | null;
+  providerId: string;
+  modelId: string;
+  mode: "ASK" | "PLAN" | "IMPLEMENT" | "REVIEW" | "DEBUG" | "TEST" | "REFACTOR" | "SECURITY_AUDIT" | "FULL_MISSION";
+  status: ProviderSessionStatus;
+  task: string;
+  contextScope: string;
+  createdAt: string;
+  updatedAt: string;
+  disclosureConfirmed: boolean;
+  disclosureDestination: string | null;
+  cloudDisclosure: boolean;
+  checkpointId: string | null;
+  previewSessionId: string | null;
+  autonomy: string;
+  pendingApproval: { id: string; kind: string; summary: string; createdAt: string } | null;
+  telemetry: ProviderSessionTelemetry;
+  error: string | null;
+}
+
+export type ProviderSessionEventType =
+  | "MODEL_TOKEN"
+  | "MODEL_MESSAGE"
+  | "TOOL_REQUEST"
+  | "TOOL_STARTED"
+  | "TOOL_FINISHED"
+  | "FILE_READ"
+  | "PATCH_PROPOSED"
+  | "PATCH_APPLIED"
+  | "COMMAND_STARTED"
+  | "COMMAND_FINISHED"
+  | "TEST_RESULT"
+  | "BUILD_RESULT"
+  | "PREVIEW_STATE"
+  | "APPROVAL_REQUIRED"
+  | "USAGE_UPDATE"
+  | "ERROR"
+  | "SESSION_COMPLETED";
+
+export interface ProviderSessionEvent {
+  id: string;
+  sessionId: string;
+  type: ProviderSessionEventType;
+  at: string;
+  message: string;
+  data?: Record<string, unknown>;
+}
+
+export interface ProviderSessionPatch {
+  id: string;
+  sessionId: string;
+  file: string;
+  oldText: string;
+  newText: string;
+  reason: string;
+  risk: "safe" | "review" | "approval" | "blocked";
+  state: "PROPOSED" | "APPLIED" | "REJECTED" | "ROLLED_BACK";
+  createdAt: string;
+  appliedAt: string | null;
+}
+
+export interface ProviderContextInspection {
+  project: { id: string; name: string; path: string; branch: string };
+  task: string;
+  model: string;
+  provider: string;
+  destination: string;
+  filesIncluded: Array<{ path: string; reason: string; characters: number }>;
+  filesExcluded?: Array<{ path: string; reason: string }>;
+  totalCharacters: number;
+  estimatedTokens: number;
+  diagnostics: unknown[];
+  git: unknown;
+  technology: string[];
+  disclosureConfirmed: boolean;
+  sourceCodeIncluded: boolean;
 }
 
 export const UNKNOWN_CAPABILITIES: CanonicalModelCapabilities = {
@@ -136,8 +253,8 @@ export const UNKNOWN_CAPABILITIES: CanonicalModelCapabilities = {
 export function maskApiKey(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
-  if (trimmed.length <= 8) return "sk-••••••••";
-  return `sk-••••••••••••••••••••••••${trimmed.slice(-4)}`;
+  if (trimmed.length <= 8) return "••••••••";
+  return `••••••••••••••••••••••••${trimmed.slice(-4)}`;
 }
 
 export function normalizeProviderError(status: number | null, message: string): NormalizedErrorKind {
@@ -159,7 +276,7 @@ export function normalizeProviderError(status: number | null, message: string): 
 }
 
 export function normalizeModelRecord(providerId: string, raw: unknown, nowIso: string): CanonicalModel {
-  const record = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const record = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {};
   const id = typeof record.id === "string" && record.id.trim() ? record.id.trim() : "UNKNOWN";
   const displayName = typeof record.display_name === "string" && record.display_name.trim()
     ? record.display_name.trim()
@@ -174,7 +291,7 @@ export function normalizeModelRecord(providerId: string, raw: unknown, nowIso: s
   const maxOutput = typeof record.max_output === "number" && Number.isFinite(record.max_output)
     ? Math.round(record.max_output)
     : null;
-  const pricing = typeof record.pricing === "object" && record.pricing !== null ? (record.pricing as Record<string, unknown>) : null;
+  const pricing = typeof record.pricing === "object" && record.pricing !== null ? record.pricing as Record<string, unknown> : null;
   const price = (key: string): number | null => {
     const value = pricing?.[key];
     if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
@@ -183,15 +300,9 @@ export function normalizeModelRecord(providerId: string, raw: unknown, nowIso: s
   };
   const priceInput = price("prompt") ?? price("input");
   const priceOutput = price("completion") ?? price("output");
-  const supported = (value: unknown): CapabilityState => {
-    if (value === true) return "SUPPORTED";
-    if (value === false) return "UNSUPPORTED";
-    return "PROVIDER_NOT_REPORTED";
-  };
-  const caps = typeof record.capabilities === "object" && record.capabilities !== null ? (record.capabilities as Record<string, unknown>) : {};
-  const supportedTools = Array.isArray(record.supported_parameters)
-    ? (record.supported_parameters as unknown[]).map((entry) => String(entry))
-    : [];
+  const supported = (value: unknown): CapabilityState => value === true ? "SUPPORTED" : value === false ? "UNSUPPORTED" : "PROVIDER_NOT_REPORTED";
+  const caps = typeof record.capabilities === "object" && record.capabilities !== null ? record.capabilities as Record<string, unknown> : {};
+  const supportedTools = Array.isArray(record.supported_parameters) ? record.supported_parameters.map((entry) => String(entry)) : [];
   const hasToolParam = (name: string) => supportedTools.includes(name);
   return {
     id,
@@ -235,9 +346,7 @@ export function redactSensitiveHeaders(headers: Record<string, string>): Record<
     if (/authorization|api[-_ ]?key|x-api-key|x-goog-api-key|cookie|set-cookie/i.test(key)) {
       void value;
       redacted[key] = "[REDACTED]";
-    } else {
-      redacted[key] = value;
-    }
+    } else redacted[key] = value;
   }
   return redacted;
 }
