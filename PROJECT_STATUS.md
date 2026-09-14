@@ -2,7 +2,7 @@
 
 - Product: KNOuX Forge
 - Delivery branch: `main`
-- Branch topology gate: PASS — verified stale-branch cleanup left `main` as the only repository branch.
+- Branch topology gate: PARTIAL — `main` is canonical and all remaining non-main refs are stale/non-delivery refs, but four obsolete branch refs (`closure/provider-phase-2`, `daynightae-cmyk-patch-1`, `daynightae-cmyk-patch-2`, `daynightae-cmyk-patch-3`) still exist remotely because the currently connected GitHub write surface does not expose branch-ref deletion. Do not claim branch cleanup is complete until those refs are actually deleted.
 - Readiness: Evidence-scoped product completion. No external provider, CI, package, signing, or release state is promoted beyond the source that actually measured it.
 - Authoritative implementation baseline captured on 2026-09-08: GitHub Actions `KForge Verification Gate` Run #271 at SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`.
 - Workflow supply-chain gate: PASS — external action references in the authoritative verification workflow are immutable SHA pins.
@@ -37,7 +37,6 @@ Run #271 proves, on SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`:
 
 - Branch-protection and required-status enforcement remain a separate repository-administration policy domain. The current integration receives HTTP 403 from the branch-protection endpoint, so a green workflow proves the tested SHA rather than administrative enforcement.
 - The Windows installer remains an **UNSIGNED DEVELOPMENT/RELEASE ARTIFACT** for trust purposes. KForge does not claim a Trusted Publisher, SmartScreen reputation, or trusted code-signing identity without separate evidence.
-- GitHub repository description metadata still contains stale starter-template copy. Repository-content commits cannot change that metadata through the currently available repository write path.
 - Remote registries, remote CI, remote Preview, product updates, GitHub operations, and cloud AI remain dependent on their real adapters, credentials, network policy, trust, and explicit actions. Missing prerequisites stay `OFFLINE`, `NOT_CONFIGURED`, `UNKNOWN`, `UNAVAILABLE`, or `BLOCKED`.
 - Browser-console capture is deliberately bounded to packaged Electron and an active KForge-owned loopback Preview. HTML-only inspection still does not claim executed-JavaScript DOM coverage, rendered layout/contrast, request waterfalls, screenshots, element picking, or user-interaction telemetry unless a separate measured capability supplies that evidence.
 
