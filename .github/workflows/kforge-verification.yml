@@ -82,6 +82,14 @@ jobs:
       - name: Validate production types
         run: npm run typecheck
 
+      - name: Build production server for Windows browser E2E
+        run: npm run build
+
+      - name: Run Windows browser E2E gate
+        env:
+          KFORGE_PLAYWRIGHT_CHANNEL: msedge
+        run: npm run test:e2e
+
       - name: Build signed-state-transparent NSIS installer
         run: npm run package:windows
 
