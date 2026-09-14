@@ -15,6 +15,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: "list",
+  // Windows uses the installed Edge channel for local verification. Lazy surfaces that
+  // hydrate several bounded evidence endpoints need a little more scheduling headroom on
+  // Windows without relaxing the stricter Linux CI expectation window.
+  expect: {
+    timeout: process.platform === "win32" ? 15_000 : 5_000,
+  },
   use: {
     ...devices["Desktop Chrome"],
     ...(windowsBrowserChannel ? { channel: windowsBrowserChannel } : {}),
