@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { KnouxClipData, KnouxAISettings } from "@/lib/knouxDataTypes";
-import { KnouxClipAIControls } from "./KnouxClipAIControls";
+import KnouxClipAIControls from "./KnouxClipAIControls";
 
 interface KnouxInspectorPanelProps {
   selectedClip?: KnouxClipData;

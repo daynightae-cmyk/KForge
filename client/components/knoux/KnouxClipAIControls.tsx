@@ -1,5 +1,4 @@
-if(condition) {
-  // src/components/knoux/KnouxClipAIControls.tsx
+// src/components/knoux/KnouxClipAIControls.tsx
   /**
    * Knoux Edita PRO - Clip AI Controls Panel (KnouxClipAIControls)
    *
@@ -580,4 +579,3 @@ if(condition) {
   }
   
   export default KnouxClipAIControls;
-}
