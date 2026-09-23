@@ -24,13 +24,22 @@ function jsonResponse(body: unknown, init: { status?: number; headers?: Record<s
   });
 }
 
+/** Exact-host test routing: substring host checks would also match lookalike origins. */
+function isOvsxTestUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === "open-vsx.org";
+  } catch {
+    return false;
+  }
+}
+
 describe("Remote sources API", () => {
   let workspaceRoot = "";
   let server: Server | null = null;
   let baseUrl = "";
   let previousRoot: string | undefined;
   let fetchStub = vi.fn(async (url: string) =>
-    String(url).includes("open-vsx.org") ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE),
+    isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE),
   );
 
   beforeEach(async () => {
@@ -38,7 +47,7 @@ describe("Remote sources API", () => {
     previousRoot = process.env.KFORGE_WORKSPACE_ROOT;
     process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
     fetchStub = vi.fn(async (url: string) =>
-      String(url).includes("open-vsx.org") ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE),
+      isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE),
     );
     vi.stubGlobal("fetch", fetchStub);
 
