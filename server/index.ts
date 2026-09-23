@@ -3,6 +3,7 @@ import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
 import operationEvidenceRouter from "./routes/operationEvidence";
 import productTruthRouter from "./routes/productTruth";
 import providerCommandRouter from "./routes/providerCommandRouter";
+import remoteSourcesRouter from "./routes/remoteSources";
 import workspaceRouter from "./routes/workspace";
 
 const PROVIDER_STORAGE_ROUTE_PREFIX = "/api/workspace/ai/command-center/";
@@ -72,6 +73,10 @@ export function createServer() {
   // It is mounted before the historical workspace endpoints so upgraded secure
   // vault/session routes take ownership without duplicating core project engines.
   app.use("/api/workspace", providerCommandRouter);
+  // Explicit remote-source reads (MCP Registry first). Every endpoint is an
+  // explicit user action: opening Online never calls these, OFFLINE refuses
+  // before any socket opens, and results normalize onto Marketplace evidence.
+  app.use("/api/workspace", remoteSourcesRouter);
   app.use("/api/workspace", workspaceRouter);
 
   return app;
