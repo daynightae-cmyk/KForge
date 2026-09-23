@@ -76,6 +76,15 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   const [mcpSearched, setMcpSearched] = useState(false);
   const [mcpRunning, setMcpRunning] = useState(false);
   const [mcpError, setMcpError] = useState("");
+  // Explicit Open VSX discovery: same contract as MCP above. Results are
+  // remote catalog records (CATALOG); installation stays with the existing
+  // Marketplace lifecycle and is not offered by read-only discovery.
+  const [ovsxQuery, setOvsxQuery] = useState("");
+  const [ovsxItems, setOvsxItems] = useState<MarketplaceItem[]>([]);
+  const [ovsxEvidence, setOvsxEvidence] = useState<RecordRow | null>(null);
+  const [ovsxSearched, setOvsxSearched] = useState(false);
+  const [ovsxRunning, setOvsxRunning] = useState(false);
+  const [ovsxError, setOvsxError] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -112,11 +121,12 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
 
   // The visible semantic view is the sole authority for selection. A retained id
   // may be valid in the global catalog but must not keep a hidden prior-view item
-  // authoritative in the canonical Inspector. Explicit MCP results join the
-  // selection pool only when the retained id names one of them.
-  const selected = useMemo(() => items.find((item) => item.id === selectedId) || mcpItems.find((item) => item.id === selectedId) || items[0] || null, [items, mcpItems, selectedId]);
+  // authoritative in the canonical Inspector. Explicit MCP/Open VSX results join
+  // the selection pool only when the retained id names one of them.
+  const selected = useMemo(() => items.find((item) => item.id === selectedId) || mcpItems.find((item) => item.id === selectedId) || ovsxItems.find((item) => item.id === selectedId) || items[0] || null, [items, mcpItems, ovsxItems, selectedId]);
   const catalogView = !["providers", "remote-sources", "downloads", "activity"].includes(view);
   const mcpPanel = ["discover", "marketplace", "agents", "tools"].includes(view);
+  const ovsxPanel = ["discover", "marketplace", "extensions"].includes(view);
 
   const searchMcp = useCallback(async () => {
     setMcpRunning(true);
@@ -135,6 +145,24 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
       setMcpRunning(false);
     }
   }, [mcpQuery]);
+
+  const searchOvsx = useCallback(async () => {
+    setOvsxRunning(true);
+    setOvsxError("");
+    try {
+      const params = new URLSearchParams({ size: "20" });
+      if (ovsxQuery.trim()) params.set("query", ovsxQuery.trim());
+      const result = await fetchJson<{ items?: MarketplaceItem[]; evidence?: RecordRow }>(`/api/workspace/remote-sources/open-vsx/search?${params.toString()}`);
+      setOvsxItems(result.items || []);
+      setOvsxEvidence(result.evidence || null);
+      setOvsxSearched(true);
+    } catch (error) {
+      setOvsxError(error instanceof Error ? error.message : "Open VSX search failed.");
+      setOvsxSearched(true);
+    } finally {
+      setOvsxRunning(false);
+    }
+  }, [ovsxQuery]);
 
   const selectItem = useCallback((item: MarketplaceItem) => {
     setSelectedId(item.id);
@@ -163,8 +191,8 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   }, [refresh]);
 
   const actionsByItemId = useMemo(() => {
-    return new Map([...items, ...mcpItems].map((item) => [item.id, lifecycleActions(item, operate, selectItem)]));
-  }, [items, mcpItems, operate, selectItem]);
+    return new Map([...items, ...mcpItems, ...ovsxItems].map((item) => [item.id, lifecycleActions(item, operate, selectItem)]));
+  }, [items, mcpItems, ovsxItems, operate, selectItem]);
 
   const actions = useMemo(() => (selected ? actionsByItemId.get(selected.id) ?? [] : []), [actionsByItemId, selected]);
 
@@ -187,6 +215,7 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
 
   const resultLabel = view === "discover" ? "recommended item(s)" : "result(s)";
   const mcpFreshness = mcpEvidence && typeof mcpEvidence.freshness === "string" ? mcpEvidence.freshness : mcpEvidence && typeof mcpEvidence.freshness === "object" ? JSON.stringify(mcpEvidence.freshness) : "";
+  const ovsxFreshness = ovsxEvidence && typeof ovsxEvidence.freshness === "string" ? ovsxEvidence.freshness : ovsxEvidence && typeof ovsxEvidence.freshness === "object" ? JSON.stringify(ovsxEvidence.freshness) : "";
   return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Online catalog" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span>{items.length} {resultLabel}</span><button onClick={() => void refresh()}>Refresh local evidence</button></div>{message && <p className="kw-message">{message}</p>}{items.length ? <div className="kw-online-layout"><div className="kw-online-results">{items.map((item) => (
   <KForgeCapabilityCard
     key={item.id}
@@ -197,6 +226,15 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"}
   />
 ))}</div></div> : <EmptyState title={view === "updates" ? "No verified update evidence" : view === "discover" ? "No verified recommendations" : `No ${viewLabel("online", view).toLowerCase()} evidence`} detail={view === "updates" ? "Updates require installedVersion, verifiedLatestVersion and version comparison." : view === "discover" ? "Discover shows only items marked recommended by verified local catalog evidence." : "No verified source item matches this view."} />}{mcpPanel && <div className="kw-mcp"><div className="kw-toolbar"><h2>MCP Registry — explicit remote search</h2><button onClick={() => void searchMcp()} disabled={mcpRunning}>{mcpRunning ? "Searching…" : "Search MCP Registry"}</button></div><p className="kw-message">Read-only discovery from the Official MCP Registry. Opening Online never contacts it; this search runs only when you ask. Results are remote catalog records (CATALOG), not installed items; runtime capability stays unverified until a verified adapter proves it.</p><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search MCP Registry" value={mcpQuery} onChange={(event) => setMcpQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchMcp(); }} /></label><span>{mcpSearched ? `${mcpItems.length} remote result(s)` : "not searched"}</span></div>{mcpError && <p className="kw-message">{mcpError}</p>}{mcpEvidence && <p className="kw-message">Source: Official MCP Registry · Freshness: {String(mcpFreshness || (mcpEvidence.fromCache ? "CACHED" : "CURRENT"))}{mcpEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(mcpEvidence.destination || "https://registry.modelcontextprotocol.io")}</p>}{mcpSearched && !mcpItems.length && !mcpError && <p className="kw-message">No remote catalog records matched this query.</p>}{mcpItems.length ? <div className="kw-online-layout"><div className="kw-online-results">{mcpItems.map((item) => (
+  <KForgeCapabilityCard
+    key={item.id}
+    item={item}
+    selected={selected?.id === item.id}
+    onSelect={() => selectItem(item)}
+    actions={actionsByItemId.get(item.id)}
+    actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"}
+  />
+))}</div></div> : null}</div>}{ovsxPanel && <div className="kw-mcp"><div className="kw-toolbar"><h2>Open VSX — explicit remote search</h2><button onClick={() => void searchOvsx()} disabled={ovsxRunning}>{ovsxRunning ? "Searching…" : "Search Open VSX"}</button></div><p className="kw-message">Read-only discovery from the Open VSX Registry. Opening Online never contacts it; this search runs only when you ask. Results are remote catalog records (CATALOG), not installed extensions; installation requires the existing Marketplace lifecycle (immutable VSIX, expected integrity, compatibility, confirmation).</p><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Open VSX Registry" value={ovsxQuery} onChange={(event) => setOvsxQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchOvsx(); }} /></label><span>{ovsxSearched ? `${ovsxItems.length} remote result(s)` : "not searched"}</span></div>{ovsxError && <p className="kw-message">{ovsxError}</p>}{ovsxEvidence && <p className="kw-message">Source: Open VSX Registry · Freshness: {String(ovsxFreshness || (ovsxEvidence.fromCache ? "CACHED" : "CURRENT"))}{ovsxEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(ovsxEvidence.destination || "https://open-vsx.org")}</p>}{ovsxSearched && !ovsxItems.length && !ovsxError && <p className="kw-message">No remote catalog records matched this query.</p>}{ovsxItems.length ? <div className="kw-online-layout"><div className="kw-online-results">{ovsxItems.map((item) => (
   <KForgeCapabilityCard
     key={item.id}
     item={item}

@@ -7,6 +7,7 @@ import type { Server } from "http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import remoteSourcesRouter from "./remoteSources";
 import { MCP_LIST_FIXTURE } from "../services/remoteSources/adapters/fixtures/mcpRegistryFixtures";
+import { OVSX_EXTENSION_FIXTURE, OVSX_SEARCH_FIXTURE, OVSX_VERSIONS_FIXTURE } from "../services/remoteSources/adapters/fixtures/openVsxFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -28,13 +29,17 @@ describe("Remote sources API", () => {
   let server: Server | null = null;
   let baseUrl = "";
   let previousRoot: string | undefined;
-  let fetchStub = vi.fn(async () => jsonResponse(MCP_LIST_FIXTURE));
+  let fetchStub = vi.fn(async (url: string) =>
+    String(url).includes("open-vsx.org") ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE),
+  );
 
   beforeEach(async () => {
     workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-remote-api-"));
     previousRoot = process.env.KFORGE_WORKSPACE_ROOT;
     process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
-    fetchStub = vi.fn(async () => jsonResponse(MCP_LIST_FIXTURE));
+    fetchStub = vi.fn(async (url: string) =>
+      String(url).includes("open-vsx.org") ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE),
+    );
     vi.stubGlobal("fetch", fetchStub);
 
     const app = express();
@@ -68,7 +73,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
@@ -101,6 +106,51 @@ describe("Remote sources API", () => {
     expect(missingServer.status).toBe(400);
     const unsafeServer = await realFetch(`${baseUrl}/api/workspace/remote-sources/mcp/versions?server=../../etc`);
     expect(unsafeServer.status).toBe(400);
+    const badSize = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?size=500`);
+    expect(badSize.status).toBe(400);
+    const missingNamespace = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/extension?extension=only`);
+    expect(missingNamespace.status).toBe(400);
     expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("refuses Open VSX search in OFFLINE mode with zero external requests", async () => {
+    const before = fetchStub.mock.calls.length;
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?query=yaml`);
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
+    expect(fetchStub.mock.calls.length).toBe(before);
+  });
+
+  it("searches Open VSX explicitly in online-optional mode", async () => {
+    await setMode("online-optional");
+    const before = fetchStub.mock.calls.length;
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?query=yaml&size=10`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { items: Array<{ id: string; availability: string }>; evidence: { freshness: string } };
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0].id).toBe("openvsx:redhat/vscode-yaml");
+    expect(body.items[0].availability).toBe("CATALOG");
+    expect(body.evidence.freshness).toBe("CURRENT");
+    expect(fetchStub.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it("reads Open VSX extension detail and version references explicitly", async () => {
+    await setMode("online-optional");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).includes("/versions")) return jsonResponse(OVSX_VERSIONS_FIXTURE);
+        if (String(url).includes("/api/redhat/")) return jsonResponse(OVSX_EXTENSION_FIXTURE);
+        return jsonResponse(OVSX_SEARCH_FIXTURE);
+      }),
+    );
+    const detail = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/extension?namespace=redhat&extension=vscode-yaml`);
+    expect(detail.status).toBe(200);
+    const detailBody = (await detail.json()) as { item: { version: string; availability: string } };
+    expect(detailBody.item.version).toBe("1.18.0");
+    expect(detailBody.item.availability).toBe("CATALOG");
+    const versions = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/versions?namespace=redhat&extension=vscode-yaml`);
+    expect(versions.status).toBe(200);
+    await expect(versions.json()).resolves.toMatchObject({ versions: ["1.18.0", "1.17.0", "1.16.0"] });
   });
 });
