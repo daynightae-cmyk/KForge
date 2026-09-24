@@ -4,6 +4,7 @@ import { isOptionalOnlineFeatureEnabled } from "../services/localPlatform";
 import { listRemoteSources } from "../services/remoteSources/registry";
 import { RemoteFetchError } from "../services/remoteSources/fetchPolicy";
 import { getMcpServerVersion, getMcpServerVersions, searchMcpServers } from "../services/remoteSources/mcpService";
+import { getOvsxExtension, getOvsxVersion, getOvsxVersions, searchOvsxExtensions } from "../services/remoteSources/openVsxService";
 
 /**
  * Explicit remote-source reads (Slice 1).
@@ -26,6 +27,24 @@ function parseLimit(value: unknown): number {
     throw new Error("MCP Registry: limit must be an integer between 1 and 100.");
   }
   return limit;
+}
+
+function parseOvsxSize(value: unknown): number {
+  if (value === undefined) return 20;
+  const size = Number(value);
+  if (!Number.isInteger(size) || size < 1 || size > 50) {
+    throw new Error("Open VSX Registry: size must be an integer between 1 and 50.");
+  }
+  return size;
+}
+
+function parseOvsxOffset(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  const offset = Number(value);
+  if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
+    throw new Error("Open VSX Registry: offset must be an integer between 0 and 100000.");
+  }
+  return offset;
 }
 
 function parseOptionalText(value: unknown, name: string, maxLength: number): string | undefined {
@@ -60,7 +79,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /MCP Registry: /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -125,6 +144,71 @@ router.get("/remote-sources/mcp/version", async (req, res) => {
     if (!version) throw new Error("MCP Registry: version must be a string of 1-100 characters.");
     const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
     const result = await getMcpServerVersion({ workspaceRoot: getWorkspaceRoot(), networkAllowed, serverName: server, version });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit Open VSX catalog search. OFFLINE serves cache or refuses with 403. */
+router.get("/remote-sources/open-vsx/search", async (req, res) => {
+  try {
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await searchOvsxExtensions({
+      workspaceRoot: getWorkspaceRoot(),
+      networkAllowed,
+      query: parseOptionalText(req.query.query, "query", 200),
+      category: parseOptionalText(req.query.category, "category", 100),
+      size: parseOvsxSize(req.query.size),
+      offset: parseOvsxOffset(req.query.offset),
+    });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit Open VSX extension-detail read (latest version). */
+router.get("/remote-sources/open-vsx/extension", async (req, res) => {
+  try {
+    const namespace = parseOptionalText(req.query.namespace, "namespace", 128);
+    const extension = parseOptionalText(req.query.extension, "extension", 128);
+    if (!namespace) throw new Error("Open VSX Registry: namespace must be a string of 1-128 characters.");
+    if (!extension) throw new Error("Open VSX Registry: extension must be a string of 1-128 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getOvsxExtension({ workspaceRoot: getWorkspaceRoot(), networkAllowed, namespace, extension });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit Open VSX version-references read. */
+router.get("/remote-sources/open-vsx/versions", async (req, res) => {
+  try {
+    const namespace = parseOptionalText(req.query.namespace, "namespace", 128);
+    const extension = parseOptionalText(req.query.extension, "extension", 128);
+    if (!namespace) throw new Error("Open VSX Registry: namespace must be a string of 1-128 characters.");
+    if (!extension) throw new Error("Open VSX Registry: extension must be a string of 1-128 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getOvsxVersions({ workspaceRoot: getWorkspaceRoot(), networkAllowed, namespace, extension });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit Open VSX version-detail read. */
+router.get("/remote-sources/open-vsx/version", async (req, res) => {
+  try {
+    const namespace = parseOptionalText(req.query.namespace, "namespace", 128);
+    const extension = parseOptionalText(req.query.extension, "extension", 128);
+    const version = parseOptionalText(req.query.version, "version", 100);
+    if (!namespace) throw new Error("Open VSX Registry: namespace must be a string of 1-128 characters.");
+    if (!extension) throw new Error("Open VSX Registry: extension must be a string of 1-128 characters.");
+    if (!version) throw new Error("Open VSX Registry: version must be a string of 1-100 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getOvsxVersion({ workspaceRoot: getWorkspaceRoot(), networkAllowed, namespace, extension, version });
     return res.json(result);
   } catch (error) {
     return sendServiceError(res, error);

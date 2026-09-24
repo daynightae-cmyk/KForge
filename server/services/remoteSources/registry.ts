@@ -10,6 +10,7 @@ import type { RemoteSourceDefinition, RemoteSourceId } from "./contracts";
  */
 
 const MCP_BASE_URL = "https://registry.modelcontextprotocol.io";
+const OPEN_VSX_BASE_URL = "https://open-vsx.org";
 
 export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
   {
@@ -38,6 +39,35 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
     notes:
       "Search supports search, updated_since, version=latest/exact, include_deleted. Registry metadata is not proof " +
       "that a server's tools/resources/prompts are executable at runtime.",
+  },
+  {
+    id: "open-vsx",
+    name: "Open VSX Registry",
+    category: "IDE Extensions",
+    priority: "P0",
+    official: true,
+    authority: "OFFICIAL",
+    baseUrl: OPEN_VSX_BASE_URL,
+    allowedOrigins: [OPEN_VSX_BASE_URL],
+    readEndpoints: [
+      "GET /api/-/query",
+      "GET /api/-/search",
+      "GET /api/{namespace}/{extension}",
+      "GET /api/{namespace}/{extension}/{version}",
+      "GET /api/{namespace}/{extension}/versions",
+    ],
+    auth: "Public metadata reads do not require publisher authentication; publishing requires authentication.",
+    pagination: "Query/search endpoints expose bounded result/pagination parameters; exact OpenAPI shapes are validated tolerantly at implementation time.",
+    rateLimitPolicy: "OpenAPI declares X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset and Retry-After/429. No numeric quota is hardcoded.",
+    caching: "Official server implementation uses cache-control on metadata paths; Cache-Control/ETag are preserved when returned.",
+    licenseTerms: "OpenAPI termsOfService: https://www.eclipse.org/legal/termsofuse.php ; API project license Eclipse Public License 2.0.",
+    capabilities: ["SEARCH", "LIST", "DETAIL", "VERSIONS", "ARTIFACTS", "CHANGELOG", "DOCUMENTATION", "INSTALL_METADATA"],
+    targetCapabilities: ["Online Hub", "Extensions", "Marketplace"],
+    risk: "MEDIUM",
+    legalStatus: "APPROVED_READ_DISCOVERY",
+    notes:
+      "Official API exposes VSIX/file assets (VSIX, manifest, license, changelog, signature, public key). " +
+      "Catalog presence is not execution compatibility; install stays with the existing Marketplace lifecycle.",
   },
 ];
 
