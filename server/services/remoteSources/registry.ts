@@ -185,6 +185,32 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
       "No general crawler, no user-supplied arbitrary URL fetcher, no open proxy: every document has " +
       "an exact allowlisted URL. llms.txt is an emerging convention, not a trust certificate.",
   },
+  {
+    id: "npm-registry",
+    name: "npm Public Registry",
+    category: "Package Registry",
+    priority: "P1",
+    official: true,
+    authority: "OFFICIAL",
+    baseUrl: "https://registry.npmjs.org",
+    allowedOrigins: ["https://registry.npmjs.org"],
+    readEndpoints: [
+      "GET /-/v1/search",
+      "GET /{package}",
+      "GET /{package}/{version}",
+      "GET /-/npm/v1/keys",
+    ],
+    auth: "Public package metadata/search readable without auth; authenticated management uses scoped/bearer tokens.",
+    pagination: "Search uses size/from; detail uses per-package version map.",
+    rateLimitPolicy: "No single numeric quota verified; respect provider headers/backoff and do not crawl npmjs.com.",
+    caching: "Registry metadata supports HTTP caching; use ETag/Cache-Control when present plus bounded KForge cache.",
+    licenseTerms: "npm Open Source Terms govern registry; each package carries its own license.",
+    capabilities: ["SEARCH", "DETAIL", "VERSIONS", "ARTIFACTS", "INSTALL_METADATA"],
+    targetCapabilities: ["Online Hub", "Packages", "Marketplace"],
+    risk: "MEDIUM",
+    legalStatus: "APPROVED_METADATA_ONLY",
+    notes: "Version dist metadata includes tarball, shasum, integrity and may include registry signatures. Catalog presence is not installation.",
+  },
 ];
 
 export function listRemoteSources(): RemoteSourceDefinition[] {

@@ -12,6 +12,7 @@ import { OSV_BATCH_FIXTURE, OSV_QUERY_FIXTURE, OSV_VULN_FIXTURE } from "../servi
 import { HF_DETAIL_FIXTURE, HF_SEARCH_FIXTURE } from "../services/remoteSources/adapters/fixtures/huggingFaceFixtures";
 import { KFORGE_RELEASES_FIXTURE, KFORGE_RELEASE_DETAIL_FIXTURE } from "../services/remoteSources/adapters/fixtures/githubReleasesFixtures";
 import { DOCS_OPENAPI_FIXTURE } from "../services/remoteSources/adapters/fixtures/documentationFixtures";
+import { NPM_PACKAGE_FIXTURE, NPM_SEARCH_FIXTURE, NPM_VERSION_FIXTURE } from "../services/remoteSources/adapters/fixtures/npmFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -84,6 +85,20 @@ function isDocsTestUrl(url: string): boolean {
   }
 }
 
+function isNpmTestUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === "registry.npmjs.org";
+  } catch {
+    return false;
+  }
+}
+
+function npmTestFixture(url: string): unknown {
+  if (url.includes("/-/v1/search")) return NPM_SEARCH_FIXTURE;
+  if (url.match(/\/[^/]+\/[^/]+$/)) return NPM_VERSION_FIXTURE;
+  return NPM_PACKAGE_FIXTURE;
+}
+
 function hfTestFixture(url: string): unknown {
   if (url.includes("/api/models/")) return HF_DETAIL_FIXTURE;
   return HF_SEARCH_FIXTURE;
@@ -115,6 +130,7 @@ describe("Remote sources API", () => {
     if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
     if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
     if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
+    if (isNpmTestUrl(url)) return jsonResponse(npmTestFixture(url));
     return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
   });
 
@@ -127,6 +143,7 @@ describe("Remote sources API", () => {
       if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
       if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
       if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
+      if (isNpmTestUrl(url)) return jsonResponse(npmTestFixture(url));
       return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
     });
     vi.stubGlobal("fetch", fetchStub);
@@ -162,7 +179,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi", "npm-registry"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
