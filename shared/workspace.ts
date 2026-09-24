@@ -355,7 +355,7 @@ export interface OperationTransparency {
   reason?: string;
 }
 
-export type OnlineControlServiceId = "connection-mode" | "network-state" | "github" | "remote-repository" | "marketplace-registry" | "model-registry" | "cloud-ai" | "remote-documentation" | "remote-ci" | "remote-preview" | "updates";
+export type OnlineControlServiceId = "connection-mode" | "network-state" | "github" | "remote-repository" | "marketplace-registry" | "model-registry" | "cloud-ai" | "remote-documentation" | "remote-ci" | "remote-preview" | "updates" | "security-intelligence";
 export type OnlineControlState = "CONNECTED" | "DISCONNECTED" | "OFFLINE" | "ERROR" | "NOT_CONFIGURED" | "UNAVAILABLE" | "BLOCKED";
 export type OnlineEvidenceFreshness = "LIVE" | "CURRENT" | "CACHED" | "STALE" | "UNKNOWN" | "NOT_APPLICABLE";
 
