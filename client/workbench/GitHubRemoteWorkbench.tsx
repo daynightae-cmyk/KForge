@@ -12,6 +12,7 @@ type GitHubSource = {
   state?: string;
   reason?: string;
   fetchedAt?: string;
+  pagination?: { page?: number; perPage?: number; boundedFirstPage?: boolean; detail?: string };
 };
 
 type GitHubTransparency = {
@@ -46,6 +47,15 @@ type GitHubRemoteData = {
   };
   releases?: JsonRecord[];
   sources?: Record<string, GitHubSource>;
+  rateLimit?: {
+    state?: string;
+    limit?: number;
+    remaining?: number;
+    reset?: number;
+    resetInSeconds?: number;
+    detail?: string;
+    classification?: { limited?: boolean; kind?: string; detail?: string };
+  };
   transparency?: GitHubTransparency;
   error?: string;
 };
@@ -105,6 +115,7 @@ function SourceGrid({ sources }: { sources?: Record<string, GitHubSource> }) {
   return <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{entries.map(([id, source]) => <article key={id} className="rounded-md border bg-background/60 p-3">
     <div className="flex items-center justify-between gap-2"><strong className="text-xs">{source.label || id}</strong><StatusBadge value={source.state} /></div>
     <p className="mt-2 line-clamp-3 text-[11px] text-muted-foreground">{source.reason || "No diagnostic reason was returned."}</p>
+    {typeof source.pagination?.perPage === "number" && <p className="mt-1 text-[10px] text-muted-foreground">First-page bound: per_page={source.pagination.perPage}. Further pages need an explicit follow-up.</p>}
     {source.fetchedAt && <time className="mt-2 block text-[10px] text-muted-foreground" dateTime={source.fetchedAt}>{dateValue(source.fetchedAt)}</time>}
   </article>)}</div>;
 }
@@ -161,6 +172,7 @@ function RepositoryOverview({ data }: { data: GitHubRemoteData }) {
           <div><dt className="text-muted-foreground">Destination</dt><dd className="break-all font-mono">{text(data.transparency?.destination)}</dd></div>
           <div><dt className="text-muted-foreground">Purpose</dt><dd>{text(data.transparency?.purpose)}</dd></div>
           <div><dt className="text-muted-foreground">Network</dt><dd><StatusBadge value={data.transparency?.network} /></dd></div>
+          <div><dt className="text-muted-foreground">API quota</dt><dd>{data.rateLimit?.state === "AVAILABLE" ? `${text(data.rateLimit?.remaining)}/${text(data.rateLimit?.limit)} remaining${typeof data.rateLimit?.resetInSeconds === "number" ? ` · resets in ${data.rateLimit.resetInSeconds}s` : ""}` : text(data.rateLimit?.detail, "Rate-limit evidence unavailable.")}{data.rateLimit?.classification && (data.rateLimit.classification as { limited?: boolean }).limited === true && <span className="mt-1 block">{text((data.rateLimit.classification as { detail?: string }).detail, "Rate limit detected.")}</span>}</dd></div>
         </dl>
       </section>
     </div>
