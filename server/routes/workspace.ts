@@ -40,6 +40,7 @@ import { isWorkspaceAction } from "../../shared/workspace";
 import { checkForModelUpdates, deleteOllamaModel, detectLocalAIProvider, generateWithLocalAI, getCloudAIConfiguration, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, isCloudAIProviderId, listAIProviders, listCloudAIProviders, requestLocalPlan, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
 import { createProviderSession, discoverProviderModels, listDiscoveredModels, listProviderSessions, listProviderSummaries, replaceProviderKey, revealProviderKey, testProviderConnection, upsertCustomProvider } from "../services/providerCommandCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
+import { listCachedDocumentation, type CachedDocRecord } from "../services/remoteSources/documentationService";
 import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
@@ -2756,6 +2757,18 @@ router.get("/search", async (req, res) => {
     add({ kind: item.category === "models" ? "model" : "marketplace", entity: item.category === "models" ? "Models" : "Marketplace", entityId: item.id, title: item.name, detail: `${item.category} · ${item.description} · ${item.capabilities.join(", ")}`, projectId: preferredProjectId, target: item.category === "models" ? "Models" : "Marketplace", source: item.source });
   }
 
+  // Cached remote provider documentation joins Global Search as CACHED
+  // REMOTE evidence. This is a bounded local cache read: typing never
+  // contacts a provider; live content arrives only through explicit
+  // per-source refresh in Online Documentation.
+  let remoteDocCount = 0;
+  const cachedDocs = await listCachedDocumentation(getWorkspaceRoot()).catch((): CachedDocRecord[] => []);
+  for (const entry of cachedDocs) {
+    const detail = `${entry.record.provider} · v${entry.record.version} · ${entry.record.freshness} cached remote (explicit refresh only)`;
+    if (`${entry.record.title} ${detail} remote-documentation Documentation Cached remote documentation`.toLowerCase().includes(query)) remoteDocCount += 1;
+    add({ kind: "remote-documentation", entity: "Documentation", entityId: `remote-doc:${entry.record.sourceId}`, title: entry.record.title, detail, projectId: preferredProjectId, target: "Online Documentation", source: `Cached remote documentation (${entry.record.provider})` });
+  }
+
   const graphCoverage = (count: number): GlobalSearchCoverage => ({
     state: graphLimited || projectBounded ? "LIMIT_REACHED" : "COMPLETE",
     searchedCount: count,
@@ -2788,7 +2801,11 @@ router.get("/search", async (req, res) => {
     Git: projectCoverage("Local Git commands", projects.length, projects.length, all.length),
     GitHub: githubCount ? projectCoverage("Local Git remote configuration; no remote API contact", githubCount) : { state: "NOT_CONFIGURED", searchedCount: 0, totalOrUnknown: 0, limit: projectLimit, source: "Local Git remote configuration", reason: "No GitHub remote is configured in the searched projects; no remote API call was made." },
     Release: projectCoverage("Current local project summary", projects.length, projects.length, all.length),
-    Documentation: projectCoverage("Local documentation audit", documentCount),
+    Documentation: {
+      ...projectCoverage("Local documentation audit", documentCount),
+      searchedCount: documentCount + remoteDocCount,
+      reason: `Search inspected local documentation audit evidence${remoteDocCount ? ` plus ${remoteDocCount} cached remote-doc match(es)` : ""}; live provider search requires explicit refresh in Online Documentation.`,
+    },
     Dependencies: projectCoverage("Local manifest declarations and bounded project-graph dependencies", dependencyCount + graphDependencyCount),
     Technologies: projectCoverage("Local project profile detection", technologyCount),
     Results: { state: sorted.length > resultLimit ? "LIMIT_REACHED" : "COMPLETE", searchedCount: Math.min(sorted.length, resultLimit), totalOrUnknown: sorted.length, limit: resultLimit, source: "Ranked local evidence matches", reason: sorted.length > resultLimit ? `Showing the first ${resultLimit} of ${sorted.length} matching evidence records.` : `Showing all ${sorted.length} matching evidence record(s).` },

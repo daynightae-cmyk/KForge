@@ -154,6 +154,37 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
       "TRUSTED_RELEASE stays blocked until checksum sidecars verify and Authenticode/trust policy " +
       "passes per docs/SIGNING.md (current artifacts are explicitly unsigned).",
   },
+  {
+    id: "remote-doc-openapi",
+    name: "Official OpenAPI Documentation Sources",
+    category: "Remote Documentation",
+    priority: "P0",
+    official: true,
+    authority: "OFFICIAL_PER_PROVIDER",
+    baseUrl: "allowlisted provider URLs",
+    allowedOrigins: [
+      "https://huggingface.co",
+      "https://open-vsx.org",
+      "https://developers.openai.com",
+      "https://raw.githubusercontent.com",
+    ],
+    readEndpoints: [
+      "GET official OpenAPI JSON/YAML and same-provider llms.txt only from the configured per-document allowlist",
+    ],
+    auth: "Public docs preferred. Never send project source to fetch docs.",
+    pagination: "N/A; response-size limits mandatory.",
+    rateLimitPolicy: "Provider-specific; the adapter observes 429/Retry-After and provider headers.",
+    caching: "ETag/Last-Modified/Cache-Control when present; content hashed; canonical URL/version/retrievedAt preserved.",
+    licenseTerms: "Provider documentation/API terms stored per source.",
+    capabilities: ["DOCUMENTATION", "DETAIL"],
+    targetCapabilities: ["Online / Documentation", "Global Search"],
+    risk: "LOW",
+    legalStatus: "APPROVED_FRAMEWORK",
+    notes:
+      "Highest-priority ingestion is provider-owned OpenAPI/JSON Schema, then same-provider llms.txt. " +
+      "No general crawler, no user-supplied arbitrary URL fetcher, no open proxy: every document has " +
+      "an exact allowlisted URL. llms.txt is an emerging convention, not a trust certificate.",
+  },
 ];
 
 export function listRemoteSources(): RemoteSourceDefinition[] {

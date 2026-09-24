@@ -11,6 +11,7 @@ import { OVSX_EXTENSION_FIXTURE, OVSX_SEARCH_FIXTURE, OVSX_VERSIONS_FIXTURE } fr
 import { OSV_BATCH_FIXTURE, OSV_QUERY_FIXTURE, OSV_VULN_FIXTURE } from "../services/remoteSources/adapters/fixtures/osvFixtures";
 import { HF_DETAIL_FIXTURE, HF_SEARCH_FIXTURE } from "../services/remoteSources/adapters/fixtures/huggingFaceFixtures";
 import { KFORGE_RELEASES_FIXTURE, KFORGE_RELEASE_DETAIL_FIXTURE } from "../services/remoteSources/adapters/fixtures/githubReleasesFixtures";
+import { DOCS_OPENAPI_FIXTURE } from "../services/remoteSources/adapters/fixtures/documentationFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -24,6 +25,13 @@ function jsonResponse(body: unknown, init: { status?: number; headers?: Record<s
   return new Response(JSON.stringify(body), {
     status: init.status ?? 200,
     headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+  });
+}
+
+function textResponse(body: string, init: { status?: number; headers?: Record<string, string> } = {}): Response {
+  return new Response(body, {
+    status: init.status ?? 200,
+    headers: { "Content-Type": "text/plain", ...(init.headers ?? {}) },
   });
 }
 
@@ -67,6 +75,15 @@ function isKforgeUpdatesTestUrl(url: string): boolean {
   }
 }
 
+function isDocsTestUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "huggingface.co" || hostname === "open-vsx.org" || hostname === "developers.openai.com" || hostname === "raw.githubusercontent.com";
+  } catch {
+    return false;
+  }
+}
+
 function hfTestFixture(url: string): unknown {
   if (url.includes("/api/models/")) return HF_DETAIL_FIXTURE;
   return HF_SEARCH_FIXTURE;
@@ -94,6 +111,7 @@ describe("Remote sources API", () => {
   let baseUrl = "";
   let previousRoot: string | undefined;
   let fetchStub = vi.fn(async (url: string) => {
+    if (url === "https://huggingface.co/.well-known/openapi.json") return textResponse(DOCS_OPENAPI_FIXTURE, { headers: { etag: '"docs-1"' } });
     if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
     if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
     if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
@@ -105,6 +123,7 @@ describe("Remote sources API", () => {
     previousRoot = process.env.KFORGE_WORKSPACE_ROOT;
     process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
     fetchStub = vi.fn(async (url: string) => {
+      if (url === "https://huggingface.co/.well-known/openapi.json") return textResponse(DOCS_OPENAPI_FIXTURE, { headers: { etag: '"docs-1"' } });
       if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
       if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
       if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
@@ -143,7 +162,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
@@ -373,6 +392,72 @@ describe("Remote sources API", () => {
     expect(badChannel.status).toBe(400);
     const unsafeTag = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/release?tag=../../etc`);
     expect(unsafeTag.status).toBe(400);
+    expect(fetchStub.mock.calls.length).toBe(before);
+  });
+
+  it("lists documentation sources locally without contacting any provider", async () => {
+    const before = fetchStub.mock.calls.length;
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/sources`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { sources: Array<{ id: string; url: string }> };
+    expect(body.sources.map((source) => source.id)).toEqual([
+      "hf-openapi",
+      "mcp-registry-openapi",
+      "openvsx-openapi",
+      "ollama-openapi",
+      "openai-llms-full",
+    ]);
+    expect(fetchStub.mock.calls.length).toBe(before);
+  });
+
+  it("refuses documentation refresh in OFFLINE mode with zero external requests", async () => {
+    const before = fetchStub.mock.calls.length;
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceId: "hf-openapi" }),
+    });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
+    expect(fetchStub.mock.calls.length).toBe(before);
+  });
+
+  it("refreshes an allowlisted document explicitly and searches cache locally", async () => {
+    await setMode("online-optional");
+    const refresh = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceId: "hf-openapi" }),
+    });
+    expect(refresh.status).toBe(200);
+    const refreshBody = (await refresh.json()) as {
+      record: { title: string; version: string; canonicalUrl: string; contentHash: string };
+      evidence: { freshness: string };
+    };
+    expect(refreshBody.record.title).toBe("Fixture Provider API");
+    expect(refreshBody.record.contentHash).toHaveLength(64);
+    expect(refreshBody.evidence.freshness).toBe("CURRENT");
+
+    const callsAfterRefresh = fetchStub.mock.calls.length;
+    const search = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/search?q=${encodeURIComponent("pagination")}`);
+    expect(search.status).toBe(200);
+    const searchBody = (await search.json()) as { hits: Array<{ sourceId: string }>; searchedSources: number };
+    expect(searchBody.hits.map((hit) => hit.sourceId)).toEqual(["hf-openapi"]);
+    expect(searchBody.searchedSources).toBe(1);
+    expect(fetchStub.mock.calls.length).toBe(callsAfterRefresh);
+  });
+
+  it("validates documentation request shapes before any request", async () => {
+    await setMode("online-optional");
+    const before = fetchStub.mock.calls.length;
+    const unknownSource = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceId: "not-a-source" }),
+    });
+    expect(unknownSource.status).toBe(400);
+    const missingQuery = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/search`);
+    expect(missingQuery.status).toBe(400);
     expect(fetchStub.mock.calls.length).toBe(before);
   });
 });

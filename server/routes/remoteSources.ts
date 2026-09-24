@@ -9,6 +9,7 @@ import { getOvsxExtension, getOvsxVersion, getOvsxVersions, searchOvsxExtensions
 import { getHfModel, searchHfModels } from "../services/remoteSources/huggingFaceService";
 import type { HfSort } from "../services/remoteSources/adapters/huggingFace";
 import { getKforgeRelease, getKforgeUpdateStatus, listKforgeReleases } from "../services/remoteSources/kforgeUpdatesService";
+import { listAvailableDocumentation, refreshDocumentation, searchCachedDocumentation } from "../services/remoteSources/documentationService";
 import { getOsvVuln, queryOsvAdvisories, queryOsvBatch } from "../services/remoteSources/osvService";
 import { getModelCenter } from "../services/aiCenter";
 import type { OsvPackageQuery } from "../services/remoteSources/adapters/osv";
@@ -86,7 +87,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -439,6 +440,57 @@ router.get("/remote-sources/kforge-updates/status", async (req, res) => {
       currentVersion: await resolveInstalledVersion(),
       perPage: parseUpdatePaging(req.query.per_page, "per_page", 1, 100, 30),
     });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+function parseDocumentationSourceId(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0 || value.length > 64) {
+    throw new Error("Remote Documentation: sourceId must be a string of 1-64 characters.");
+  }
+  return value;
+}
+
+/** Approved documentation sources. LOCAL read; never contacts a provider. */
+router.get("/remote-sources/documentation/sources", async (_req, res) => {
+  return res.json({
+    sources: listAvailableDocumentation(),
+    transparency: {
+      execution: "LOCAL",
+      network: "NOT_REQUIRED",
+      source: "Allowlisted provider documentation registry",
+      purpose: "List approved provider documentation sources without contacting any provider.",
+    },
+  });
+});
+
+/** Explicit refresh of one allowlisted provider document. OFFLINE serves cache or refuses with 403. */
+router.post("/remote-sources/documentation/refresh", async (req, res) => {
+  try {
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await refreshDocumentation({
+      workspaceRoot: getWorkspaceRoot(),
+      networkAllowed,
+      sourceId: parseDocumentationSourceId(req.body?.sourceId),
+    });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/**
+ * Search cached provider documents. LOCAL ONLY: reads bounded cache and
+ * never opens a socket. Live provider content arrives exclusively through
+ * explicit per-source refresh.
+ */
+router.get("/remote-sources/documentation/search", async (req, res) => {
+  try {
+    const query = parseOptionalText(req.query.q, "q", 200);
+    if (!query) throw new Error("Remote Documentation: q must be a string of 1-200 characters.");
+    const result = await searchCachedDocumentation(getWorkspaceRoot(), query);
     return res.json(result);
   } catch (error) {
     return sendServiceError(res, error);
