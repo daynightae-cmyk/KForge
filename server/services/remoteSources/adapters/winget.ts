@@ -152,7 +152,15 @@ export const WINGET_SEARCH_MAX = 100;
 
 export function validatedWingetPackageId(id: string): string {
   if (typeof id !== "string" || id.length === 0 || id.length > WINGET_PACKAGE_MAX) throw new Error("WinGet: package id must be 1-128 characters.");
-  if (!/^[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+(\.[A-Za-z0-9._-]+)*$/.test(id)) throw new Error("WinGet: package id must be a dotted identifier (e.g., Git.Git).");
+  const parts = id.split(".");
+  if (parts.length < 2) throw new Error("WinGet: package id must be a dotted identifier (e.g., Git.Git).");
+  for (const part of parts) {
+    if (part.length === 0 || part.length > 64) throw new Error("WinGet: package id contains unsupported characters.");
+    if (!/^[A-Za-z0-9._-]+$/.test(part)) throw new Error("WinGet: package id contains unsupported characters.");
+    if (part.startsWith("-") || part.endsWith("-") || part.startsWith("_") || part.endsWith("_")) {
+      // allow but not strict
+    }
+  }
   if (id.includes("..")) throw new Error("WinGet: package id contains unsupported characters.");
   return id;
 }
