@@ -11,6 +11,7 @@ import type { RemoteSourceDefinition, RemoteSourceId } from "./contracts";
 
 const MCP_BASE_URL = "https://registry.modelcontextprotocol.io";
 const OPEN_VSX_BASE_URL = "https://open-vsx.org";
+const OSV_BASE_URL = "https://api.osv.dev";
 
 export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
   {
@@ -68,6 +69,34 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
     notes:
       "Official API exposes VSIX/file assets (VSIX, manifest, license, changelog, signature, public key). " +
       "Catalog presence is not execution compatibility; install stays with the existing Marketplace lifecycle.",
+  },
+  {
+    id: "osv",
+    name: "OSV.dev API",
+    category: "Security Intelligence",
+    priority: "P0",
+    official: true,
+    authority: "OFFICIAL",
+    baseUrl: OSV_BASE_URL,
+    allowedOrigins: [OSV_BASE_URL],
+    readEndpoints: [
+      "POST /v1/query",
+      "POST /v1/querybatch",
+      "GET /v1/vulns/{id}",
+    ],
+    auth: "Public read API.",
+    pagination: "Query can return page_token for large result sets; the token is replayed exactly.",
+    rateLimitPolicy: "Official docs currently state no API rate limits; the adapter still observes 429/Retry-After and provider headers.",
+    caching: "Package-version results use a short security TTL with explicit refresh; malformed refreshes never replace last-good evidence.",
+    licenseTerms: "OSV/OpenSSF project data licensing varies by upstream source; source attribution and references are preserved per record.",
+    capabilities: ["SECURITY", "DETAIL"],
+    targetCapabilities: ["Quality", "Security", "Dependency intelligence"],
+    risk: "LOW",
+    legalStatus: "APPROVED_READ_DISCOVERY",
+    notes:
+      "HTTP/1.1 responses are capped at 32 MiB; KForge bounds reads well below that. Package-native " +
+      "ranges and fixed versions make OSV the preferred P0 vulnerability source. Observational only: " +
+      "advisories never modify dependency manifests by themselves.",
   },
 ];
 

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import remoteSourcesRouter from "./remoteSources";
 import { MCP_LIST_FIXTURE } from "../services/remoteSources/adapters/fixtures/mcpRegistryFixtures";
 import { OVSX_EXTENSION_FIXTURE, OVSX_SEARCH_FIXTURE, OVSX_VERSIONS_FIXTURE } from "../services/remoteSources/adapters/fixtures/openVsxFixtures";
+import { OSV_BATCH_FIXTURE, OSV_QUERY_FIXTURE, OSV_VULN_FIXTURE } from "../services/remoteSources/adapters/fixtures/osvFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -33,22 +34,38 @@ function isOvsxTestUrl(url: string): boolean {
   }
 }
 
+function osvTestFixture(url: string): unknown {
+  if (url.endsWith("/v1/querybatch")) return OSV_BATCH_FIXTURE;
+  if (url.includes("/v1/vulns/")) return OSV_VULN_FIXTURE;
+  return OSV_QUERY_FIXTURE;
+}
+
+function isOsvTestUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === "api.osv.dev";
+  } catch {
+    return false;
+  }
+}
+
 describe("Remote sources API", () => {
   let workspaceRoot = "";
   let server: Server | null = null;
   let baseUrl = "";
   let previousRoot: string | undefined;
-  let fetchStub = vi.fn(async (url: string) =>
-    isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE),
-  );
+  let fetchStub = vi.fn(async (url: string) => {
+    if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
+    return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
+  });
 
   beforeEach(async () => {
     workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-remote-api-"));
     previousRoot = process.env.KFORGE_WORKSPACE_ROOT;
     process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
-    fetchStub = vi.fn(async (url: string) =>
-      isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE),
-    );
+    fetchStub = vi.fn(async (url: string) => {
+      if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
+      return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
+    });
     vi.stubGlobal("fetch", fetchStub);
 
     const app = express();
@@ -82,7 +99,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
@@ -161,5 +178,70 @@ describe("Remote sources API", () => {
     const versions = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/versions?namespace=redhat&extension=vscode-yaml`);
     expect(versions.status).toBe(200);
     await expect(versions.json()).resolves.toMatchObject({ versions: ["1.18.0", "1.17.0", "1.16.0"] });
+  });
+
+  it("refuses OSV queries in OFFLINE mode with zero external requests", async () => {
+    const before = fetchStub.mock.calls.length;
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ package: { ecosystem: "npm", name: "test-package", version: "1.0.0" } }),
+    });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
+    expect(fetchStub.mock.calls.length).toBe(before);
+  });
+
+  it("queries OSV explicitly in online-optional mode without modifying manifests", async () => {
+    await setMode("online-optional");
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ package: { ecosystem: "npm", name: "test-package", version: "1.0.0" } }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      advisories: Array<{ id: string; fixedVersions: string[] }>;
+      evidence: { freshness: string };
+      transparency: { purpose: string };
+    };
+    expect(body.advisories.map((advisory) => advisory.id)).toEqual(["GHSA-test-0001", "PYSEC-test-0002"]);
+    expect(body.advisories[0].fixedVersions).toEqual(["1.2.3"]);
+    expect(body.evidence.freshness).toBe("CURRENT");
+    expect(body.transparency.purpose).toMatch(/no manifest was modified/i);
+  });
+
+  it("validates OSV request shapes before any request", async () => {
+    await setMode("online-optional");
+    const before = fetchStub.mock.calls.length;
+    const missingSelector = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ package: { version: "1.0.0" } }),
+    });
+    expect(missingSelector.status).toBe(400);
+    const emptyBatch = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/querybatch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queries: [] }),
+    });
+    expect(emptyBatch.status).toBe(400);
+    const unsafeId = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/vuln?id=../../etc`);
+    expect(unsafeId.status).toBe(400);
+    expect(fetchStub.mock.calls.length).toBe(before);
+  });
+
+  it("reads OSV batch and vulnerability detail explicitly", async () => {
+    await setMode("online-optional");
+    const batch = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/querybatch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queries: [{ ecosystem: "npm", name: "test-package", version: "1.0.0" }] }),
+    });
+    expect(batch.status).toBe(200);
+    await expect(batch.json()).resolves.toMatchObject({ results: [{ advisories: [{ id: "GHSA-test-0001" }] }] });
+    const vuln = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/vuln?id=GHSA-test-0001`);
+    expect(vuln.status).toBe(200);
+    await expect(vuln.json()).resolves.toMatchObject({ advisory: { id: "GHSA-test-0001" } });
   });
 });

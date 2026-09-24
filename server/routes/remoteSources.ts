@@ -5,6 +5,8 @@ import { listRemoteSources } from "../services/remoteSources/registry";
 import { RemoteFetchError } from "../services/remoteSources/fetchPolicy";
 import { getMcpServerVersion, getMcpServerVersions, searchMcpServers } from "../services/remoteSources/mcpService";
 import { getOvsxExtension, getOvsxVersion, getOvsxVersions, searchOvsxExtensions } from "../services/remoteSources/openVsxService";
+import { getOsvVuln, queryOsvAdvisories, queryOsvBatch } from "../services/remoteSources/osvService";
+import type { OsvPackageQuery } from "../services/remoteSources/adapters/osv";
 
 /**
  * Explicit remote-source reads (Slice 1).
@@ -79,7 +81,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /(MCP Registry|Open VSX Registry): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -209,6 +211,73 @@ router.get("/remote-sources/open-vsx/version", async (req, res) => {
     if (!version) throw new Error("Open VSX Registry: version must be a string of 1-100 characters.");
     const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
     const result = await getOvsxVersion({ workspaceRoot: getWorkspaceRoot(), networkAllowed, namespace, extension, version });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+function parseOsvPackage(value: unknown): OsvPackageQuery {
+  if (!value || typeof value !== "object") throw new Error("OSV.dev: package must be an object with ecosystem+name, a purl, or a commit hash.");
+  const record = value as Record<string, unknown>;
+  const query: OsvPackageQuery = {};
+  if (record.ecosystem !== undefined) {
+    if (typeof record.ecosystem !== "string") throw new Error("OSV.dev: ecosystem must be a string.");
+    query.ecosystem = record.ecosystem;
+  }
+  if (record.name !== undefined) {
+    if (typeof record.name !== "string") throw new Error("OSV.dev: package name must be a string.");
+    query.name = record.name;
+  }
+  if (record.purl !== undefined) {
+    if (typeof record.purl !== "string") throw new Error("OSV.dev: purl must be a string.");
+    query.purl = record.purl;
+  }
+  if (record.version !== undefined) {
+    if (typeof record.version !== "string") throw new Error("OSV.dev: version must be a string.");
+    query.version = record.version;
+  }
+  if (record.commit !== undefined) {
+    if (typeof record.commit !== "string") throw new Error("OSV.dev: commit must be a string.");
+    query.commit = record.commit;
+  }
+  return query;
+}
+
+/**
+ * Explicit OSV package query. Observational: returns advisories with
+ * affected ranges and fixed versions; never modifies dependency manifests.
+ */
+router.post("/remote-sources/osv/query", async (req, res) => {
+  try {
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await queryOsvAdvisories({ workspaceRoot: getWorkspaceRoot(), networkAllowed, package: parseOsvPackage(req.body?.package) });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit OSV batch query (bounded). Observational only. */
+router.post("/remote-sources/osv/querybatch", async (req, res) => {
+  try {
+    const queries = req.body?.queries;
+    if (!Array.isArray(queries)) throw new Error("OSV.dev: queries must be an array of 1-25 package queries.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await queryOsvBatch({ workspaceRoot: getWorkspaceRoot(), networkAllowed, queries: queries.map(parseOsvPackage) });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit OSV vulnerability-detail read. */
+router.get("/remote-sources/osv/vuln", async (req, res) => {
+  try {
+    const id = parseOptionalText(req.query.id, "id", 100);
+    if (!id) throw new Error("OSV.dev: id must be a string of 1-100 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getOsvVuln({ workspaceRoot: getWorkspaceRoot(), networkAllowed, id });
     return res.json(result);
   } catch (error) {
     return sendServiceError(res, error);
