@@ -15,6 +15,7 @@ import { DOCS_OPENAPI_FIXTURE } from "../services/remoteSources/adapters/fixture
 import { NPM_PACKAGE_FIXTURE, NPM_SEARCH_FIXTURE, NPM_VERSION_FIXTURE } from "../services/remoteSources/adapters/fixtures/npmFixtures";
 import { PYPI_PACKAGE_FIXTURE } from "../services/remoteSources/adapters/fixtures/pypiFixtures";
 import { NUGET_REGISTRATION_FIXTURE, NUGET_SEARCH_FIXTURE } from "../services/remoteSources/adapters/fixtures/nugetFixtures";
+import { WINGET_MANIFEST_FIXTURE, WINGET_SEARCH_FIXTURE } from "../services/remoteSources/adapters/fixtures/wingetFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -123,6 +124,30 @@ function nugetTestFixture(url: string): unknown {
   return NUGET_REGISTRATION_FIXTURE;
 }
 
+function isWingetTestUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.hostname === "api.github.com" && u.pathname === "/search/code") return true;
+    if (u.hostname === "raw.githubusercontent.com" && u.pathname.includes("winget-pkgs")) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function wingetTestFixture(url: string): unknown {
+  if (url.includes("/search/code")) return WINGET_SEARCH_FIXTURE;
+  return WINGET_MANIFEST_FIXTURE;
+}
+
+function isWingetManifestUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === "raw.githubusercontent.com" && new URL(url).pathname.includes("winget-pkgs");
+  } catch {
+    return false;
+  }
+}
+
 function hfTestFixture(url: string): unknown {
   if (url.includes("/api/models/")) return HF_DETAIL_FIXTURE;
   return HF_SEARCH_FIXTURE;
@@ -157,6 +182,7 @@ describe("Remote sources API", () => {
     if (isNpmTestUrl(url)) return jsonResponse(npmTestFixture(url));
     if (isPypiTestUrl(url)) return jsonResponse(PYPI_PACKAGE_FIXTURE);
     if (isNugetTestUrl(url)) return jsonResponse(nugetTestFixture(url));
+    if (isWingetTestUrl(url)) return isWingetManifestUrl(url) ? textResponse(String(wingetTestFixture(url))) : jsonResponse(wingetTestFixture(url));
     return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
   });
 
@@ -172,6 +198,7 @@ describe("Remote sources API", () => {
       if (isNpmTestUrl(url)) return jsonResponse(npmTestFixture(url));
       if (isPypiTestUrl(url)) return jsonResponse(PYPI_PACKAGE_FIXTURE);
       if (isNugetTestUrl(url)) return jsonResponse(nugetTestFixture(url));
+      if (isWingetTestUrl(url)) return isWingetManifestUrl(url) ? textResponse(String(wingetTestFixture(url))) : jsonResponse(wingetTestFixture(url));
       return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
     });
     vi.stubGlobal("fetch", fetchStub);
@@ -207,7 +234,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi", "npm-registry", "pypi", "nuget-v3"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi", "npm-registry", "pypi", "nuget-v3", "winget-community"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 

@@ -261,6 +261,31 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
     legalStatus: "APPROVED_METADATA_ONLY",
     notes: "RepositorySignatures resource identifies signing certificates. Catalog presence is not installation.",
   },
+  {
+    id: "winget-community",
+    name: "Windows Package Manager Community Repository",
+    category: "Windows Software Source",
+    priority: "P1",
+    official: true,
+    authority: "MICROSOFT_COMMUNITY_REPOSITORY",
+    baseUrl: "https://github.com/microsoft/winget-pkgs",
+    allowedOrigins: ["https://api.github.com", "https://raw.githubusercontent.com"],
+    readEndpoints: [
+      "GET /repos/microsoft/winget-pkgs/contents/manifests/{letter}/{packageId}/{version}",
+      "GET search/code?q=PackageIdentifier+in:path+manifests",
+      "GET raw manifest YAML via raw.githubusercontent.com",
+    ],
+    auth: "Public repository metadata. No auth for public manifests; GitHub API rate limits apply.",
+    pagination: "GitHub search pagination via Link header; manifest listing per version.",
+    rateLimitPolicy: "GitHub REST limits apply (60/hour anonymous, 5000/hour authenticated). Respect Retry-After.",
+    caching: "Use ETag/Cache-Control when present plus bounded KForge cache.",
+    licenseTerms: "Microsoft/winget-pkgs repository policy and package-specific publisher licenses apply.",
+    capabilities: ["SEARCH", "DETAIL", "VERSIONS", "ARTIFACTS", "INSTALL_METADATA"],
+    targetCapabilities: ["Developer Tools", "Windows software discovery"],
+    risk: "MEDIUM",
+    legalStatus: "APPROVED_METADATA_ONLY",
+    notes: "Installer manifests expose InstallerUrl, InstallerSha256, optional SignatureSha256, architecture, installer type, scope, switches. Community-manifest presence is not publisher authenticity.",
+  },
 ];
 
 export function listRemoteSources(): RemoteSourceDefinition[] {

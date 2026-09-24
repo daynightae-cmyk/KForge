@@ -16,6 +16,7 @@ import type { OsvPackageQuery } from "../services/remoteSources/adapters/osv";
 import { getNpmPackage, getNpmVersion, searchNpmPackages } from "../services/remoteSources/npmService";
 import { getPypiPackage, searchPypiPackages } from "../services/remoteSources/pypiService";
 import { getNugetRegistration, searchNugetPackages } from "../services/remoteSources/nugetService";
+import { getWingetManifest, searchWingetPackages } from "../services/remoteSources/wingetService";
 
 /**
  * Explicit remote-source reads (Slice 1).
@@ -90,7 +91,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation|npm Registry|PyPI|NuGet Registry): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation|npm Registry|PyPI|NuGet Registry|WinGet): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -592,6 +593,34 @@ router.get("/remote-sources/nuget/registration", async (req, res) => {
     if (!id) throw new Error("NuGet Registry: id must be a string of 1-128 characters.");
     const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
     const result = await getNugetRegistration({ workspaceRoot: getWorkspaceRoot(), networkAllowed, id });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit WinGet search. */
+router.get("/remote-sources/winget/search", async (req, res) => {
+  try {
+    const q = parseOptionalText(req.query.q, "q", 100);
+    if (!q) throw new Error("WinGet: q must be a string of 1-100 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await searchWingetPackages({ workspaceRoot: getWorkspaceRoot(), networkAllowed, q });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit WinGet manifest detail. */
+router.get("/remote-sources/winget/manifest", async (req, res) => {
+  try {
+    const packageId = parseOptionalText(req.query.packageId, "packageId", 128);
+    const version = parseOptionalText(req.query.version, "version", 100);
+    if (!packageId) throw new Error("WinGet: packageId must be a string of 1-128 characters.");
+    if (!version) throw new Error("WinGet: version must be a string of 1-100 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getWingetManifest({ workspaceRoot: getWorkspaceRoot(), networkAllowed, packageId, version });
     return res.json(result);
   } catch (error) {
     return sendServiceError(res, error);
