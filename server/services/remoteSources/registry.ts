@@ -13,6 +13,7 @@ const MCP_BASE_URL = "https://registry.modelcontextprotocol.io";
 const OPEN_VSX_BASE_URL = "https://open-vsx.org";
 const OSV_BASE_URL = "https://api.osv.dev";
 const HF_BASE_URL = "https://huggingface.co";
+const GITHUB_API_BASE_URL = "https://api.github.com";
 
 export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
   {
@@ -124,6 +125,34 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
     notes:
       "Catalog metadata never implies local installation. Gated/private models remain " +
       "NOT_CONFIGURED/BLOCKED until valid auth and terms are satisfied; bearer credentials stay server-side.",
+  },
+  {
+    id: "github-releases-kforge",
+    name: "GitHub Releases for KForge Update Discovery",
+    category: "Product Updates",
+    priority: "P0",
+    official: true,
+    authority: "OFFICIAL_PROJECT_RELEASE_CHANNEL",
+    baseUrl: "https://api.github.com/repos/daynightae-cmyk/KForge",
+    allowedOrigins: [GITHUB_API_BASE_URL],
+    readEndpoints: [
+      "GET /repos/daynightae-cmyk/KForge/releases",
+      "GET /repos/daynightae-cmyk/KForge/releases/tags/{tag}",
+      "GET release/assets endpoints",
+    ],
+    auth: "Published public releases readable anonymously; auth raises rate budget. Drafts require authorized access.",
+    pagination: "per_page max 100; page. Conditional GET/ETag supported.",
+    rateLimitPolicy: "GitHub REST limits apply (60/hour anonymous, 5000/hour authenticated). New code pins X-GitHub-Api-Version: 2026-03-10.",
+    caching: "Strong candidate for conditional GET/ETag. Update checks are explicit refreshes, never page-open network calls.",
+    licenseTerms: "GitHub terms plus KForge release license.",
+    capabilities: ["LIST", "DETAIL", "ARTIFACTS", "CHANGELOG", "UPDATE_METADATA"],
+    targetCapabilities: ["System / Updates", "Release & Distribution"],
+    risk: "MEDIUM",
+    legalStatus: "APPROVED_READ_DISCOVERY",
+    notes:
+      "A release record is update-catalog evidence only, never trusted-installer evidence. " +
+      "TRUSTED_RELEASE stays blocked until checksum sidecars verify and Authenticode/trust policy " +
+      "passes per docs/SIGNING.md (current artifacts are explicitly unsigned).",
   },
 ];
 
