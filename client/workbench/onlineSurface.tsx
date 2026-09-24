@@ -95,6 +95,14 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   const [hfSearched, setHfSearched] = useState(false);
   const [hfRunning, setHfRunning] = useState(false);
   const [hfError, setHfError] = useState("");
+  // Explicit KForge update discovery: never checked by opening Online, only
+  // by the Check button below. Availability is a catalog fact; trusted
+  // install stays blocked by checksum/signature policy with stated reasons.
+  const [updDecision, setUpdDecision] = useState<RecordRow | null>(null);
+  const [updEvidence, setUpdEvidence] = useState<RecordRow | null>(null);
+  const [updSearched, setUpdSearched] = useState(false);
+  const [updRunning, setUpdRunning] = useState(false);
+  const [updError, setUpdError] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -138,6 +146,7 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   const mcpPanel = ["discover", "marketplace", "agents", "tools"].includes(view);
   const ovsxPanel = ["discover", "marketplace", "extensions"].includes(view);
   const hfPanel = ["discover", "marketplace", "models"].includes(view);
+  const updPanel = view === "updates";
 
   const searchMcp = useCallback(async () => {
     setMcpRunning(true);
@@ -193,6 +202,22 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
       setHfRunning(false);
     }
   }, [hfQuery]);
+
+  const checkUpdates = useCallback(async () => {
+    setUpdRunning(true);
+    setUpdError("");
+    try {
+      const result = await fetchJson<{ decision?: RecordRow; evidence?: RecordRow }>("/api/workspace/remote-sources/kforge-updates/status");
+      setUpdDecision(result.decision || null);
+      setUpdEvidence(result.evidence || null);
+      setUpdSearched(true);
+    } catch (error) {
+      setUpdError(error instanceof Error ? error.message : "KForge update check failed.");
+      setUpdSearched(true);
+    } finally {
+      setUpdRunning(false);
+    }
+  }, []);
 
   const selectItem = useCallback((item: MarketplaceItem) => {
     setSelectedId(item.id);
@@ -284,7 +309,7 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     actions={actionsByItemId.get(item.id)}
     actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"}
   />
-))}</div></div> : null}</div>}</section>;
+))}</div></div> : null}</div>}{updPanel && <div className="kw-mcp"><div className="kw-toolbar"><h2>KForge updates — explicit release discovery</h2><button onClick={() => void checkUpdates()} disabled={updRunning}>{updRunning ? "Checking…" : "Check for updates"}</button></div><p className="kw-message">Read-only discovery from the official KForge GitHub releases. Opening Online never contacts it; this check runs only when you ask. Availability is a catalog fact; trusted install stays blocked by checksum and signature policy with stated reasons. No silent auto-update or auto-install exists.</p>{updError && <p className="kw-message">{updError}</p>}{updDecision && <div><p className="kw-message">Installed: {String(updDecision.currentVersion || "UNKNOWN")} · Latest stable: {String((updDecision.latestStable as RecordRow | undefined)?.tag || "none")} · Latest prerelease: {String((updDecision.latestPrerelease as RecordRow | undefined)?.tag || "none")} · Availability: {String(updDecision.availability || "UNKNOWN")}</p><p className="kw-message">{String(updDecision.availabilityDetail || "")}</p><p className="kw-message">Trusted update: {String(updDecision.trustedUpdate || "BLOCKED")}</p>{Array.isArray(updDecision.trustedBlockers) && (updDecision.trustedBlockers as Array<{ detail?: string }>).length > 0 && <p className="kw-message">Blockers: {(updDecision.trustedBlockers as Array<{ detail?: string }>).map((blocker) => String(blocker.detail || "")).join(" ")}</p>}</div>}{updEvidence && <p className="kw-message">Source: KForge GitHub Releases · Freshness: {String(typeof updEvidence.freshness === "string" ? updEvidence.freshness : (updEvidence.fromCache ? "CACHED" : "CURRENT"))}{updEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(updEvidence.destination || "https://api.github.com")}</p>}{updSearched && !updDecision && !updError && <p className="kw-message">No update evidence was returned.</p>}</div>}</section>;
 }
 
 function OnlineContext({ project, control }: { project?: ProjectSummary; control: RecordRow | null }) {

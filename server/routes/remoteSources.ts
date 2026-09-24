@@ -1,4 +1,5 @@
 import { Router, type Response } from "express";
+import { promises as fs } from "fs";
 import path from "path";
 import { isOptionalOnlineFeatureEnabled } from "../services/localPlatform";
 import { listRemoteSources } from "../services/remoteSources/registry";
@@ -7,6 +8,7 @@ import { getMcpServerVersion, getMcpServerVersions, searchMcpServers } from "../
 import { getOvsxExtension, getOvsxVersion, getOvsxVersions, searchOvsxExtensions } from "../services/remoteSources/openVsxService";
 import { getHfModel, searchHfModels } from "../services/remoteSources/huggingFaceService";
 import type { HfSort } from "../services/remoteSources/adapters/huggingFace";
+import { getKforgeRelease, getKforgeUpdateStatus, listKforgeReleases } from "../services/remoteSources/kforgeUpdatesService";
 import { getOsvVuln, queryOsvAdvisories, queryOsvBatch } from "../services/remoteSources/osvService";
 import { getModelCenter } from "../services/aiCenter";
 import type { OsvPackageQuery } from "../services/remoteSources/adapters/osv";
@@ -84,7 +86,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -362,6 +364,80 @@ router.get("/remote-sources/huggingface/model", async (req, res) => {
       networkAllowed,
       id,
       localModelNames: networkAllowed ? await resolveLocalModelNames(getWorkspaceRoot()) : undefined,
+    });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+function parseUpdatePaging(value: unknown, name: "per_page" | "page", min: number, max: number, fallback: number): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`KForge Updates: ${name} must be an integer between ${min} and ${max}.`);
+  }
+  return parsed;
+}
+
+/**
+ * Best-effort installed version for update comparison. Reads the shipped
+ * package.json; falls back to UNKNOWN (availability NOT evaluated) rather
+ * than inventing a version.
+ */
+async function resolveInstalledVersion(): Promise<string> {
+  try {
+    const pkg = JSON.parse(await fs.readFile(path.join(process.cwd(), "package.json"), "utf8")) as { version?: unknown };
+    if (typeof pkg.version === "string" && pkg.version.length > 0) return pkg.version;
+  } catch {
+    // Fall through to UNKNOWN below.
+  }
+  return "UNKNOWN";
+}
+
+/** Explicit KForge release-list read. Catalog facts only; never install authorization. */
+router.get("/remote-sources/kforge-updates/releases", async (req, res) => {
+  try {
+    const channel = parseOptionalText(req.query.channel, "channel", 20);
+    if (channel !== undefined && !["stable", "prerelease", "all"].includes(channel)) {
+      throw new Error("KForge Updates: channel must be stable, prerelease, or all.");
+    }
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await listKforgeReleases({
+      workspaceRoot: getWorkspaceRoot(),
+      networkAllowed,
+      perPage: parseUpdatePaging(req.query.per_page, "per_page", 1, 100, 30),
+      page: parseUpdatePaging(req.query.page, "page", 1, 1000, 1),
+      ...(channel ? { channel: channel as "stable" | "prerelease" | "all" } : {}),
+    });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit KForge release-detail read by tag. */
+router.get("/remote-sources/kforge-updates/release", async (req, res) => {
+  try {
+    const tag = parseOptionalText(req.query.tag, "tag", 128);
+    if (!tag) throw new Error("KForge Updates: tag must be a string of 1-128 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getKforgeRelease({ workspaceRoot: getWorkspaceRoot(), networkAllowed, tag });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit KForge update check vs the installed version. Availability is a catalog fact; trusted install stays blocked. */
+router.get("/remote-sources/kforge-updates/status", async (req, res) => {
+  try {
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getKforgeUpdateStatus({
+      workspaceRoot: getWorkspaceRoot(),
+      networkAllowed,
+      currentVersion: await resolveInstalledVersion(),
+      perPage: parseUpdatePaging(req.query.per_page, "per_page", 1, 100, 30),
     });
     return res.json(result);
   } catch (error) {

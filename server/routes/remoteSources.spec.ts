@@ -10,6 +10,7 @@ import { MCP_LIST_FIXTURE } from "../services/remoteSources/adapters/fixtures/mc
 import { OVSX_EXTENSION_FIXTURE, OVSX_SEARCH_FIXTURE, OVSX_VERSIONS_FIXTURE } from "../services/remoteSources/adapters/fixtures/openVsxFixtures";
 import { OSV_BATCH_FIXTURE, OSV_QUERY_FIXTURE, OSV_VULN_FIXTURE } from "../services/remoteSources/adapters/fixtures/osvFixtures";
 import { HF_DETAIL_FIXTURE, HF_SEARCH_FIXTURE } from "../services/remoteSources/adapters/fixtures/huggingFaceFixtures";
+import { KFORGE_RELEASES_FIXTURE, KFORGE_RELEASE_DETAIL_FIXTURE } from "../services/remoteSources/adapters/fixtures/githubReleasesFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -57,9 +58,23 @@ function isHfTestUrl(url: string): boolean {
   }
 }
 
+function isKforgeUpdatesTestUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "api.github.com" && parsed.pathname.startsWith("/repos/daynightae-cmyk/KForge/releases");
+  } catch {
+    return false;
+  }
+}
+
 function hfTestFixture(url: string): unknown {
   if (url.includes("/api/models/")) return HF_DETAIL_FIXTURE;
   return HF_SEARCH_FIXTURE;
+}
+
+function kforgeUpdatesTestFixture(url: string): unknown {
+  if (url.includes("/releases/tags/")) return KFORGE_RELEASE_DETAIL_FIXTURE;
+  return KFORGE_RELEASES_FIXTURE;
 }
 
 /** Provider-destined stub calls only: local loopback probes are not external requests. */
@@ -81,6 +96,7 @@ describe("Remote sources API", () => {
   let fetchStub = vi.fn(async (url: string) => {
     if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
     if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
+    if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
     return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
   });
 
@@ -91,6 +107,7 @@ describe("Remote sources API", () => {
     fetchStub = vi.fn(async (url: string) => {
       if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
       if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
+      if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
       return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
     });
     vi.stubGlobal("fetch", fetchStub);
@@ -126,7 +143,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
@@ -315,5 +332,47 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/model?id=Qwen/Qwen2.5-Coder-1.5B`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ model: { modelId: "Qwen/Qwen2.5-Coder-1.5B" } });
+  });
+
+  it("refuses KForge update discovery in OFFLINE mode with zero external requests", async () => {
+    const before = fetchStub.mock.calls.length;
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/status`);
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
+    expect(fetchStub.mock.calls.length).toBe(before);
+  });
+
+  it("discovers KForge releases explicitly in online-optional mode", async () => {
+    await setMode("online-optional");
+    const releases = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?channel=stable`);
+    expect(releases.status).toBe(200);
+    const releasesBody = (await releases.json()) as { releases: Array<{ tag: string; channel: string }> };
+    expect(releasesBody.releases.map((release) => release.tag)).toEqual(["v0.1.0", "v0.2.0"]);
+
+    // Installed version is package.json 0.1.0; fixture latest stable is v0.2.0.
+    const status = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/status`);
+    expect(status.status).toBe(200);
+    const statusBody = (await status.json()) as {
+      decision: { availability: string; trustedUpdate: string; trustedBlockers: Array<{ id: string }> };
+    };
+    expect(statusBody.decision.availability).toBe("UPDATE_AVAILABLE");
+    expect(statusBody.decision.trustedUpdate).toBe("BLOCKED");
+    expect(statusBody.decision.trustedBlockers.map((blocker) => blocker.id)).toEqual([
+      "checksum-unverified",
+      "signature-unavailable",
+      "workflow-unimplemented",
+    ]);
+  });
+
+  it("validates KForge update request shapes before any request", async () => {
+    await setMode("online-optional");
+    const before = fetchStub.mock.calls.length;
+    const badPage = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?per_page=500`);
+    expect(badPage.status).toBe(400);
+    const badChannel = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?channel=nightly`);
+    expect(badChannel.status).toBe(400);
+    const unsafeTag = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/release?tag=../../etc`);
+    expect(unsafeTag.status).toBe(400);
+    expect(fetchStub.mock.calls.length).toBe(before);
   });
 });
