@@ -13,6 +13,7 @@ import { listAvailableDocumentation, refreshDocumentation, searchCachedDocumenta
 import { getOsvVuln, queryOsvAdvisories, queryOsvBatch } from "../services/remoteSources/osvService";
 import { getModelCenter } from "../services/aiCenter";
 import type { OsvPackageQuery } from "../services/remoteSources/adapters/osv";
+import { getNpmPackage, getNpmVersion, searchNpmPackages } from "../services/remoteSources/npmService";
 
 /**
  * Explicit remote-source reads (Slice 1).
@@ -87,7 +88,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation|npm Registry): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -491,6 +492,49 @@ router.get("/remote-sources/documentation/search", async (req, res) => {
     const query = parseOptionalText(req.query.q, "q", 200);
     if (!query) throw new Error("Remote Documentation: q must be a string of 1-200 characters.");
     const result = await searchCachedDocumentation(getWorkspaceRoot(), query);
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit npm search. OFFLINE serves cache or refuses with 403. */
+router.get("/remote-sources/npm/search", async (req, res) => {
+  try {
+    const text = parseOptionalText(req.query.text, "text", 200);
+    if (!text) throw new Error("npm Registry: text must be a string of 1-200 characters.");
+    const size = req.query.size === undefined ? undefined : Number(req.query.size);
+    const from = req.query.from === undefined ? undefined : Number(req.query.from);
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await searchNpmPackages({ workspaceRoot: getWorkspaceRoot(), networkAllowed, text, ...(size !== undefined ? { size } : {}), ...(from !== undefined ? { from } : {}) });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit npm package detail. */
+router.get("/remote-sources/npm/package", async (req, res) => {
+  try {
+    const name = parseOptionalText(req.query.name, "name", 214);
+    if (!name) throw new Error("npm Registry: name must be a string of 1-214 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getNpmPackage({ workspaceRoot: getWorkspaceRoot(), networkAllowed, name });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit npm version detail. */
+router.get("/remote-sources/npm/version", async (req, res) => {
+  try {
+    const name = parseOptionalText(req.query.name, "name", 214);
+    const version = parseOptionalText(req.query.version, "version", 100);
+    if (!name) throw new Error("npm Registry: name must be a string of 1-214 characters.");
+    if (!version) throw new Error("npm Registry: version must be a string of 1-100 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getNpmVersion({ workspaceRoot: getWorkspaceRoot(), networkAllowed, name, version });
     return res.json(result);
   } catch (error) {
     return sendServiceError(res, error);

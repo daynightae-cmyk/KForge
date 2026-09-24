@@ -103,6 +103,14 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   const [updSearched, setUpdSearched] = useState(false);
   const [updRunning, setUpdRunning] = useState(false);
   const [updError, setUpdError] = useState("");
+  // Explicit npm Registry discovery: same contract as others. Results are
+  // remote catalog records (CATALOG), never installed packages.
+  const [npmQuery, setNpmQuery] = useState("");
+  const [npmItems, setNpmItems] = useState<MarketplaceItem[]>([]);
+  const [npmEvidence, setNpmEvidence] = useState<RecordRow | null>(null);
+  const [npmSearched, setNpmSearched] = useState(false);
+  const [npmRunning, setNpmRunning] = useState(false);
+  const [npmError, setNpmError] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -139,14 +147,15 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
 
   // The visible semantic view is the sole authority for selection. A retained id
   // may be valid in the global catalog but must not keep a hidden prior-view item
-  // authoritative in the canonical Inspector. Explicit MCP/Open VSX/HF results
+  // authoritative in the canonical Inspector. Explicit MCP/Open VSX/HF/npm results
   // join the selection pool only when the retained id names one of them.
-  const selected = useMemo(() => items.find((item) => item.id === selectedId) || mcpItems.find((item) => item.id === selectedId) || ovsxItems.find((item) => item.id === selectedId) || hfItems.find((item) => item.id === selectedId) || items[0] || null, [items, mcpItems, ovsxItems, hfItems, selectedId]);
+  const selected = useMemo(() => items.find((item) => item.id === selectedId) || mcpItems.find((item) => item.id === selectedId) || ovsxItems.find((item) => item.id === selectedId) || hfItems.find((item) => item.id === selectedId) || npmItems.find((item) => item.id === selectedId) || items[0] || null, [items, mcpItems, ovsxItems, hfItems, npmItems, selectedId]);
   const catalogView = !["providers", "remote-sources", "documentation", "downloads", "activity"].includes(view);
   const mcpPanel = ["discover", "marketplace", "agents", "tools"].includes(view);
   const ovsxPanel = ["discover", "marketplace", "extensions"].includes(view);
   const hfPanel = ["discover", "marketplace", "models"].includes(view);
   const updPanel = view === "updates";
+  const npmPanel = ["discover", "marketplace", "tools", "integrations"].includes(view);
 
   const searchMcp = useCallback(async () => {
     setMcpRunning(true);
@@ -219,6 +228,24 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     }
   }, []);
 
+  const searchNpm = useCallback(async () => {
+    setNpmRunning(true);
+    setNpmError("");
+    try {
+      const params = new URLSearchParams({ size: "20" });
+      if (npmQuery.trim()) params.set("text", npmQuery.trim());
+      const result = await fetchJson<{ items?: MarketplaceItem[]; evidence?: RecordRow }>(`/api/workspace/remote-sources/npm/search?${params.toString()}`);
+      setNpmItems(result.items || []);
+      setNpmEvidence(result.evidence || null);
+      setNpmSearched(true);
+    } catch (error) {
+      setNpmError(error instanceof Error ? error.message : "npm Registry search failed.");
+      setNpmSearched(true);
+    } finally {
+      setNpmRunning(false);
+    }
+  }, [npmQuery]);
+
   const selectItem = useCallback((item: MarketplaceItem) => {
     setSelectedId(item.id);
     setOperation(null);
@@ -246,8 +273,8 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   }, [refresh]);
 
   const actionsByItemId = useMemo(() => {
-    return new Map([...items, ...mcpItems, ...ovsxItems, ...hfItems].map((item) => [item.id, lifecycleActions(item, operate, selectItem)]));
-  }, [items, mcpItems, ovsxItems, hfItems, operate, selectItem]);
+    return new Map([...items, ...mcpItems, ...ovsxItems, ...hfItems, ...npmItems].map((item) => [item.id, lifecycleActions(item, operate, selectItem)]));
+  }, [items, mcpItems, ovsxItems, hfItems, npmItems, operate, selectItem]);
 
   const actions = useMemo(() => (selected ? actionsByItemId.get(selected.id) ?? [] : []), [actionsByItemId, selected]);
 
@@ -312,7 +339,7 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     actions={actionsByItemId.get(item.id)}
     actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"}
   />
-))}</div></div> : null}</div>}{updPanel && <div className="kw-mcp"><div className="kw-toolbar"><h2>KForge updates — explicit release discovery</h2><button onClick={() => void checkUpdates()} disabled={updRunning}>{updRunning ? "Checking…" : "Check for updates"}</button></div><p className="kw-message">Read-only discovery from the official KForge GitHub releases. Opening Online never contacts it; this check runs only when you ask. Availability is a catalog fact; trusted install stays blocked by checksum and signature policy with stated reasons. No silent auto-update or auto-install exists.</p>{updError && <p className="kw-message">{updError}</p>}{updDecision && <div><p className="kw-message">Installed: {String(updDecision.currentVersion || "UNKNOWN")} · Latest stable: {String((updDecision.latestStable as RecordRow | undefined)?.tag || "none")} · Latest prerelease: {String((updDecision.latestPrerelease as RecordRow | undefined)?.tag || "none")} · Availability: {String(updDecision.availability || "UNKNOWN")}</p><p className="kw-message">{String(updDecision.availabilityDetail || "")}</p><p className="kw-message">Trusted update: {String(updDecision.trustedUpdate || "BLOCKED")}</p>{Array.isArray(updDecision.trustedBlockers) && (updDecision.trustedBlockers as Array<{ detail?: string }>).length > 0 && <p className="kw-message">Blockers: {(updDecision.trustedBlockers as Array<{ detail?: string }>).map((blocker) => String(blocker.detail || "")).join(" ")}</p>}</div>}{updEvidence && <p className="kw-message">Source: KForge GitHub Releases · Freshness: {String(typeof updEvidence.freshness === "string" ? updEvidence.freshness : (updEvidence.fromCache ? "CACHED" : "CURRENT"))}{updEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(updEvidence.destination || "https://api.github.com")}</p>}{updSearched && !updDecision && !updError && <p className="kw-message">No update evidence was returned.</p>}</div>}</section>;
+))}</div></div> : null}</div>}{updPanel && <div className="kw-mcp"><div className="kw-toolbar"><h2>KForge updates — explicit release discovery</h2><button onClick={() => void checkUpdates()} disabled={updRunning}>{updRunning ? "Checking…" : "Check for updates"}</button></div><p className="kw-message">Read-only discovery from the official KForge GitHub releases. Opening Online never contacts it; this check runs only when you ask. Availability is a catalog fact; trusted install stays blocked by checksum and signature policy with stated reasons. No silent auto-update or auto-install exists.</p>{updError && <p className="kw-message">{updError}</p>}{updDecision && <div><p className="kw-message">Installed: {String(updDecision.currentVersion || "UNKNOWN")} · Latest stable: {String((updDecision.latestStable as RecordRow | undefined)?.tag || "none")} · Latest prerelease: {String((updDecision.latestPrerelease as RecordRow | undefined)?.tag || "none")} · Availability: {String(updDecision.availability || "UNKNOWN")}</p><p className="kw-message">{String(updDecision.availabilityDetail || "")}</p><p className="kw-message">Trusted update: {String(updDecision.trustedUpdate || "BLOCKED")}</p>{Array.isArray(updDecision.trustedBlockers) && (updDecision.trustedBlockers as Array<{ detail?: string }>).length > 0 && <p className="kw-message">Blockers: {(updDecision.trustedBlockers as Array<{ detail?: string }>).map((blocker) => String(blocker.detail || "")).join(" ")}</p>}</div>}{updEvidence && <p className="kw-message">Source: KForge GitHub Releases · Freshness: {String(typeof updEvidence.freshness === "string" ? updEvidence.freshness : (updEvidence.fromCache ? "CACHED" : "CURRENT"))}{updEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(updEvidence.destination || "https://api.github.com")}</p>}{updSearched && !updDecision && !updError && <p className="kw-message">No update evidence was returned.</p>}</div>}{npmPanel && <div className="kw-mcp"><div className="kw-toolbar"><h2>npm Registry — explicit package search</h2><button onClick={() => void searchNpm()} disabled={npmRunning}>{npmRunning ? "Searching…" : "Search npm"}</button></div><p className="kw-message">Read-only discovery from the npm Public Registry. Opening Online never contacts it; this search runs only when you ask. Results are remote catalog records (CATALOG), not installed packages.</p><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search npm Registry" value={npmQuery} onChange={(event) => setNpmQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchNpm(); }} /></label><span>{npmSearched ? `${npmItems.length} remote result(s)` : "not searched"}</span></div>{npmError && <p className="kw-message">{npmError}</p>}{npmEvidence && <p className="kw-message">Source: npm Public Registry · Freshness: {String(typeof npmEvidence.freshness === "string" ? npmEvidence.freshness : (npmEvidence.fromCache ? "CACHED" : "CURRENT"))}{npmEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(npmEvidence.destination || "https://registry.npmjs.org")}</p>}{npmSearched && !npmItems.length && !npmError && <p className="kw-message">No remote catalog records matched this query.</p>}{npmItems.length ? <div className="kw-online-layout"><div className="kw-online-results">{npmItems.map((item) => (<KForgeCapabilityCard key={item.id} item={item} selected={selected?.id === item.id} onSelect={() => selectItem(item)} actions={actionsByItemId.get(item.id)} actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"} />))}</div></div> : null}</div>}</section>;
 }
 
 function OnlineContext({ project, control }: { project?: ProjectSummary; control: RecordRow | null }) {
