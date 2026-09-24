@@ -9,6 +9,7 @@ import remoteSourcesRouter from "./remoteSources";
 import { MCP_LIST_FIXTURE } from "../services/remoteSources/adapters/fixtures/mcpRegistryFixtures";
 import { OVSX_EXTENSION_FIXTURE, OVSX_SEARCH_FIXTURE, OVSX_VERSIONS_FIXTURE } from "../services/remoteSources/adapters/fixtures/openVsxFixtures";
 import { OSV_BATCH_FIXTURE, OSV_QUERY_FIXTURE, OSV_VULN_FIXTURE } from "../services/remoteSources/adapters/fixtures/osvFixtures";
+import { HF_DETAIL_FIXTURE, HF_SEARCH_FIXTURE } from "../services/remoteSources/adapters/fixtures/huggingFaceFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -48,6 +49,30 @@ function isOsvTestUrl(url: string): boolean {
   }
 }
 
+function isHfTestUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === "huggingface.co";
+  } catch {
+    return false;
+  }
+}
+
+function hfTestFixture(url: string): unknown {
+  if (url.includes("/api/models/")) return HF_DETAIL_FIXTURE;
+  return HF_SEARCH_FIXTURE;
+}
+
+/** Provider-destined stub calls only: local loopback probes are not external requests. */
+function hfCallCount(stub: { mock: { calls: unknown[][] } }): number {
+  return stub.mock.calls.filter((call) => {
+    try {
+      return new URL(String(call[0])).hostname === "huggingface.co";
+    } catch {
+      return false;
+    }
+  }).length;
+}
+
 describe("Remote sources API", () => {
   let workspaceRoot = "";
   let server: Server | null = null;
@@ -55,6 +80,7 @@ describe("Remote sources API", () => {
   let previousRoot: string | undefined;
   let fetchStub = vi.fn(async (url: string) => {
     if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
+    if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
     return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
   });
 
@@ -64,6 +90,7 @@ describe("Remote sources API", () => {
     process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
     fetchStub = vi.fn(async (url: string) => {
       if (isOsvTestUrl(url)) return jsonResponse(osvTestFixture(url));
+      if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
       return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
     });
     vi.stubGlobal("fetch", fetchStub);
@@ -99,7 +126,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
@@ -243,5 +270,50 @@ describe("Remote sources API", () => {
     const vuln = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/vuln?id=GHSA-test-0001`);
     expect(vuln.status).toBe(200);
     await expect(vuln.json()).resolves.toMatchObject({ advisory: { id: "GHSA-test-0001" } });
+  });
+
+  it("refuses Hugging Face search in OFFLINE mode with zero external requests", async () => {
+    const before = hfCallCount(fetchStub);
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?search=coder`);
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
+    expect(hfCallCount(fetchStub)).toBe(before);
+  });
+
+  it("searches Hugging Face explicitly in online-optional mode as catalog only", async () => {
+    await setMode("online-optional");
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?search=coder&limit=10`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      models: Array<{ modelId: string; revision?: string }>;
+      items: Array<{ id: string; availability: string; installed: boolean }>;
+      localRuntimeChecked: boolean;
+      evidence: { freshness: string };
+    };
+    expect(body.models.map((model) => model.modelId)).toEqual(["Qwen/Qwen2.5-Coder-1.5B", "acme/minimal-gated"]);
+    expect(body.items[0].id).toBe("huggingface:Qwen/Qwen2.5-Coder-1.5B");
+    expect(body.items[0].availability).toBe("CATALOG");
+    expect(body.items[0].installed).toBe(false);
+    expect(typeof body.localRuntimeChecked).toBe("boolean");
+    expect(body.evidence.freshness).toBe("CURRENT");
+  });
+
+  it("validates Hugging Face request shapes before any request", async () => {
+    await setMode("online-optional");
+    const before = hfCallCount(fetchStub);
+    const badLimit = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?limit=500`);
+    expect(badLimit.status).toBe(400);
+    const badSort = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?sort=nope`);
+    expect(badSort.status).toBe(400);
+    const badId = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/model?id=../../etc`);
+    expect(badId.status).toBe(400);
+    expect(hfCallCount(fetchStub)).toBe(before);
+  });
+
+  it("reads Hugging Face model detail explicitly", async () => {
+    await setMode("online-optional");
+    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/model?id=Qwen/Qwen2.5-Coder-1.5B`);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ model: { modelId: "Qwen/Qwen2.5-Coder-1.5B" } });
   });
 });

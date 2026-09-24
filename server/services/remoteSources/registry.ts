@@ -12,6 +12,7 @@ import type { RemoteSourceDefinition, RemoteSourceId } from "./contracts";
 const MCP_BASE_URL = "https://registry.modelcontextprotocol.io";
 const OPEN_VSX_BASE_URL = "https://open-vsx.org";
 const OSV_BASE_URL = "https://api.osv.dev";
+const HF_BASE_URL = "https://huggingface.co";
 
 export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
   {
@@ -97,6 +98,32 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
       "HTTP/1.1 responses are capped at 32 MiB; KForge bounds reads well below that. Package-native " +
       "ranges and fixed versions make OSV the preferred P0 vulnerability source. Observational only: " +
       "advisories never modify dependency manifests by themselves.",
+  },
+  {
+    id: "hugging-face-hub",
+    name: "Hugging Face Hub API",
+    category: "Model Registry",
+    priority: "P0",
+    official: true,
+    authority: "OFFICIAL",
+    baseUrl: HF_BASE_URL,
+    allowedOrigins: [HF_BASE_URL],
+    readEndpoints: [
+      "GET /api/models",
+      "model detail/file/tree endpoints exposed by OpenAPI",
+    ],
+    auth: "Open endpoints exist for public Hub information; bearer auth is needed for private/gated/user-specific actions and must remain server-side.",
+    pagination: "Endpoint-specific cursor/limit parameters are described by OpenAPI; KForge implements bounded per-endpoint pagination.",
+    rateLimitPolicy: "No numeric public Hub quota verified; the adapter observes 429/Retry-After and returned headers.",
+    caching: "ETag/Cache-Control are respected where returned; revision/SHA is retained as provenance.",
+    licenseTerms: "Hugging Face Terms of Service apply; every model/repository carries its own license/gating terms evaluated individually.",
+    capabilities: ["SEARCH", "LIST", "DETAIL", "VERSIONS", "ARTIFACTS", "DOCUMENTATION"],
+    targetCapabilities: ["AI", "Model Hub", "Marketplace"],
+    risk: "MEDIUM",
+    legalStatus: "APPROVED_READ_DISCOVERY",
+    notes:
+      "Catalog metadata never implies local installation. Gated/private models remain " +
+      "NOT_CONFIGURED/BLOCKED until valid auth and terms are satisfied; bearer credentials stay server-side.",
   },
 ];
 

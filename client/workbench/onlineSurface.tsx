@@ -85,6 +85,16 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   const [ovsxSearched, setOvsxSearched] = useState(false);
   const [ovsxRunning, setOvsxRunning] = useState(false);
   const [ovsxError, setOvsxError] = useState("");
+  // Explicit Hugging Face catalog discovery: same contract as MCP/Open VSX.
+  // Results are CATALOG_ONLY, never installed models; local runtime matches
+  // arrive as separate LOCAL evidence alongside the catalog records.
+  const [hfQuery, setHfQuery] = useState("");
+  const [hfItems, setHfItems] = useState<MarketplaceItem[]>([]);
+  const [hfEvidence, setHfEvidence] = useState<RecordRow | null>(null);
+  const [hfLocalMatches, setHfLocalMatches] = useState<Record<string, { matchedName?: string }>>({});
+  const [hfSearched, setHfSearched] = useState(false);
+  const [hfRunning, setHfRunning] = useState(false);
+  const [hfError, setHfError] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -121,12 +131,13 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
 
   // The visible semantic view is the sole authority for selection. A retained id
   // may be valid in the global catalog but must not keep a hidden prior-view item
-  // authoritative in the canonical Inspector. Explicit MCP/Open VSX results join
-  // the selection pool only when the retained id names one of them.
-  const selected = useMemo(() => items.find((item) => item.id === selectedId) || mcpItems.find((item) => item.id === selectedId) || ovsxItems.find((item) => item.id === selectedId) || items[0] || null, [items, mcpItems, ovsxItems, selectedId]);
+  // authoritative in the canonical Inspector. Explicit MCP/Open VSX/HF results
+  // join the selection pool only when the retained id names one of them.
+  const selected = useMemo(() => items.find((item) => item.id === selectedId) || mcpItems.find((item) => item.id === selectedId) || ovsxItems.find((item) => item.id === selectedId) || hfItems.find((item) => item.id === selectedId) || items[0] || null, [items, mcpItems, ovsxItems, hfItems, selectedId]);
   const catalogView = !["providers", "remote-sources", "downloads", "activity"].includes(view);
   const mcpPanel = ["discover", "marketplace", "agents", "tools"].includes(view);
   const ovsxPanel = ["discover", "marketplace", "extensions"].includes(view);
+  const hfPanel = ["discover", "marketplace", "models"].includes(view);
 
   const searchMcp = useCallback(async () => {
     setMcpRunning(true);
@@ -164,6 +175,25 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     }
   }, [ovsxQuery]);
 
+  const searchHf = useCallback(async () => {
+    setHfRunning(true);
+    setHfError("");
+    try {
+      const params = new URLSearchParams({ limit: "20" });
+      if (hfQuery.trim()) params.set("search", hfQuery.trim());
+      const result = await fetchJson<{ items?: MarketplaceItem[]; localMatches?: Record<string, { matchedName?: string }>; evidence?: RecordRow }>(`/api/workspace/remote-sources/huggingface/models?${params.toString()}`);
+      setHfItems(result.items || []);
+      setHfLocalMatches(result.localMatches || {});
+      setHfEvidence(result.evidence || null);
+      setHfSearched(true);
+    } catch (error) {
+      setHfError(error instanceof Error ? error.message : "Hugging Face search failed.");
+      setHfSearched(true);
+    } finally {
+      setHfRunning(false);
+    }
+  }, [hfQuery]);
+
   const selectItem = useCallback((item: MarketplaceItem) => {
     setSelectedId(item.id);
     setOperation(null);
@@ -191,8 +221,8 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   }, [refresh]);
 
   const actionsByItemId = useMemo(() => {
-    return new Map([...items, ...mcpItems, ...ovsxItems].map((item) => [item.id, lifecycleActions(item, operate, selectItem)]));
-  }, [items, mcpItems, ovsxItems, operate, selectItem]);
+    return new Map([...items, ...mcpItems, ...ovsxItems, ...hfItems].map((item) => [item.id, lifecycleActions(item, operate, selectItem)]));
+  }, [items, mcpItems, ovsxItems, hfItems, operate, selectItem]);
 
   const actions = useMemo(() => (selected ? actionsByItemId.get(selected.id) ?? [] : []), [actionsByItemId, selected]);
 
@@ -216,6 +246,8 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   const resultLabel = view === "discover" ? "recommended item(s)" : "result(s)";
   const mcpFreshness = mcpEvidence && typeof mcpEvidence.freshness === "string" ? mcpEvidence.freshness : mcpEvidence && typeof mcpEvidence.freshness === "object" ? JSON.stringify(mcpEvidence.freshness) : "";
   const ovsxFreshness = ovsxEvidence && typeof ovsxEvidence.freshness === "string" ? ovsxEvidence.freshness : ovsxEvidence && typeof ovsxEvidence.freshness === "object" ? JSON.stringify(ovsxEvidence.freshness) : "";
+  const hfFreshness = hfEvidence && typeof hfEvidence.freshness === "string" ? hfEvidence.freshness : hfEvidence && typeof hfEvidence.freshness === "object" ? JSON.stringify(hfEvidence.freshness) : "";
+  const hfMatchEntries = Object.entries(hfLocalMatches);
   return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Online catalog" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span>{items.length} {resultLabel}</span><button onClick={() => void refresh()}>Refresh local evidence</button></div>{message && <p className="kw-message">{message}</p>}{items.length ? <div className="kw-online-layout"><div className="kw-online-results">{items.map((item) => (
   <KForgeCapabilityCard
     key={item.id}
@@ -235,6 +267,15 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"}
   />
 ))}</div></div> : null}</div>}{ovsxPanel && <div className="kw-mcp"><div className="kw-toolbar"><h2>Open VSX — explicit remote search</h2><button onClick={() => void searchOvsx()} disabled={ovsxRunning}>{ovsxRunning ? "Searching…" : "Search Open VSX"}</button></div><p className="kw-message">Read-only discovery from the Open VSX Registry. Opening Online never contacts it; this search runs only when you ask. Results are remote catalog records (CATALOG), not installed extensions; installation requires the existing Marketplace lifecycle (immutable VSIX, expected integrity, compatibility, confirmation).</p><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Open VSX Registry" value={ovsxQuery} onChange={(event) => setOvsxQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchOvsx(); }} /></label><span>{ovsxSearched ? `${ovsxItems.length} remote result(s)` : "not searched"}</span></div>{ovsxError && <p className="kw-message">{ovsxError}</p>}{ovsxEvidence && <p className="kw-message">Source: Open VSX Registry · Freshness: {String(ovsxFreshness || (ovsxEvidence.fromCache ? "CACHED" : "CURRENT"))}{ovsxEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(ovsxEvidence.destination || "https://open-vsx.org")}</p>}{ovsxSearched && !ovsxItems.length && !ovsxError && <p className="kw-message">No remote catalog records matched this query.</p>}{ovsxItems.length ? <div className="kw-online-layout"><div className="kw-online-results">{ovsxItems.map((item) => (
+  <KForgeCapabilityCard
+    key={item.id}
+    item={item}
+    selected={selected?.id === item.id}
+    onSelect={() => selectItem(item)}
+    actions={actionsByItemId.get(item.id)}
+    actionsDisabled={operation?.itemId === item.id && operation?.state === "RUNNING"}
+  />
+))}</div></div> : null}</div>}{hfPanel && <div className="kw-mcp"><div className="kw-toolbar"><h2>Hugging Face — explicit model catalog search</h2><button onClick={() => void searchHf()} disabled={hfRunning}>{hfRunning ? "Searching…" : "Search Hugging Face"}</button></div><p className="kw-message">Read-only discovery from the Hugging Face Hub. Opening Online never contacts it; this search runs only when you ask. Results are catalog records (CATALOG), not installed models; gated and private records stay blocked until valid auth and terms exist.</p><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search Hugging Face Hub" value={hfQuery} onChange={(event) => setHfQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchHf(); }} /></label><span>{hfSearched ? `${hfItems.length} remote result(s)` : "not searched"}</span></div>{hfError && <p className="kw-message">{hfError}</p>}{hfEvidence && <p className="kw-message">Source: Hugging Face Hub · Freshness: {String(hfFreshness || (hfEvidence.fromCache ? "CACHED" : "CURRENT"))}{hfEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(hfEvidence.destination || "https://huggingface.co")}</p>}{hfMatchEntries.length > 0 && <p className="kw-message">Local runtime matches (separate LOCAL evidence, not install proof): {hfMatchEntries.map(([modelId, match]) => `${modelId} ↔ ${match.matchedName || "unknown"}`).join("; ")}</p>}{hfSearched && !hfItems.length && !hfError && <p className="kw-message">No remote catalog records matched this query.</p>}{hfItems.length ? <div className="kw-online-layout"><div className="kw-online-results">{hfItems.map((item) => (
   <KForgeCapabilityCard
     key={item.id}
     item={item}
