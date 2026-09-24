@@ -211,6 +211,31 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
     legalStatus: "APPROVED_METADATA_ONLY",
     notes: "Version dist metadata includes tarball, shasum, integrity and may include registry signatures. Catalog presence is not installation.",
   },
+  {
+    id: "pypi",
+    name: "Python Package Index (PyPI)",
+    category: "Package Registry",
+    priority: "P1",
+    official: true,
+    authority: "OFFICIAL",
+    baseUrl: "https://pypi.org",
+    allowedOrigins: ["https://pypi.org", "https://files.pythonhosted.org"],
+    readEndpoints: [
+      "GET /pypi/{project}/json",
+      "GET /simple/{project}/",
+      "GET /integrity/{project}/{version}/{filename}/provenance",
+    ],
+    auth: "Public read APIs are anonymous; upload/management requires auth.",
+    pagination: "Project detail returns releases map; simple index is per-project.",
+    rateLimitPolicy: "PyPI states no current edge rate limiting for JSON APIs, but irresponsible use can be blocked.",
+    caching: "JSON responses are CDN cached and expose ETag; use If-None-Match plus bounded KForge cache.",
+    licenseTerms: "PyPI Terms of Service and API Terms apply; each package carries its own license.",
+    capabilities: ["DETAIL", "VERSIONS", "ARTIFACTS", "INSTALL_METADATA"],
+    targetCapabilities: ["Online Hub", "Packages", "Marketplace"],
+    risk: "LOW",
+    legalStatus: "APPROVED_METADATA_ONLY",
+    notes: "Artifact links can carry hashes; Integrity API exposes PEP 740 provenance via Trusted Publisher attestations.",
+  },
 ];
 
 export function listRemoteSources(): RemoteSourceDefinition[] {

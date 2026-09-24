@@ -14,6 +14,7 @@ import { getOsvVuln, queryOsvAdvisories, queryOsvBatch } from "../services/remot
 import { getModelCenter } from "../services/aiCenter";
 import type { OsvPackageQuery } from "../services/remoteSources/adapters/osv";
 import { getNpmPackage, getNpmVersion, searchNpmPackages } from "../services/remoteSources/npmService";
+import { getPypiPackage, searchPypiPackages } from "../services/remoteSources/pypiService";
 
 /**
  * Explicit remote-source reads (Slice 1).
@@ -88,7 +89,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation|npm Registry): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation|npm Registry|PyPI): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -535,6 +536,33 @@ router.get("/remote-sources/npm/version", async (req, res) => {
     if (!version) throw new Error("npm Registry: version must be a string of 1-100 characters.");
     const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
     const result = await getNpmVersion({ workspaceRoot: getWorkspaceRoot(), networkAllowed, name, version });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit PyPI search (exact-name lookup). */
+router.get("/remote-sources/pypi/search", async (req, res) => {
+  try {
+    const text = parseOptionalText(req.query.text, "text", 200);
+    if (!text) throw new Error("PyPI: text must be a string of 1-200 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await searchPypiPackages({ workspaceRoot: getWorkspaceRoot(), networkAllowed, text });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit PyPI package detail. */
+router.get("/remote-sources/pypi/package", async (req, res) => {
+  try {
+    const name = parseOptionalText(req.query.name, "name", 214);
+    if (!name) throw new Error("PyPI: name must be a string of 1-214 characters.");
+    const version = parseOptionalText(req.query.version, "version", 100);
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getPypiPackage({ workspaceRoot: getWorkspaceRoot(), networkAllowed, name, ...(version ? { version } : {}) });
     return res.json(result);
   } catch (error) {
     return sendServiceError(res, error);

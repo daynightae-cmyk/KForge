@@ -13,6 +13,7 @@ import { HF_DETAIL_FIXTURE, HF_SEARCH_FIXTURE } from "../services/remoteSources/
 import { KFORGE_RELEASES_FIXTURE, KFORGE_RELEASE_DETAIL_FIXTURE } from "../services/remoteSources/adapters/fixtures/githubReleasesFixtures";
 import { DOCS_OPENAPI_FIXTURE } from "../services/remoteSources/adapters/fixtures/documentationFixtures";
 import { NPM_PACKAGE_FIXTURE, NPM_SEARCH_FIXTURE, NPM_VERSION_FIXTURE } from "../services/remoteSources/adapters/fixtures/npmFixtures";
+import { PYPI_PACKAGE_FIXTURE } from "../services/remoteSources/adapters/fixtures/pypiFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -99,6 +100,14 @@ function npmTestFixture(url: string): unknown {
   return NPM_PACKAGE_FIXTURE;
 }
 
+function isPypiTestUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === "pypi.org";
+  } catch {
+    return false;
+  }
+}
+
 function hfTestFixture(url: string): unknown {
   if (url.includes("/api/models/")) return HF_DETAIL_FIXTURE;
   return HF_SEARCH_FIXTURE;
@@ -131,6 +140,7 @@ describe("Remote sources API", () => {
     if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
     if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
     if (isNpmTestUrl(url)) return jsonResponse(npmTestFixture(url));
+    if (isPypiTestUrl(url)) return jsonResponse(PYPI_PACKAGE_FIXTURE);
     return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
   });
 
@@ -144,6 +154,7 @@ describe("Remote sources API", () => {
       if (isHfTestUrl(url)) return jsonResponse(hfTestFixture(url));
       if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
       if (isNpmTestUrl(url)) return jsonResponse(npmTestFixture(url));
+      if (isPypiTestUrl(url)) return jsonResponse(PYPI_PACKAGE_FIXTURE);
       return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
     });
     vi.stubGlobal("fetch", fetchStub);
@@ -179,7 +190,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi", "npm-registry"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi", "npm-registry", "pypi"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
