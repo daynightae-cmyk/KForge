@@ -18,7 +18,7 @@ import type {
  * mean VERIFIED. Hash verification MUST NOT mean PUBLISHER_VERIFIED.
  */
 
-export const REMOTE_SOURCE_IDS = ["mcp-official-registry", "open-vsx", "osv"] as const;
+export const REMOTE_SOURCE_IDS = ["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub"] as const;
 export type RemoteSourceId = (typeof REMOTE_SOURCE_IDS)[number];
 
 export type RemoteSourcePriority = "P0" | "P1" | "P2" | "P3";

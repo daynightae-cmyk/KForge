@@ -5,7 +5,10 @@ import { listRemoteSources } from "../services/remoteSources/registry";
 import { RemoteFetchError } from "../services/remoteSources/fetchPolicy";
 import { getMcpServerVersion, getMcpServerVersions, searchMcpServers } from "../services/remoteSources/mcpService";
 import { getOvsxExtension, getOvsxVersion, getOvsxVersions, searchOvsxExtensions } from "../services/remoteSources/openVsxService";
+import { getHfModel, searchHfModels } from "../services/remoteSources/huggingFaceService";
+import type { HfSort } from "../services/remoteSources/adapters/huggingFace";
 import { getOsvVuln, queryOsvAdvisories, queryOsvBatch } from "../services/remoteSources/osvService";
+import { getModelCenter } from "../services/aiCenter";
 import type { OsvPackageQuery } from "../services/remoteSources/adapters/osv";
 
 /**
@@ -81,7 +84,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -278,6 +281,88 @@ router.get("/remote-sources/osv/vuln", async (req, res) => {
     if (!id) throw new Error("OSV.dev: id must be a string of 1-100 characters.");
     const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
     const result = await getOsvVuln({ workspaceRoot: getWorkspaceRoot(), networkAllowed, id });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+const HF_SORTS: HfSort[] = ["lastModified", "likes", "downloads"];
+
+/**
+ * Best-effort local inventory for separate LOCAL evidence on Hub catalog
+ * records. Never throws: when the runtime cannot be consulted, catalog
+ * reads proceed with NOT_CHECKED local evidence.
+ */
+async function resolveLocalModelNames(workspaceRoot: string): Promise<string[] | undefined> {
+  try {
+    const center = await getModelCenter(workspaceRoot);
+    const names = new Set<string>();
+    for (const model of center.ollama?.models || []) {
+      if (model.id) names.add(model.id);
+      if (model.name) names.add(model.name);
+    }
+    for (const provider of center.providers || []) {
+      if (provider.kind !== "local") continue;
+      for (const model of provider.models || []) {
+        if (model.id) names.add(model.id);
+        if (model.name) names.add(model.name);
+      }
+    }
+    return [...names];
+  } catch {
+    return undefined;
+  }
+}
+
+/** Explicit Hugging Face catalog search. CATALOG_ONLY; never install truth. */
+router.get("/remote-sources/huggingface/models", async (req, res) => {
+  try {
+    const sort = parseOptionalText(req.query.sort, "sort", 20);
+    if (sort !== undefined && !(HF_SORTS as string[]).includes(sort)) {
+      throw new Error("Hugging Face Hub: sort must be lastModified, likes, or downloads.");
+    }
+    const direction = req.query.direction === undefined ? undefined : Number(req.query.direction);
+    if (direction !== undefined && direction !== -1 && direction !== 1) {
+      throw new Error("Hugging Face Hub: direction must be -1 or 1.");
+    }
+    const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new Error("Hugging Face Hub: limit must be an integer between 1 and 100.");
+    }
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await searchHfModels({
+      workspaceRoot: getWorkspaceRoot(),
+      networkAllowed,
+      search: parseOptionalText(req.query.search, "search", 200),
+      author: parseOptionalText(req.query.author, "author", 100),
+      filter: parseOptionalText(req.query.filter, "filter", 200),
+      ...(sort ? { sort: sort as HfSort } : {}),
+      ...(direction !== undefined ? { direction: direction as -1 | 1 } : {}),
+      limit,
+      cursor: parseOptionalText(req.query.cursor, "cursor", 2000),
+      // Local inventory is consulted only when a provider read may proceed:
+      // refusing OFFLINE callers must not trigger even loopback probes.
+      localModelNames: networkAllowed ? await resolveLocalModelNames(getWorkspaceRoot()) : undefined,
+    });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit Hugging Face model-detail read. CATALOG_ONLY; never install truth. */
+router.get("/remote-sources/huggingface/model", async (req, res) => {
+  try {
+    const id = parseOptionalText(req.query.id, "id", 401);
+    if (!id) throw new Error("Hugging Face Hub: id must be a namespace/name string.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getHfModel({
+      workspaceRoot: getWorkspaceRoot(),
+      networkAllowed,
+      id,
+      localModelNames: networkAllowed ? await resolveLocalModelNames(getWorkspaceRoot()) : undefined,
+    });
     return res.json(result);
   } catch (error) {
     return sendServiceError(res, error);
