@@ -15,6 +15,7 @@ import { getModelCenter } from "../services/aiCenter";
 import type { OsvPackageQuery } from "../services/remoteSources/adapters/osv";
 import { getNpmPackage, getNpmVersion, searchNpmPackages } from "../services/remoteSources/npmService";
 import { getPypiPackage, searchPypiPackages } from "../services/remoteSources/pypiService";
+import { getNugetRegistration, searchNugetPackages } from "../services/remoteSources/nugetService";
 
 /**
  * Explicit remote-source reads (Slice 1).
@@ -89,7 +90,7 @@ function errorStatus(error: unknown): { status: number; code: string; retryAfter
         return { status: 502, code: "REMOTE_SOURCE_UNREACHABLE" };
     }
   }
-  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation|npm Registry|PyPI): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
+  if (error instanceof Error && /(MCP Registry|Open VSX Registry|OSV\.dev|Hugging Face Hub|KForge Updates|Remote Documentation|npm Registry|PyPI|NuGet Registry): /.test(error.message)) return { status: 400, code: "REMOTE_SOURCE_BAD_REQUEST" };
   return { status: 500, code: "REMOTE_SOURCE_FAILED" };
 }
 
@@ -563,6 +564,34 @@ router.get("/remote-sources/pypi/package", async (req, res) => {
     const version = parseOptionalText(req.query.version, "version", 100);
     const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
     const result = await getPypiPackage({ workspaceRoot: getWorkspaceRoot(), networkAllowed, name, ...(version ? { version } : {}) });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit NuGet search. */
+router.get("/remote-sources/nuget/search", async (req, res) => {
+  try {
+    const q = parseOptionalText(req.query.q, "q", 200);
+    if (!q) throw new Error("NuGet Registry: q must be a string of 1-200 characters.");
+    const skip = req.query.skip === undefined ? undefined : Number(req.query.skip);
+    const take = req.query.take === undefined ? undefined : Number(req.query.take);
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await searchNugetPackages({ workspaceRoot: getWorkspaceRoot(), networkAllowed, q, ...(skip !== undefined ? { skip } : {}), ...(take !== undefined ? { take } : {}) });
+    return res.json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+});
+
+/** Explicit NuGet registration detail (versions). */
+router.get("/remote-sources/nuget/registration", async (req, res) => {
+  try {
+    const id = parseOptionalText(req.query.id, "id", 128);
+    if (!id) throw new Error("NuGet Registry: id must be a string of 1-128 characters.");
+    const networkAllowed = await isOptionalOnlineFeatureEnabled(getWorkspaceRoot());
+    const result = await getNugetRegistration({ workspaceRoot: getWorkspaceRoot(), networkAllowed, id });
     return res.json(result);
   } catch (error) {
     return sendServiceError(res, error);

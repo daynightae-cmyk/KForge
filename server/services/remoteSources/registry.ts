@@ -236,6 +236,31 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
     legalStatus: "APPROVED_METADATA_ONLY",
     notes: "Artifact links can carry hashes; Integrity API exposes PEP 740 provenance via Trusted Publisher attestations.",
   },
+  {
+    id: "nuget-v3",
+    name: "NuGet V3 / nuget.org",
+    category: "Package Registry",
+    priority: "P1",
+    official: true,
+    authority: "OFFICIAL",
+    baseUrl: "https://api.nuget.org/v3/index.json",
+    allowedOrigins: ["https://api.nuget.org", "https://azuresearch-usnc.nuget.org", "https://azuresearch-ussc.nuget.org"],
+    readEndpoints: [
+      "GET /v3/index.json (Service Index)",
+      "GET SearchQueryService?q=&skip=&take=",
+      "GET RegistrationsBaseUrl/{id}/index.json",
+    ],
+    auth: "Public nuget.org read endpoints are public; private sources can require provider-specific auth.",
+    pagination: "Search uses skip/take; registrations use page structure.",
+    rateLimitPolicy: "No numeric quota verified; respect provider headers and bounded concurrency.",
+    caching: "Use provider cache headers; resource URLs discovered from service index when possible plus bounded KForge cache.",
+    licenseTerms: "NuGet/Microsoft service terms apply; individual package licenses vary.",
+    capabilities: ["SEARCH", "DETAIL", "VERSIONS", "ARTIFACTS", "INSTALL_METADATA"],
+    targetCapabilities: ["Online Hub", "Packages", "Marketplace"],
+    risk: "LOW",
+    legalStatus: "APPROVED_METADATA_ONLY",
+    notes: "RepositorySignatures resource identifies signing certificates. Catalog presence is not installation.",
+  },
 ];
 
 export function listRemoteSources(): RemoteSourceDefinition[] {

@@ -14,6 +14,7 @@ import { KFORGE_RELEASES_FIXTURE, KFORGE_RELEASE_DETAIL_FIXTURE } from "../servi
 import { DOCS_OPENAPI_FIXTURE } from "../services/remoteSources/adapters/fixtures/documentationFixtures";
 import { NPM_PACKAGE_FIXTURE, NPM_SEARCH_FIXTURE, NPM_VERSION_FIXTURE } from "../services/remoteSources/adapters/fixtures/npmFixtures";
 import { PYPI_PACKAGE_FIXTURE } from "../services/remoteSources/adapters/fixtures/pypiFixtures";
+import { NUGET_REGISTRATION_FIXTURE, NUGET_SEARCH_FIXTURE } from "../services/remoteSources/adapters/fixtures/nugetFixtures";
 
 vi.mock("dns/promises", () => ({
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -108,6 +109,20 @@ function isPypiTestUrl(url: string): boolean {
   }
 }
 
+function isNugetTestUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "api.nuget.org" || hostname === "azuresearch-usnc.nuget.org" || hostname === "azuresearch-ussc.nuget.org";
+  } catch {
+    return false;
+  }
+}
+
+function nugetTestFixture(url: string): unknown {
+  if (url.includes("/query")) return NUGET_SEARCH_FIXTURE;
+  return NUGET_REGISTRATION_FIXTURE;
+}
+
 function hfTestFixture(url: string): unknown {
   if (url.includes("/api/models/")) return HF_DETAIL_FIXTURE;
   return HF_SEARCH_FIXTURE;
@@ -141,6 +156,7 @@ describe("Remote sources API", () => {
     if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
     if (isNpmTestUrl(url)) return jsonResponse(npmTestFixture(url));
     if (isPypiTestUrl(url)) return jsonResponse(PYPI_PACKAGE_FIXTURE);
+    if (isNugetTestUrl(url)) return jsonResponse(nugetTestFixture(url));
     return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
   });
 
@@ -155,6 +171,7 @@ describe("Remote sources API", () => {
       if (isKforgeUpdatesTestUrl(url)) return jsonResponse(kforgeUpdatesTestFixture(url));
       if (isNpmTestUrl(url)) return jsonResponse(npmTestFixture(url));
       if (isPypiTestUrl(url)) return jsonResponse(PYPI_PACKAGE_FIXTURE);
+      if (isNugetTestUrl(url)) return jsonResponse(nugetTestFixture(url));
       return isOvsxTestUrl(url) ? jsonResponse(OVSX_SEARCH_FIXTURE) : jsonResponse(MCP_LIST_FIXTURE);
     });
     vi.stubGlobal("fetch", fetchStub);
@@ -190,7 +207,7 @@ describe("Remote sources API", () => {
     const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
-    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi", "npm-registry", "pypi"]);
+    expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi", "npm-registry", "pypi", "nuget-v3"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
