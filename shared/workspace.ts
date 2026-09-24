@@ -430,7 +430,7 @@ export type KForgeStartupCapability = (typeof KFORGE_STARTUP_CAPABILITIES)[numbe
 export const KFORGE_ACTIVITIES = ["projects", "ai", "online", "intelligence", "quality", "developer-tools", "remote", "release", "system"] as const;
 export type KForgeActivity = (typeof KFORGE_ACTIVITIES)[number];
 
-export const KFORGE_ONLINE_VIEWS = ["discover", "marketplace", "extensions", "models", "agents", "tools", "integrations", "installed", "updates", "providers", "remote-sources", "security", "downloads", "activity"] as const;
+export const KFORGE_ONLINE_VIEWS = ["discover", "marketplace", "extensions", "models", "agents", "tools", "integrations", "installed", "updates", "providers", "remote-sources", "documentation", "security", "downloads", "activity"] as const;
 export type KForgeOnlineView = (typeof KFORGE_ONLINE_VIEWS)[number];
 
 export type OnlineAuthorityKind = "LOCAL_RUNTIME" | "LOCAL_INSTALLED" | "LOCAL_BUNDLED" | "LOCAL_REGISTRY" | "CATALOG_ONLY" | "REMOTE_PROVIDER" | "REMOTE_REGISTRY" | "CACHED_REMOTE";

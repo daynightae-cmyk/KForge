@@ -37,7 +37,7 @@ describe("KForge contextual workbench architecture", () => {
   it("keeps every Online child inside one scoped Online Explorer", () => {
     expect(ONLINE_EXPLORER_VIEWS).toEqual([
       "discover", "marketplace", "extensions", "models", "agents", "tools", "integrations",
-      "installed", "updates", "downloads", "providers", "remote-sources", "security", "activity",
+      "installed", "updates", "downloads", "providers", "remote-sources", "documentation", "security", "activity",
     ]);
   });
 

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { clearProjectContext } from "./helpers/workbench";
 
 const ACTIVITY_LABELS = ["Projects", "AI", "Online", "Intelligence", "Quality", "Developer Tools", "Remote / Git", "Release", "System"] as const;
-const ONLINE_VIEWS = ["Discover", "Marketplace", "Extensions", "Models", "Agents", "Tools", "Integrations", "Installed", "Updates", "Downloads", "Providers", "Remote Sources", "Security", "Activity"] as const;
+const ONLINE_VIEWS = ["Discover", "Marketplace", "Extensions", "Models", "Agents", "Tools", "Integrations", "Installed", "Updates", "Downloads", "Providers", "Remote Sources", "Documentation", "Security", "Activity"] as const;
 
 async function prepareWorkspace(page: import("@playwright/test").Page) {
   const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });

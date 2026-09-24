@@ -142,7 +142,7 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
   // authoritative in the canonical Inspector. Explicit MCP/Open VSX/HF results
   // join the selection pool only when the retained id names one of them.
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || mcpItems.find((item) => item.id === selectedId) || ovsxItems.find((item) => item.id === selectedId) || hfItems.find((item) => item.id === selectedId) || items[0] || null, [items, mcpItems, ovsxItems, hfItems, selectedId]);
-  const catalogView = !["providers", "remote-sources", "downloads", "activity"].includes(view);
+  const catalogView = !["providers", "remote-sources", "documentation", "downloads", "activity"].includes(view);
   const mcpPanel = ["discover", "marketplace", "agents", "tools"].includes(view);
   const ovsxPanel = ["discover", "marketplace", "extensions"].includes(view);
   const hfPanel = ["discover", "marketplace", "models"].includes(view);
@@ -263,6 +263,9 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
     const rows = view === "providers" ? [...(market.providers || []), ...(market.adapters || [])] : (market.adapters || []).filter((row) => row.kind === "remote");
     return <section className="kw-online"><OnlineContext project={project} control={control} /><div className="kw-toolbar"><h2>{viewLabel("online", view)}</h2><button onClick={() => void refresh()}>Refresh evidence</button></div><EvidenceCards rows={rows} /></section>;
   }
+  if (view === "documentation") {
+    return <section className="kw-online"><OnlineContext project={project} control={control} /><DocumentationPanel /></section>;
+  }
   if (view === "downloads" || view === "activity") {
     const list = tasks.filter((task) => view === "downloads" ? /download|pull|install|update/i.test(JSON.stringify(task)) : /online|marketplace|download|install|update|provider/i.test(JSON.stringify(task)));
     return <section className="kw-online"><OnlineContext project={project} control={control} /><TaskTable tasks={list} /></section>;
@@ -314,6 +317,108 @@ function OnlineSurface({ view, project, onInspectorContext }: SurfaceProps) {
 
 function OnlineContext({ project, control }: { project?: ProjectSummary; control: RecordRow | null }) {
   return <div className="kw-online-context"><div><Cloud size={17} /><strong>Online is global</strong><span>Opening this surface performs no remote catalog refresh.</span></div><div><span>Compatibility</span><StatusBadge value={project ? "PROJECT_CONTEXT" : "NOT_EVALUATED"} /><small>{project ? project.name : "No project selected"}</small></div><div><span>Control Center</span><StatusBadge value={control?.mode || "UNKNOWN"} /><small>{control ? "Policy evidence loaded" : "Loading policy evidence"}</small></div></div>;
+}
+
+type DocsSource = {
+  id: string;
+  provider: string;
+  kind: string;
+  title: string;
+  url: string;
+  version?: string;
+  licenseTerms: string;
+  authority: string;
+};
+
+type DocsRecord = {
+  sourceId: string;
+  provider: string;
+  canonicalUrl: string;
+  title: string;
+  version: string;
+  retrievedAt: string;
+  etag?: string;
+  lastModified?: string;
+  contentHash: string;
+  contentType?: string;
+  sizeBytes: number;
+  authority: string;
+  licenseTerms: string;
+  origin: "LIVE" | "CACHE";
+  freshness: "CURRENT" | "CACHED" | "STALE";
+};
+
+type DocsHit = {
+  sourceId: string;
+  provider: string;
+  title: string;
+  canonicalUrl: string;
+  version: string;
+  freshness: string;
+  matchCount: number;
+  truncated: boolean;
+  snippets: string[];
+};
+
+/**
+ * Online Documentation: explicit provider-document reads over the
+ * allowlisted documentation framework. Opening this view performs no
+ * remote fetch; each source refreshes only on its own button, and search
+ * reads the bounded local cache. There is no general crawler and no
+ * arbitrary URL fetcher.
+ */
+function DocumentationPanel() {
+  const [sources, setSources] = useState<DocsSource[]>([]);
+  const [records, setRecords] = useState<Record<string, DocsRecord>>({});
+  const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<DocsHit[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [message, setMessage] = useState("Loading approved documentation sources…");
+
+  useEffect(() => {
+    void fetchJson<{ sources?: DocsSource[] }>("/api/workspace/remote-sources/documentation/sources")
+      .then((data) => { setSources(data.sources || []); setMessage(""); })
+      .catch((error) => setMessage(error instanceof Error ? error.message : "Documentation sources unavailable."));
+  }, []);
+
+  const refreshSource = useCallback(async (sourceId: string) => {
+    setRefreshing((current) => ({ ...current, [sourceId]: true }));
+    setErrors((current) => ({ ...current, [sourceId]: "" }));
+    try {
+      const result = await fetchJson<{ record?: DocsRecord }>("/api/workspace/remote-sources/documentation/refresh", jsonRequest({ sourceId }));
+      if (result.record) setRecords((current) => ({ ...current, [sourceId]: result.record as DocsRecord }));
+    } catch (error) {
+      setErrors((current) => ({ ...current, [sourceId]: error instanceof Error ? error.message : "Refresh failed." }));
+    } finally {
+      setRefreshing((current) => ({ ...current, [sourceId]: false }));
+    }
+  }, []);
+
+  const searchDocs = useCallback(async () => {
+    if (!query.trim() || searching) return;
+    setSearching(true);
+    setSearchError("");
+    try {
+      const result = await fetchJson<{ hits?: DocsHit[] }>(`/api/workspace/remote-sources/documentation/search?q=${encodeURIComponent(query.trim())}`);
+      setHits(result.hits || []);
+      setSearched(true);
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : "Documentation search failed.");
+      setSearched(true);
+    } finally {
+      setSearching(false);
+    }
+  }, [query, searching]);
+
+  return <div><div className="kw-toolbar"><h2>Documentation</h2></div><p className="kw-message">Official provider documents only: OpenAPI contracts and same-provider llms.txt from an exact allowlist. Opening this view performs no remote fetch; each source refreshes on its own button, and search reads the bounded local cache.</p>{message && <p className="kw-message">{message}</p>}{sources.map((source) => {
+    const record = records[source.id];
+    const busy = refreshing[source.id] === true;
+    return <div className="kw-mcp" key={source.id}><div className="kw-toolbar"><h2>{source.provider} — {source.title}</h2><button onClick={() => void refreshSource(source.id)} disabled={busy}>{busy ? "Refreshing…" : record ? "Refresh again" : "Refresh now"}</button></div><p className="kw-message">Kind: {source.kind} · Authority: {source.authority} · License: {source.licenseTerms}</p><p className="kw-message">Canonical URL: {source.url}</p>{errors[source.id] && <p className="kw-message">{errors[source.id]}</p>}{record && <div><p className="kw-message">Version: {record.version} · Freshness: {record.freshness}{record.origin === "CACHE" ? " (cached)" : " (live)"} · Size: {record.sizeBytes} bytes · Retrieved: {record.retrievedAt}</p><p className="kw-message">SHA-256: {record.contentHash}{record.etag ? ` · ETag: ${record.etag}` : ""}{record.lastModified ? ` · Last-Modified: ${record.lastModified}` : ""}</p></div>}</div>;
+  })}<div className="kw-mcp"><div className="kw-toolbar"><h2>Search cached documentation</h2><button onClick={() => void searchDocs()} disabled={searching || !query.trim()}>{searching ? "Searching…" : "Search cache"}</button></div><div className="kw-online-toolbar"><label><Search size={14} /><input aria-label="Search cached documentation" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchDocs(); }} /></label><span>{searched ? `${hits.length} source(s) matched` : "local cache only"}</span></div>{searchError && <p className="kw-message">{searchError}</p>}{searched && !hits.length && !searchError && <p className="kw-message">No cached document matched. Refresh a source explicitly, then search again.</p>}{hits.map((hit) => <div key={hit.sourceId}><p className="kw-message">{hit.provider} — {hit.title} (v{hit.version}, {hit.freshness}, {hit.matchCount} match{hit.matchCount === 1 ? "" : "es"}{hit.truncated ? ", truncated" : ""})</p>{hit.snippets.map((snippet, index) => <p className="kw-message" key={`${hit.sourceId}:${index}`}>{snippet}</p>)}</div>)}</div></div>;
 }
 
 export default OnlineSurface;
