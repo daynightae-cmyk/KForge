@@ -364,6 +364,7 @@
 }
 
 .kw-activity-bar {
+  z-index: 3;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--kw-panel) 97%, var(--kw-primary) 3%), var(--kw-panel));
   box-shadow: -1px 0 0 rgba(255, 255, 255, .02) inset;
@@ -767,8 +768,12 @@
   }
 }
 
+[data-kf-reduced-motion="true"] .kw-command-trigger,
 [data-kf-reduced-motion="true"] .kw-activity-bar button,
+[data-kf-reduced-motion="true"] .kw-activity-bar button::after,
 [data-kf-reduced-motion="true"] .kw-explorer-scroll section > button,
+[data-kf-reduced-motion="true"] .kw-explorer-scroll section > button > svg,
+[data-kf-reduced-motion="true"] .kw-table tbody tr,
 [data-kf-reduced-motion="true"] .kw-quality-card,
 [data-kf-reduced-motion="true"] .kw-system-grid article,
 [data-kf-reduced-motion="true"] .kw-evidence-card,
