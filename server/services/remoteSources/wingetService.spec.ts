@@ -44,7 +44,7 @@ describe("WinGet service", () => {
     await writeRemoteCache(workspaceRoot, {
       sourceId: "winget-community",
       key: searchKey(),
-      url: "https://api.github.com/search/code",
+      url: "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/g/Git/Git",
       fetchedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
       etag: '"seeded"',
       data: WINGET_SEARCH_FIXTURE,
@@ -59,12 +59,12 @@ describe("WinGet service", () => {
 
   it("searches live on explicit action and records marketplace-registry contact", async () => {
     const fetchImpl = vi.fn(async (url: string) => {
-      expect(url).toContain("api.github.com/search/code");
+      expect(url).toContain("api.github.com/repos/microsoft/winget-pkgs/contents/manifests/g/Git/Git");
       return jsonResponse(WINGET_SEARCH_FIXTURE, { headers: { etag: '"live-1"' } });
     });
     const result = await searchWingetPackages({ workspaceRoot, networkAllowed: true, q: "Git.Git", fetchImpl, hostResolver: PUBLIC_RESOLVER });
     expect(result.items).toHaveLength(2);
-    expect(result.items[0].id).toBe("winget:Git.Git");
+    expect(result.items[0].id).toBe("winget:Git.Git@2.44.0");
     expect(result.evidence.freshness).toBe("CURRENT");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(await readContacts()).toHaveProperty("contacts.marketplace-registry");
@@ -96,7 +96,7 @@ describe("WinGet service", () => {
   it("reads manifest explicitly", async () => {
     const fetchImpl = vi.fn(async () => textResponse(WINGET_MANIFEST_FIXTURE));
     const result = await getWingetManifest({ workspaceRoot, networkAllowed: true, packageId: "Git.Git", version: "2.44.0", fetchImpl, hostResolver: PUBLIC_RESOLVER });
-    expect(result.item.id).toBe("winget:Git.Git");
+    expect(result.item.id).toBe("winget:Git.Git@2.44.0");
     expect(result.manifest.packageIdentifier).toBe("Git.Git");
     expect(result.manifest.installers[0].installerSha256).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   });
