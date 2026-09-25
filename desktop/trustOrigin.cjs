@@ -16,4 +16,19 @@ function isTrustedKForgeOrigin(candidateUrl, serverUrl) {
   }
 }
 
-module.exports = { isTrustedKForgeOrigin };
+function toSafeExternalHttpUrl(candidateUrl) {
+  if (typeof candidateUrl !== "string") return null;
+  const trimmed = candidateUrl.trim();
+  if (!trimmed || trimmed.length > 2048) return null;
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  if (parsed.username || parsed.password) return null;
+  return parsed.href;
+}
+
+module.exports = { isTrustedKForgeOrigin, toSafeExternalHttpUrl };

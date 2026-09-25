@@ -10,6 +10,7 @@ import type {
   ProviderType,
 } from "../../shared/providerCommandCenter";
 import { createCredentialVault, credentialDisplay, maskWithSuffix, migrateLegacyPlaintextSecrets } from "./credentialVault";
+import { isProviderRefreshEnabled } from "./localPlatform";
 import { getAdapter, type AdapterContext } from "./providerAdapters";
 
 export interface CustomProviderInput {
@@ -57,6 +58,20 @@ interface DiscoveryFile {
   source?: string;
 }
 
+const PROVIDER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
+
+function assertProviderId(value: string): string {
+  const id = value.trim();
+  if (!PROVIDER_ID_PATTERN.test(id) || id.includes("..")) throw new Error("Invalid provider identifier.");
+  return id;
+}
+
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+
 const BUILTIN: Array<{ id: string; name: string; kind: ProviderAdapterKind; type: ProviderType; baseUrl: string }> = [
   { id: "openai", name: "OpenAI", kind: "openai", type: "builtin-cloud", baseUrl: "https://api.openai.com/v1" },
   { id: "anthropic", name: "Anthropic", kind: "anthropic", type: "builtin-cloud", baseUrl: "https://api.anthropic.com/v1" },
@@ -72,7 +87,7 @@ function providersPath(root: string) {
 }
 
 function discoveryPath(root: string, providerId: string) {
-  return path.join(root, ".kforge", `provider-models-${providerId}.json`);
+  return path.join(root, ".kforge", `provider-models-${assertProviderId(providerId)}.json`);
 }
 
 function sessionsPath(root: string) {
@@ -134,7 +149,7 @@ function defaultStoredProvider(source: { id: string; name: string; kind: Provide
 
 export async function credentialStatus(root: string, providerId: string) {
   await ensureMigrated(root);
-  return credentialDisplay(root, providerId);
+  return credentialDisplay(root, assertProviderId(providerId));
 }
 
 export async function listProviderSummaries(root: string): Promise<ProviderSummary[]> {
@@ -194,7 +209,9 @@ export async function listProviderSummaries(root: string): Promise<ProviderSumma
 }
 
 export function headerVaultKey(providerId: string, headerName: string) {
-  return `headers.${providerId}.${headerName.trim().toLowerCase()}`;
+  const name = headerName.trim().toLowerCase();
+  if (!/^[!#$%&'*+.^_`|~0-9a-z-]+$/.test(name)) throw new Error("Invalid provider header name.");
+  return `headers.${assertProviderId(providerId)}.${name}`;
 }
 
 export async function customHeadersFor(root: string, providerId: string, names: string[]) {
@@ -247,7 +264,7 @@ export async function upsertCustomProvider(root: string, input: CustomProviderIn
     name: input.name.trim().slice(0, 80),
     kind: "openai-compatible",
     type: "custom",
-    baseUrl: input.baseUrl.trim().replace(/\/+$/, ""),
+    baseUrl: trimTrailingSlashes(input.baseUrl.trim()),
     organization: input.organization?.trim() ? input.organization.trim().slice(0, 120) : null,
     customHeaderNames,
     modelsEndpointOverride: input.modelsEndpoint?.trim() || null,
@@ -275,10 +292,11 @@ export async function upsertCustomProvider(root: string, input: CustomProviderIn
 }
 
 async function ensureProviderMetadata(root: string, providerId: string) {
+  const safeProviderId = assertProviderId(providerId);
   const file = await readJson<ProviderFile>(providersPath(root), { providers: [] });
-  const existing = file.providers.find((entry) => entry.id === providerId);
+  const existing = file.providers.find((entry) => entry.id === safeProviderId);
   if (existing) return { file, existing };
-  const builtin = BUILTIN.find((entry) => entry.id === providerId);
+  const builtin = BUILTIN.find((entry) => entry.id === safeProviderId);
   if (!builtin) throw new Error("Unknown provider.");
   const created = defaultStoredProvider(builtin);
   file.providers.push(created);
@@ -388,7 +406,28 @@ async function markDiscovery(root: string, providerId: string, state: ProviderSu
   await writeJson(providersPath(root), file);
 }
 
+/**
+ * Provider contact policy is resolved without touching the credential vault, so
+ * a policy refusal never decrypts a secret or opens a socket.
+ */
+async function providerContactType(root: string, providerId: string): Promise<ProviderType> {
+  const safeProviderId = assertProviderId(providerId);
+  await ensureMigrated(root);
+  const file = await readJson<ProviderFile>(providersPath(root), { providers: [] });
+  const stored = file.providers.find((entry) => entry.id === safeProviderId);
+  const builtin = BUILTIN.find((entry) => entry.id === safeProviderId);
+  if (!stored && !builtin) throw new Error("Unknown provider.");
+  return stored?.type || builtin?.type || "custom";
+}
+
+async function assertProviderContactAllowed(root: string, type: ProviderType, providerId: string) {
+  if (type === "local") return;
+  if (await isProviderRefreshEnabled(root)) return;
+  throw new Error(`BLOCKED: Cloud provider '${providerId}' contact requires Online mode. Offline, Local-First and Online-Optional modes block provider requests. No request was made.`);
+}
+
 export async function discoverProviderModels(root: string, providerId: string, fetcher: typeof fetch = fetch): Promise<{ models: CanonicalModel[]; discoveryState: ProviderSummary["discoveryState"]; cached: boolean }> {
+  await assertProviderContactAllowed(root, await providerContactType(root, providerId), providerId);
   const { ctx, kind } = await providerAdapterContext(root, providerId);
   const adapter = getAdapter(kind);
   const validation = await adapter.validateConfiguration(ctx);
@@ -405,13 +444,14 @@ export async function discoverProviderModels(root: string, providerId: string, f
     await markDiscovery(root, providerId, "FAILED", cached.models.length, false);
     if (cached.models.length) return { models: cached.models, discoveryState: "PARTIAL", cached: true };
     const detail = error instanceof Error ? error.message : "Discovery request failed.";
-    const failure = new Error(detail.startsWith("NOT_CONFIGURED") ? detail : `PROVIDER_ERROR: ${detail}`) as Error & { errorKind?: string };
+    const failure = new Error(detail.startsWith("NOT_CONFIGURED") || detail.startsWith("BLOCKED") ? detail : `PROVIDER_ERROR: ${detail}`) as Error & { errorKind?: string };
     failure.errorKind = adapter.normalizeError(null, detail);
     throw failure;
   }
 }
 
 export async function refreshProviderModels(root: string, providerId: string, fetcher: typeof fetch = fetch) {
+  await assertProviderContactAllowed(root, await providerContactType(root, providerId), providerId);
   await fs.rm(discoveryPath(root, providerId), { force: true });
   return discoverProviderModels(root, providerId, fetcher);
 }
@@ -421,6 +461,7 @@ export async function listDiscoveredModels(root: string, providerId: string): Pr
 }
 
 export async function testProviderConnection(root: string, providerId: string, kind: ConnectionTestEvidence["kind"] = "connection", modelId: string | null = null, fetcher: typeof fetch = fetch): Promise<ConnectionTestEvidence> {
+  await assertProviderContactAllowed(root, await providerContactType(root, providerId), providerId);
   const { ctx, kind: adapterKind } = await providerAdapterContext(root, providerId);
   const adapter = getAdapter(adapterKind);
   const validation = await adapter.validateConfiguration(ctx);

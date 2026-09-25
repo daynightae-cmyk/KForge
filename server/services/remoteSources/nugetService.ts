@@ -2,7 +2,7 @@ import type { MarketplaceItem } from "../marketplaceCore";
 import type { RemoteRequestEvidence } from "./contracts";
 import { createOperationTransparency, recordRemoteContact } from "../onlineControlCenter";
 import type { OperationTransparency } from "../../../shared/workspace";
-import { isCacheFresh, readRemoteCache, remoteCacheKey, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
+import { isCacheFresh, readRemoteCache, remoteCacheKey, revalidateRemoteCache, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
 import { RemoteFetchError, safeFetchRemote, type FetchImpl, type SafeFetchPolicy } from "./fetchPolicy";
 import { getRemoteSource } from "./registry";
 import {
@@ -139,7 +139,7 @@ export async function searchNugetPackages(input: ServiceInput & { q: string; ski
     const completedAt = new Date().toISOString();
     await recordContact(input.workspaceRoot, startedAt, true, DESTINATION_SEARCH, null);
     if (fetched.notModified && cached) {
-      await writeRemoteCache(input.workspaceRoot, { ...cached, fetchedAt: completedAt, etag: fetched.headers.etag ?? cached.etag }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
       const parsed = parseNugetSearchResponse(JSON.stringify(cached.data));
       const items = parsed.packages.map((pkg) => nugetPackageToMarketplaceItem(normalizeNugetSearchRecord(pkg, completedAt, "CACHE", "CURRENT"), completedAt));
       return {
@@ -216,7 +216,9 @@ export async function getNugetRegistration(input: ServiceInput & { id: string })
     const entries = parseNugetRegistrationResponse(rawText);
     const versions = entries.map((e) => e.version || "").filter(Boolean);
     const items = entries.map((e) => nugetPackageToMarketplaceItem(normalizeNugetCatalogEntry(e, fetched.notModified && cached ? cached.fetchedAt : completedAt, fetched.notModified ? "CACHE" : "LIVE", "CURRENT", versions), completedAt));
-    if (!fetched.notModified) {
+    if (fetched.notModified && cached) {
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
+    } else if (!fetched.notModified) {
       await writeRemoteCache(input.workspaceRoot, { sourceId: NUGET_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: JSON.parse(fetched.text) as unknown }).catch(() => undefined);
     }
     return {

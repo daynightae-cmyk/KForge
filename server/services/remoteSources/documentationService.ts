@@ -1,7 +1,7 @@
 import type { RemoteRequestEvidence } from "./contracts";
 import { createOperationTransparency, recordRemoteContact } from "../onlineControlCenter";
 import type { OperationTransparency } from "../../../shared/workspace";
-import { isCacheFresh, readRemoteCache, remoteCacheKey, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
+import { isCacheFresh, readRemoteCache, remoteCacheKey, revalidateRemoteCache, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
 import { RemoteFetchError, safeFetchRemote, type FetchImpl, type SafeFetchPolicy } from "./fetchPolicy";
 import { getRemoteSource } from "./registry";
 import {
@@ -306,7 +306,7 @@ export async function refreshDocumentation(input: ServiceInput & { sourceId: str
         { sourceId: REMOTE_DOC_SOURCE_ID, key: cacheKeyFor(source.id), url: source.url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: { text } satisfies StoredDoc },
       ).catch(() => undefined);
     } else if (cached) {
-      await writeRemoteCache(input.workspaceRoot, { ...cached, fetchedAt: completedAt, etag: fetched.headers.etag ?? cached.etag }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
     }
     return {
       record: buildDocumentationRecord({

@@ -92,6 +92,21 @@ export async function writeRemoteCache(
   return stored;
 }
 
+export async function revalidateRemoteCache(
+  workspaceRoot: string,
+  entry: RemoteCacheEntry,
+  fetchedAt: string,
+  headers: { etag?: string; lastModified?: string; cacheControl?: string },
+): Promise<RemoteCacheEntry> {
+  return writeRemoteCache(workspaceRoot, {
+    ...entry,
+    fetchedAt,
+    etag: headers.etag ?? entry.etag,
+    lastModified: headers.lastModified ?? entry.lastModified,
+    cacheControl: headers.cacheControl ?? entry.cacheControl,
+  });
+}
+
 async function evictOldest(workspaceRoot: string, sourceId: RemoteSourceId, maxEntries: number): Promise<void> {
   const dir = sourceDir(workspaceRoot, sourceId);
   const files = (await fs.readdir(dir).catch(() => [] as string[])).filter((file) => file.endsWith(".json"));

@@ -1,7 +1,7 @@
 import type { RemoteRequestEvidence } from "./contracts";
 import { createOperationTransparency, recordRemoteContact } from "../onlineControlCenter";
 import type { OperationTransparency } from "../../../shared/workspace";
-import { isCacheFresh, readRemoteCache, remoteCacheKey, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
+import { isCacheFresh, readRemoteCache, remoteCacheKey, revalidateRemoteCache, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
 import { RemoteFetchError, safeFetchRemote, type FetchImpl, type SafeFetchPolicy } from "./fetchPolicy";
 import { getRemoteSource } from "./registry";
 import {
@@ -232,7 +232,7 @@ export async function listKforgeReleases(
     const completedAt = new Date().toISOString();
     await recordContact(input.workspaceRoot, startedAt, true, null);
     if (fetched.notModified && cached) {
-      await writeRemoteCache(input.workspaceRoot, { ...cached, fetchedAt: completedAt, etag: fetched.headers.etag ?? cached.etag }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
       const releases = normalizeAll(cached.data, completedAt, "CACHE", "CURRENT");
       return {
         releases,
@@ -382,7 +382,9 @@ export async function getKforgeRelease(input: ServiceInput & { tag: string }): P
       fetched.notModified ? "CACHE" : "LIVE",
       "CURRENT",
     );
-    if (!fetched.notModified) {
+    if (fetched.notModified && cached) {
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
+    } else if (!fetched.notModified) {
       await writeRemoteCache(
         input.workspaceRoot,
         { sourceId: KFORGE_UPDATES_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: JSON.parse(fetched.text) as unknown },

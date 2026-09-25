@@ -99,7 +99,7 @@ export default function PersistentPreviewDock({ project, fullWorkbenchActive, in
     const index = projectId ? Math.min(dock.routeIndexes[projectId] || 0, history.length - 1) : 0;
     setRouteInput(history[index] || "/");
     if (projectId) void load().catch((error) => setNotice(error instanceof Error ? error.message : "Preview evidence unavailable."));
-  }, [projectId, load]);
+  }, [dock.routes, dock.routeIndexes, projectId, load]);
 
   useEffect(() => {
     const listener = (event: Event) => {
@@ -121,7 +121,7 @@ export default function PersistentPreviewDock({ project, fullWorkbenchActive, in
 
   useEffect(() => {
     if (!endpoint || !data || !["starting", "running"].includes(data.state)) return;
-    const timer = window.setInterval(() => void fetchJson<PreviewResponse>(`${endpoint}/health`, { method: "POST" }).then((result) => setData(result.preview)).catch(() => undefined), 2_500);
+    const timer = window.setInterval(() => void fetchJson<PreviewResponse>(`${endpoint}/health`, { method: "POST" }).then((result) => { if (!document.hidden) setData(result.preview); }).catch(() => undefined), 2_500);
     return () => window.clearInterval(timer);
   }, [data?.state, endpoint]);
 

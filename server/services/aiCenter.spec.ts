@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkForModelUpdates, generateWithCloudAI, getModelCenter, getModelChangelog, getModelCompatibility, installModelUpdate, listCloudAIProviders, setActiveModel, verifyModelUpdate, type CloudAIProviderId } from "./aiCenter";
@@ -7,7 +8,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("KForge Model Center", () => {
   it("exposes local model families while marking unavailable remote update data as UNKNOWN", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-model-center-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-model-center-"));
     try {
       const center = await getModelCenter(workspaceRoot);
       const qwenFamily = center.families.find((family) => family.family === "Qwen2.5-Coder");
@@ -20,7 +21,7 @@ describe("KForge Model Center", () => {
   }, 10_000);
 
   it("exposes a truthful blocked update workflow when no remote registry adapter is configured", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-model-updates-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-model-updates-"));
     try {
       const update = await checkForModelUpdates(workspaceRoot, "qwen2.5-coder:3b");
       const changelog = await getModelChangelog(workspaceRoot, "qwen2.5-coder:3b");
@@ -72,7 +73,7 @@ describe("optional cloud AI providers", () => {
   it("never activates a configured cloud provider as the local default model", async () => {
     vi.stubEnv("OPENAI_API_KEY", "activation-secret");
     vi.stubEnv("KFORGE_OPENAI_MODEL", "test-model");
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-cloud-activation-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-cloud-activation-"));
     try {
       await expect(setActiveModel(workspaceRoot, "openai", "test-model")).rejects.toThrow("not currently available locally");
       await expect(fs.access(path.join(workspaceRoot, ".kforge", "ai-settings.json"))).rejects.toThrow();

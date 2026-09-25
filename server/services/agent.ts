@@ -186,11 +186,46 @@ export async function evaluatePatchQuality(projectPath: string, patch: AgentPatc
   return { ok: checks.every((entry) => entry.ok), file: safe.relative, occurrences, checks };
 }
 
+function isInsideRealPath(realRoot: string, realTarget: string): boolean {
+  const relative = path.relative(realRoot, realTarget);
+  if (relative === "") return true;
+  if (path.isAbsolute(relative)) return false;
+  return !relative.split(path.sep)[0].startsWith("..");
+}
+
+/**
+ * A patch write must stay inside the project even when a path component is a
+ * symlink or junction, so the real target of the file (or of its nearest
+ * existing parent) is compared against the real project root.
+ */
+async function assertRealPathContained(projectPath: string, resolved: string) {
+  const realRoot = await fs.realpath(projectPath);
+  let realTarget = resolved;
+  try {
+    realTarget = await fs.realpath(resolved);
+  } catch {
+    let directory = path.dirname(resolved);
+    for (;;) {
+      try {
+        const realDirectory = await fs.realpath(directory);
+        realTarget = path.join(realDirectory, path.relative(directory, resolved));
+        break;
+      } catch {
+        const parent = path.dirname(directory);
+        if (parent === directory) return;
+        directory = parent;
+      }
+    }
+  }
+  if (!isInsideRealPath(realRoot, realTarget)) throw new Error("Agent file selection resolved outside the project root.");
+}
+
 export async function validateAndApplyPatch(projectPath: string, patch: AgentPatch) {
   if (patch.risk === "blocked") throw new Error("Blocked patches cannot be applied.");
   const gate = await evaluatePatchQuality(projectPath, patch);
   if (!gate.ok) throw new Error(`Patch Quality Gate rejected the patch: ${gate.checks.filter((entry) => !entry.ok).map((entry) => entry.name).join(", ")}.`);
   const safe = safeFile(projectPath, patch.file);
+  await assertRealPathContained(projectPath, safe.resolved);
   const source = await fs.readFile(safe.resolved, "utf8");
   await fs.writeFile(safe.resolved, source.replace(patch.oldText, patch.newText), "utf8");
   return { file: safe.relative, changed: true, qualityGate: gate };

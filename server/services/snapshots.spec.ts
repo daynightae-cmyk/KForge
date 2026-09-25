@@ -31,6 +31,18 @@ describe("KForge snapshots", () => {
     }
   });
 
+  it("rejects snapshot identifiers that could escape the snapshot store", async () => {
+    const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-snapshot-traversal-"));
+    const outside = path.join(root, "outside.json");
+    try {
+      await fs.writeFile(outside, "keep", "utf8");
+      await expect(restoreSnapshot(root, "../outside")).rejects.toThrow(/snapshot identifier/i);
+      expect(await fs.readFile(outside, "utf8")).toBe("keep");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true, maxRetries: 4, retryDelay: 75 });
+    }
+  });
+
   it("restores a non-existent snapshotted file by removing only that file", async () => {
     const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-snapshot-absent-"));
     const generated = path.join(root, "generated.txt");

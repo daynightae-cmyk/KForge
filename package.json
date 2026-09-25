@@ -108,7 +108,6 @@
     "react-hook-form": "^7.88.0",
     "react-resizable-panels": "^2.1.9",
     "react-router-dom": "7.18.4",
-    "recharts": "^2.12.7",
     "serverless-http": "^3.2.0",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.1",

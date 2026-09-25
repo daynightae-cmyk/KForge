@@ -2,7 +2,7 @@ import type { MarketplaceItem } from "../marketplaceCore";
 import type { RemoteRequestEvidence } from "./contracts";
 import { createOperationTransparency, recordRemoteContact } from "../onlineControlCenter";
 import type { OperationTransparency } from "../../../shared/workspace";
-import { isCacheFresh, readRemoteCache, remoteCacheKey, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
+import { isCacheFresh, readRemoteCache, remoteCacheKey, revalidateRemoteCache, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
 import { RemoteFetchError, safeFetchRemote, type FetchImpl, type SafeFetchPolicy } from "./fetchPolicy";
 import { getRemoteSource } from "./registry";
 import {
@@ -162,7 +162,7 @@ export async function searchNpmPackages(input: ServiceInput & { text: string; si
     const completedAt = new Date().toISOString();
     await recordContact(input.workspaceRoot, startedAt, true, null);
     if (fetched.notModified && cached) {
-      await writeRemoteCache(input.workspaceRoot, { ...cached, fetchedAt: completedAt, etag: fetched.headers.etag ?? cached.etag }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
       const parsed = parseNpmSearchResponse(JSON.stringify(cached.data));
       const items = parsed.packages.map((pkg) => npmPackageToMarketplaceItem(normalizeNpmSearchRecord(pkg, completedAt, "CACHE", "CURRENT"), completedAt));
       return {
@@ -233,7 +233,9 @@ export async function getNpmPackage(input: ServiceInput & { name: string }): Pro
     await recordContact(input.workspaceRoot, startedAt, true, null);
     const rawText = fetched.notModified && cached ? JSON.stringify(cached.data) : fetched.text;
     const normalized = normalizeNpmPackage(parseNpmPackageResponse(rawText), fetched.notModified && cached ? cached.fetchedAt : completedAt, fetched.notModified ? "CACHE" : "LIVE", "CURRENT");
-    if (!fetched.notModified) {
+    if (fetched.notModified && cached) {
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
+    } else if (!fetched.notModified) {
       await writeRemoteCache(input.workspaceRoot, { sourceId: NPM_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: JSON.parse(fetched.text) as unknown }, ).catch(() => undefined);
     }
     return {
@@ -309,7 +311,9 @@ export async function getNpmVersion(input: ServiceInput & { name: string; versio
     const versionRecord = parseNpmVersionResponse(rawText);
     const pkgRecord = { name, versions: { [version]: versionRecord }, "dist-tags": { latest: version } } as unknown as Parameters<typeof normalizeNpmPackage>[0];
     const normalized = normalizeNpmPackage(pkgRecord, fetched.notModified && cached ? cached.fetchedAt : completedAt, fetched.notModified ? "CACHE" : "LIVE", "CURRENT", version);
-    if (!fetched.notModified) {
+    if (fetched.notModified && cached) {
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
+    } else if (!fetched.notModified) {
       await writeRemoteCache(input.workspaceRoot, { sourceId: NPM_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: JSON.parse(fetched.text) as unknown }, ).catch(() => undefined);
     }
     return {

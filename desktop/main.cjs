@@ -2,7 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, shell, session } = require("electro
 const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
-const { isTrustedKForgeOrigin } = require("./trustOrigin.cjs");
+const { isTrustedKForgeOrigin, toSafeExternalHttpUrl } = require("./trustOrigin.cjs");
 
 const PRODUCT_NAME = "KNOuX Forge";
 const DESKTOP_CHANNELS = new Set(["kforge:runtime"]);
@@ -106,13 +106,15 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    const external = toSafeExternalHttpUrl(url);
+    if (external) void shell.openExternal(external);
     return { action: "deny" };
   });
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (productionServer && isTrustedKForgeOrigin(url, productionServer.url)) return;
     event.preventDefault();
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    const external = toSafeExternalHttpUrl(url);
+    if (external) void shell.openExternal(external);
   });
   // Electron 44 exposes console-message as one details object. Keeping this
   // listener single-argument avoids the deprecated legacy level/message/line/sourceId signature.
@@ -208,6 +210,9 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.handle("kforge:runtime", (event) => {
     if (!DESKTOP_CHANNELS.has(event.channel)) throw new Error("Desktop IPC channel is not allowed.");
+    if (!productionServer) throw new Error("Desktop runtime metadata is unavailable before the local engine is ready.");
+    const senderUrl = event.senderFrame && typeof event.senderFrame.url === "string" ? event.senderFrame.url : "";
+    if (!isTrustedKForgeOrigin(senderUrl, productionServer.url)) throw new Error("Desktop IPC sender is not the trusted KForge origin.");
     return desktopMetadata();
   });
 

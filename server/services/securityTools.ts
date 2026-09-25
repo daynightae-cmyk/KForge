@@ -88,6 +88,8 @@ async function probedVersion(id: SecurityToolId, executable: string): Promise<Ve
   return version;
 }
 
+const SHELL_METACHARACTERS = /[&|<>^%!()"\r\n]/;
+
 async function execute(executable: string, args: string[], cwd?: string, timeout = 90_000) {
   try {
     const npmCli = process.platform === "win32" && /^npm\.cmd$/i.test(path.basename(executable)) ? path.join(path.dirname(executable), "node_modules", "npm", "bin", "npm-cli.js") : undefined;
@@ -95,6 +97,11 @@ async function execute(executable: string, args: string[], cwd?: string, timeout
     const selectedExecutable = useNpmCli ? process.execPath : executable;
     const selectedArgs = useNpmCli ? [npmCli!, ...args] : args;
     const windowsCommandShim = process.platform === "win32" && !useNpmCli && /\.(?:cmd|bat)$/i.test(executable);
+    // A .cmd/.bat shim is only executable through cmd.exe, so a project-derived
+    // argument would otherwise be a command-injection surface. Refuse instead.
+    if (windowsCommandShim && selectedArgs.some((argument) => SHELL_METACHARACTERS.test(argument))) {
+      return { ok: false, code: 1, stdout: "", stderr: "Refused: a project-derived argument contained shell metacharacters and cannot be passed through a Windows command shim." };
+    }
     const result = await execFileAsync(selectedExecutable, selectedArgs, { cwd, timeout, windowsHide: true, maxBuffer: 2_500_000, shell: windowsCommandShim });
     return { ok: true, code: 0, stdout: String(result.stdout || "").slice(-maxCapturedOutput), stderr: String(result.stderr || "").slice(-maxCapturedOutput) };
   } catch (cause: unknown) {
@@ -103,12 +110,14 @@ async function execute(executable: string, args: string[], cwd?: string, timeout
   }
 }
 
+const SAFE_SEMGREP_RULE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.ya?ml$/i;
+
 async function localSemgrepConfig(projectPath: string) {
   const direct = [".semgrep.yml", ".semgrep.yaml", "semgrep.yml", "semgrep.yaml"];
   for (const candidate of direct) if (await isFile(path.join(projectPath, candidate))) return candidate;
   try {
     const entries = await fs.readdir(path.join(projectPath, ".semgrep"));
-    const rule = entries.find((entry) => /\.ya?ml$/i.test(entry));
+    const rule = entries.find((entry) => SAFE_SEMGREP_RULE_FILE.test(entry));
     return rule ? path.posix.join(".semgrep", rule) : undefined;
   } catch { return undefined; }
 }

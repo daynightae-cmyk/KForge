@@ -16,6 +16,14 @@ export interface SnapshotManifest {
   files: SnapshotFile[];
 }
 
+const SNAPSHOT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+function assertSnapshotId(value: string): string {
+  const id = value.trim();
+  if (!SNAPSHOT_ID_PATTERN.test(id) || id.includes("..")) throw new Error("Snapshot identifier is invalid.");
+  return id;
+}
+
 function snapshotDirectory(projectPath: string) {
   return path.join(projectPath, ".kforge", "snapshots");
 }
@@ -57,8 +65,10 @@ export async function listSnapshots(projectPath: string): Promise<SnapshotManife
 }
 
 export async function restoreSnapshot(projectPath: string, snapshotId: string): Promise<SnapshotManifest> {
-  const manifestPath = path.join(snapshotDirectory(projectPath), snapshotId, "manifest.json");
+  const safeSnapshotId = assertSnapshotId(snapshotId);
+  const manifestPath = path.join(snapshotDirectory(projectPath), safeSnapshotId, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as SnapshotManifest;
+  if (manifest.id !== safeSnapshotId) throw new Error("Snapshot manifest identity does not match the requested snapshot.");
   if (path.resolve(manifest.projectPath) !== path.resolve(projectPath)) throw new Error("Snapshot does not belong to this project.");
   for (const file of manifest.files) {
     const safe = resolveSafeProjectFile(projectPath, file.path);

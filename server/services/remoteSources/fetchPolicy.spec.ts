@@ -65,6 +65,26 @@ describe("safeFetchRemote network policy", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("rejects plaintext HTTP even for literal public addresses", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({}));
+    await expect(
+      safeFetchRemote("http://93.184.216.34/metadata", basePolicy({ allowedOrigins: ["http://93.184.216.34"] }), fetchImpl),
+    ).rejects.toMatchObject({ code: "ORIGIN_NOT_ALLOWED" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("does not let a loopback exception disable DNS protection for remote hosts", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({}));
+    await expect(
+      safeFetchRemote(
+        "https://metadata.example/feed",
+        basePolicy({ allowedOrigins: ["https://metadata.example"], allowLoopback: true, hostResolver: async () => [{ address: "10.0.0.8", family: 4 }] }),
+        fetchImpl,
+      ),
+    ).rejects.toMatchObject({ code: "SSRF_BLOCKED" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("never sends credentials embedded in URLs", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({}));
     await expect(

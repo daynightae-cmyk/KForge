@@ -1,16 +1,24 @@
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import { containsPlaintextSecret, maskApiKey, normalizeModelRecord, normalizeProviderError, redactSensitiveHeaders } from "../../shared/providerCommandCenter";
 import { isTrustedKForgeOrigin } from "../../shared/trustOrigin";
-import { createProviderSession, discoverProviderModels, listProviderSummaries, revealProviderKey, testProviderConnection, upsertCustomProvider } from "./providerCommandCenter";
+import { createProviderSession, discoverProviderModels, listDiscoveredModels, listProviderSummaries, refreshProviderModels, revealProviderKey, testProviderConnection, upsertCustomProvider } from "./providerCommandCenter";
+import { setLocalPlatformMode } from "./localPlatform";
 
 async function workspaceRoot() {
-  return fs.mkdtemp(path.join(process.cwd(), "kforge-provider-cc-"));
+  return fs.mkdtemp(path.join(os.tmpdir(), "kforge-provider-cc-"));
+}
+
+async function onlineWorkspaceRoot() {
+  const root = await workspaceRoot();
+  await setLocalPlatformMode(root, "online");
+  return root;
 }
 
 describe("provider command center secret boundary", () => {
-  it("masks credentials and never leaks plaintext in summaries", async () => {
+  it("masks credentials and never leaks plaintext in summaries", { timeout: 30_000 }, async () => {
     const root = await workspaceRoot();
     try {
       const { provider } = await upsertCustomProvider(root, {
@@ -40,8 +48,8 @@ describe("provider command center secret boundary", () => {
     expect(headers["Content-Type"]).toBe("application/json");
   });
 
-  it("discovers models through a fake OpenAI-compatible server without inventing capabilities", async () => {
-    const root = await workspaceRoot();
+  it("discovers models through a fake OpenAI-compatible server without inventing capabilities", { timeout: 30_000 }, async () => {
+    const root = await onlineWorkspaceRoot();
     try {
       const { provider } = await upsertCustomProvider(root, {
         name: "FakeLab",
@@ -63,12 +71,12 @@ describe("provider command center secret boundary", () => {
     }
   });
 
-  it("normalizes provider errors and bounds connection tests without project code", async () => {
+  it("normalizes provider errors and bounds connection tests without project code", { timeout: 30_000 }, async () => {
     expect(normalizeProviderError(401, "Invalid API key")).toBe("AUTH_FAILED");
     expect(normalizeProviderError(429, "Rate limit exceeded")).toBe("RATE_LIMITED");
     expect(normalizeProviderError(null, "fetch failed")).toBe("NETWORK_ERROR");
     expect(normalizeModelRecord("p1", { id: "m1" }, new Date().toISOString()).capabilities.text).toBe("SUPPORTED");
-    const root = await workspaceRoot();
+    const root = await onlineWorkspaceRoot();
     try {
       const { provider } = await upsertCustomProvider(root, {
         name: "TimeoutLab",
@@ -114,6 +122,62 @@ describe("provider command center secret boundary", () => {
       });
       expect(session.status).toBe("READY");
       expect(session.cloudDisclosure).toBe(true);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+  it("refuses cloud provider contact outside Online mode without opening a socket", { timeout: 30_000 }, async () => {
+    const root = await workspaceRoot();
+    try {
+      const { provider } = await upsertCustomProvider(root, {
+        name: "OfflineGateLab",
+        baseUrl: "https://provider.example/v1",
+        apiKey: "sk-offline-gate-secret-1234567",
+      });
+      const fetcher = (async () => new Response(JSON.stringify({ data: [] }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+      for (const mode of ["offline", "local-first", "online-optional"] as const) {
+        await setLocalPlatformMode(root, mode);
+        await expect(discoverProviderModels(root, provider.id, fetcher)).rejects.toThrow(/requires Online mode/);
+        await expect(testProviderConnection(root, provider.id, "connection", null, fetcher)).rejects.toThrow(/requires Online mode/);
+      }
+      await expect(listDiscoveredModels(root, provider.id)).resolves.toEqual([]);
+      await setLocalPlatformMode(root, "online");
+      await expect(discoverProviderModels(root, provider.id, fetcher)).resolves.toMatchObject({ discoveryState: "PARTIAL", cached: false });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps cached discovery evidence when a policy-blocked refresh is refused", { timeout: 30_000 }, async () => {
+    const root = await onlineWorkspaceRoot();
+    try {
+      const { provider } = await upsertCustomProvider(root, {
+        name: "BlockedRefreshLab",
+        baseUrl: "https://provider.example/v1",
+        apiKey: "sk-blocked-refresh-secret-1234",
+      });
+      const fetcher = (async () => new Response(JSON.stringify({ data: [{ id: "cached-alpha" }] }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+      await discoverProviderModels(root, provider.id, fetcher);
+      expect(await listDiscoveredModels(root, provider.id)).toHaveLength(1);
+
+      for (const mode of ["offline", "local-first", "online-optional"] as const) {
+        await setLocalPlatformMode(root, mode);
+        await expect(refreshProviderModels(root, provider.id, fetcher)).rejects.toThrow(/requires Online mode/);
+        expect(await listDiscoveredModels(root, provider.id)).toEqual([expect.objectContaining({ id: "cached-alpha" })]);
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects provider storage identifiers before filesystem access", async () => {
+    const root = await workspaceRoot();
+    try {
+      const sentinel = path.join(root, "outside.json");
+      await fs.writeFile(sentinel, "keep", "utf8");
+      await expect(listDiscoveredModels(root, "../outside")).rejects.toThrow(/provider identifier/i);
+      await expect(refreshProviderModels(root, "../outside")).rejects.toThrow(/provider identifier/i);
+      expect(await fs.readFile(sentinel, "utf8")).toBe("keep");
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

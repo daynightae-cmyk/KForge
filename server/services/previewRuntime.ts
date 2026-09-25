@@ -68,6 +68,7 @@ const MAX_LOG_LINES = 300;
 const MAX_LOG_LINE_LENGTH = 1_500;
 const MAX_HISTORY_ITEMS = 100;
 const MAX_HEALTH_REDIRECTS = 3;
+const MAX_PREVIEW_BODY_BYTES = 2 * 1024 * 1024;
 
 function baseStatus(projectId: string): PreviewStatus {
   return {
@@ -149,6 +150,34 @@ function isLoopbackHostname(hostname: string) {
   return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1" || normalized === "[::1]";
 }
 
+export async function readBoundedPreviewBody(response: Response): Promise<string> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_PREVIEW_BODY_BYTES) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error(`Preview response exceeds the ${MAX_PREVIEW_BODY_BYTES} byte inspection bound.`);
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > MAX_PREVIEW_BODY_BYTES) throw new Error(`Preview response exceeds the ${MAX_PREVIEW_BODY_BYTES} byte inspection bound.`);
+    return text;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > MAX_PREVIEW_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error(`Preview response exceeds the ${MAX_PREVIEW_BODY_BYTES} byte inspection bound.`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+}
+
 async function fetchLoopbackOnly(value: string) {
   const initial = new URL(value);
   if (initial.protocol !== "http:" || !isLoopbackHostname(initial.hostname)) throw new Error(`Preview health probe refused non-loopback URL ${initial.origin}.`);
@@ -200,7 +229,7 @@ async function probe(status: PreviewStatus) {
     const contentType = response.headers.get("content-type") || "";
     const routes = new Set<string>(["/"]);
     if (contentType.includes("text/html")) {
-      const html = await response.text();
+      const html = await readBoundedPreviewBody(response);
       const previewOrigin = new URL(status.url).origin;
       for (const match of html.matchAll(/href=["']([^"'#?]+)["']/gi)) {
         try {
@@ -366,7 +395,7 @@ export async function inspectPreviewDocument(projectId: string, route = "/"): Pr
     const { response, finalUrl } = await fetchLoopbackOnly(target.toString());
     const contentType = response.headers.get("content-type") || "unknown";
     if (!contentType.toLowerCase().includes("text/html")) return { ...base, url: finalUrl, httpStatus: response.status, contentType, error: "The selected route did not return an HTML document." };
-    const html = await response.text();
+    const html = await readBoundedPreviewBody(response);
     const images = countMatches(html, /<img\b/gi);
     const imagesWithAlt = countMatches(html, /<img\b[^>]*\balt\s*=\s*["'][^"']*["'][^>]*>/gi);
     const controls = countMatches(html, /<(?:button|input|select|textarea)\b/gi);

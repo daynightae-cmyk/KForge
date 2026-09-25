@@ -51,6 +51,18 @@ function contactPath(workspaceRoot: string) {
   return path.join(workspaceRoot, ".kforge", "network-contacts.json");
 }
 
+export function isGitHubRemoteUrl(value: string | null | undefined): boolean {
+  const candidate = value?.trim();
+  if (!candidate) return false;
+  if (/^git@github\.com:[^\s]+$/i.test(candidate)) return true;
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "https:" && parsed.hostname.toLowerCase() === "github.com" && !parsed.username && !parsed.password;
+  } catch {
+    return false;
+  }
+}
+
 function redactDestination(value: string | null | undefined) {
   if (!value) return null;
   try {
@@ -61,7 +73,7 @@ function redactDestination(value: string | null | undefined) {
     parsed.hash = "";
     return parsed.toString().replace(/\/$/, "");
   } catch {
-    return value.replace(/(token|password|secret|authorization)=([^\s&]+)/gi, "$1=[REDACTED]").slice(0, 500);
+    return value.replace(/(api[_-]?key|token|password|secret|authorization|access[_-]?token|refresh[_-]?token)=([^\s&]+)/gi, "$1=[REDACTED]").slice(0, 500);
   }
 }
 
@@ -197,7 +209,7 @@ export async function getOnlineControlCenter(input: {
   const now = new Date(inspectedAt).getTime();
   const contacts = (await readContacts(input.workspaceRoot)).contacts;
   const online = input.platform.policy.externalMetadataReads;
-  const githubConfigured = input.project?.remoteUrl?.includes("github.com") === true;
+  const githubConfigured = isGitHubRemoteUrl(input.project?.remoteUrl);
   const repositoryConfigured = Boolean(input.project?.remoteUrl);
   const adapters = listMarketplaceRegistryAdapters(online);
   const marketplaceConfigured = adapters.some((adapter) => adapter.kind === "remote" && adapter.configured);
