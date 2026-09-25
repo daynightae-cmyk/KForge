@@ -15,11 +15,11 @@ describe("WinGet response validation", () => {
   it("parses search with packages", () => {
     const result = parseWingetSearchResponse(JSON.stringify(WINGET_SEARCH_FIXTURE));
     expect(result.packages).toHaveLength(2);
-    expect(result.packages[0].path).toContain("Git.Git");
+    expect(result.packages[0].path).toBe("manifests/g/Git/Git/2.44.0");
     expect(result.totalCount).toBe(2);
   });
 
-  it("parses empty search without fabricating", () => {
+  it("filters non-version directories from search results", () => {\n    const result = parseWingetSearchResponse(JSON.stringify([\n      ...WINGET_SEARCH_FIXTURE,\n      { name: "Beta", path: "manifests/m/Microsoft/Edge/Beta", type: "dir" },\n      { name: "Canary", path: "manifests/m/Microsoft/Edge/Canary", type: "dir" },\n    ]));\n    expect(result.packages.map((item) => item.name)).toEqual(["2.44.0", "2.43.0"]);\n  });\n\n  it("parses empty search without fabricating", () => {
     expect(parseWingetSearchResponse(JSON.stringify([])).packages).toEqual([]);
   });
 
