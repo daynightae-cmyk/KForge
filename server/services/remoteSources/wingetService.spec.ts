@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getWingetManifest, searchWingetPackages } from "./wingetService";
-import { remoteCacheKey, writeRemoteCache } from "./cacheStore";
+import { readRemoteCache, remoteCacheKey, writeRemoteCache } from "./cacheStore";
 import { RemoteFetchError } from "./fetchPolicy";
 import { WINGET_MANIFEST_FIXTURE, WINGET_SEARCH_FIXTURE } from "./adapters/fixtures/wingetFixtures";
 
@@ -19,6 +19,10 @@ function textResponse(body: string, init: { status?: number; headers?: Record<st
 
 function searchKey(q = "Git.Git"): string {
   return remoteCacheKey(["winget-community", "search", q]);
+}
+
+function manifestKey(packageId = "Git.Git", version = "2.44.0"): string {
+  return remoteCacheKey(["winget-community", "manifest", packageId.toLowerCase(), version]);
 }
 
 describe("WinGet service", () => {
@@ -91,6 +95,61 @@ describe("WinGet service", () => {
     await expect(searchWingetPackages({ workspaceRoot, networkAllowed: true, q: "", fetchImpl, hostResolver: PUBLIC_RESOLVER })).rejects.toThrow(/search query/);
     await expect(getWingetManifest({ workspaceRoot, networkAllowed: true, packageId: "no-dot", version: "1.0", fetchImpl, hostResolver: PUBLIC_RESOLVER })).rejects.toThrow();
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects a live manifest whose identity does not match the requested cache key", async () => {
+    const mismatched = WINGET_MANIFEST_FIXTURE.replace("PackageVersion: 2.44.0", "PackageVersion: 9.9.9");
+    const fetchImpl = vi.fn(async () => textResponse(mismatched));
+
+    await expect(
+      getWingetManifest({ workspaceRoot, networkAllowed: true, packageId: "Git.Git", version: "2.44.0", fetchImpl, hostResolver: PUBLIC_RESOLVER }),
+    ).rejects.toBeInstanceOf(RemoteFetchError);
+
+    expect(await readRemoteCache(workspaceRoot, "winget-community", manifestKey())).toBeNull();
+  });
+
+  it("rejects a mismatched cached manifest instead of replaying it offline", async () => {
+    const mismatched = WINGET_MANIFEST_FIXTURE.replace("PackageIdentifier: Git.Git", "PackageIdentifier: Other.Package");
+    await writeRemoteCache(workspaceRoot, {
+      sourceId: "winget-community",
+      key: manifestKey(),
+      url: "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/g/Git/Git/2.44.0/Git.Git.installer.yaml",
+      fetchedAt: new Date().toISOString(),
+      data: { text: mismatched },
+    });
+
+    await expect(
+      getWingetManifest({ workspaceRoot, networkAllowed: false, packageId: "Git.Git", version: "2.44.0", hostResolver: PUBLIC_RESOLVER }),
+    ).rejects.toBeInstanceOf(RemoteFetchError);
+  });
+
+  it("refreshes persisted manifest cache freshness after a 304 revalidation", async () => {
+    const staleAt = new Date(Date.now() - 60 * 60_000).toISOString();
+    await writeRemoteCache(workspaceRoot, {
+      sourceId: "winget-community",
+      key: manifestKey(),
+      url: "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/g/Git/Git/2.44.0/Git.Git.installer.yaml",
+      fetchedAt: staleAt,
+      etag: '"old-etag"',
+      data: { text: WINGET_MANIFEST_FIXTURE },
+    });
+
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 304, headers: { etag: '"new-etag"' } }));
+    const result = await getWingetManifest({
+      workspaceRoot,
+      networkAllowed: true,
+      packageId: "Git.Git",
+      version: "2.44.0",
+      fetchImpl,
+      hostResolver: PUBLIC_RESOLVER,
+    });
+
+    expect(result.evidence.notModified).toBe(true);
+    expect(result.evidence.freshness).toBe("CURRENT");
+    const refreshed = await readRemoteCache(workspaceRoot, "winget-community", manifestKey());
+    expect(refreshed?.fetchedAt).not.toBe(staleAt);
+    expect(Date.parse(refreshed?.fetchedAt || "")).toBeGreaterThan(Date.parse(staleAt));
+    expect(refreshed?.etag).toBe('"new-etag"');
   });
 
   it("reads manifest explicitly", async () => {

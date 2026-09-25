@@ -107,6 +107,20 @@ function durationMs(startedAt: string, completedAt: string): number {
   return Math.max(0, Date.parse(completedAt) - Date.parse(startedAt));
 }
 
+function parseRequestedManifest(text: string, packageId: string, version: string) {
+  const manifest = parseWingetManifestYaml(text);
+  const packageMatches = manifest.packageIdentifier.toLowerCase() === packageId.toLowerCase();
+  const versionMatches = manifest.packageVersion === version;
+  if (!packageMatches || !versionMatches) {
+    throw new RemoteFetchError(
+      "HTTP_ERROR",
+      "WinGet: provider manifest identity did not match the requested package and version; the response was refused and was not cached.",
+      502,
+    );
+  }
+  return manifest;
+}
+
 /** Explicit WinGet package-ID lookup through the unauthenticated GitHub Contents API. */
 export async function searchWingetPackages(input: ServiceInput & { q: string }): Promise<WingetSearchResult> {
   const startedAt = input.now ?? new Date().toISOString();
@@ -185,7 +199,7 @@ export async function getWingetManifest(input: ServiceInput & { packageId: strin
     if (cached && typeof (cached.data as { text?: unknown })?.text === "string") {
       const completedAt = new Date().toISOString();
       const text = (cached.data as { text: string }).text;
-      const manifest = parseWingetManifestYaml(text);
+      const manifest = parseRequestedManifest(text, packageId, input.version);
       const normalized = normalizeWingetManifest(manifest, cached.fetchedAt, "CACHE", "CACHED");
       return {
         item: wingetPackageToMarketplaceItem(normalized, completedAt),
@@ -200,7 +214,7 @@ export async function getWingetManifest(input: ServiceInput & { packageId: strin
   if (cached && isCacheFresh(cached, DEFAULT_CACHE_TTL_MS) && typeof (cached.data as { text?: unknown })?.text === "string") {
     const completedAt = new Date().toISOString();
     const text = (cached.data as { text: string }).text;
-    const manifest = parseWingetManifestYaml(text);
+    const manifest = parseRequestedManifest(text, packageId, input.version);
     const normalized = normalizeWingetManifest(manifest, cached.fetchedAt, "CACHE", "CACHED");
     return {
       item: wingetPackageToMarketplaceItem(normalized, completedAt),
@@ -215,9 +229,17 @@ export async function getWingetManifest(input: ServiceInput & { packageId: strin
     const completedAt = new Date().toISOString();
     await recordContact(input.workspaceRoot, startedAt, true, DESTINATION_RAW, null);
     const text = fetched.notModified && cached && typeof (cached.data as { text?: unknown })?.text === "string" ? (cached.data as { text: string }).text : fetched.text;
-    const manifest = parseWingetManifestYaml(text);
-    const normalized = normalizeWingetManifest(manifest, fetched.notModified && cached ? cached.fetchedAt : completedAt, fetched.notModified ? "CACHE" : "LIVE", "CURRENT");
-    if (!fetched.notModified) {
+    const manifest = parseRequestedManifest(text, packageId, input.version);
+    const normalized = normalizeWingetManifest(manifest, completedAt, fetched.notModified ? "CACHE" : "LIVE", "CURRENT");
+    if (fetched.notModified && cached) {
+      await writeRemoteCache(input.workspaceRoot, {
+        ...cached,
+        fetchedAt: completedAt,
+        etag: fetched.headers.etag ?? cached.etag,
+        lastModified: fetched.headers.lastModified ?? cached.lastModified,
+        cacheControl: fetched.headers.cacheControl ?? cached.cacheControl,
+      }).catch(() => undefined);
+    } else if (!fetched.notModified) {
       await writeRemoteCache(input.workspaceRoot, { sourceId: WINGET_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: { text } }).catch(() => undefined);
     }
     return {
@@ -232,7 +254,7 @@ export async function getWingetManifest(input: ServiceInput & { packageId: strin
     await recordContact(input.workspaceRoot, startedAt, false, DESTINATION_RAW, message);
     if (cached && typeof (cached.data as { text?: unknown })?.text === "string") {
       const text = (cached.data as { text: string }).text;
-      const manifest = parseWingetManifestYaml(text);
+      const manifest = parseRequestedManifest(text, packageId, input.version);
       const normalized = normalizeWingetManifest(manifest, cached.fetchedAt, "CACHE", "STALE");
       return {
         item: wingetPackageToMarketplaceItem(normalized, completedAt),
