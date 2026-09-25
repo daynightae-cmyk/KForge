@@ -107,12 +107,12 @@ function durationMs(startedAt: string, completedAt: string): number {
   return Math.max(0, Date.parse(completedAt) - Date.parse(startedAt));
 }
 
-/** Explicit WinGet search (GitHub code search). */
+/** Explicit WinGet package-ID lookup through the unauthenticated GitHub Contents API. */
 export async function searchWingetPackages(input: ServiceInput & { q: string }): Promise<WingetSearchResult> {
   const startedAt = input.now ?? new Date().toISOString();
   const source = sourceOrThrow();
   const q = validatedWingetSearch(input.q);
-  const url = buildWingetSearchUrl(WINGET_GITHUB_SEARCH_BASE, q, 20, 1);
+  const url = buildWingetSearchUrl(WINGET_GITHUB_SEARCH_BASE, q);
   const cacheKey = remoteCacheKey([WINGET_SOURCE_ID, "search", q]);
   const cached = await readRemoteCache(input.workspaceRoot, WINGET_SOURCE_ID, cacheKey);
 
