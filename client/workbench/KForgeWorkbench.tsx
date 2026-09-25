@@ -65,7 +65,7 @@ export default function KForgeWorkbench() {
   const paletteInput = useRef<HTMLInputElement | null>(null);
   const activeProject = workspace?.projects.find((project) => project.id === projectId);
   const current = activityDefinition(activity);
-  const platformMode = workspace?.localPlatform.mode || "offline";
+  const platformMode = workspace?.localPlatform.mode ?? "unavailable";
   const contextLabel = activeProject?.name || "Global context";
 
   const refreshWorkspace = async () => {
