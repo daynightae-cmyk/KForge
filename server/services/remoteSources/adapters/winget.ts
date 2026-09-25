@@ -8,12 +8,12 @@ import { missingIntegrity, unknownLicense, unverifiedSignature } from "../contra
  *
  * Source: https://github.com/microsoft/winget-pkgs
  * Docs: https://github.com/microsoft/winget-pkgs/blob/master/doc/manifest/schema/1.12.0/README.md
- * Search via GitHub search/code, detail via raw manifest YAML.
+ * Search via the unauthenticated GitHub Contents API, detail via the raw installer manifest YAML.
  * Tolerant schemas: only PackageIdentifier is required.
  */
 
 export const WINGET_SOURCE_ID = "winget-community" as const;
-export const WINGET_GITHUB_SEARCH_BASE = "https://api.github.com/search/code";
+export const WINGET_GITHUB_SEARCH_BASE = "https://api.github.com/repos/microsoft/winget-pkgs/contents";
 export const WINGET_RAW_BASE = "https://raw.githubusercontent.com/microsoft/winget-pkgs/master";
 
 const wingetSearchItemSchema = z
@@ -21,16 +21,19 @@ const wingetSearchItemSchema = z
     name: z.string().optional(),
     path: z.string().optional(),
     sha: z.string().optional(),
+    type: z.string().optional(),
     repository: z.object({ full_name: z.string().optional() }).passthrough().optional(),
   })
   .passthrough();
 
-const wingetSearchResponseSchema = z
+const wingetLegacySearchResponseSchema = z
   .object({
     total_count: z.number().optional(),
     items: z.array(wingetSearchItemSchema),
   })
   .passthrough();
+
+const wingetContentsResponseSchema = z.array(wingetSearchItemSchema);
 
 export type WingetSearchRecord = z.infer<typeof wingetSearchItemSchema>;
 
@@ -47,9 +50,15 @@ function parseJson(rawText: string, context: string): unknown {
 }
 
 export function parseWingetSearchResponse(rawText: string): { packages: WingetSearchRecord[]; totalCount?: number } {
-  const validation = wingetSearchResponseSchema.safeParse(parseJson(rawText, "search"));
-  if (!validation.success) throw new Error(errorMessage("search"));
-  return { packages: validation.data.items, totalCount: validation.data.total_count };
+  const parsed = parseJson(rawText, "search");
+  const contents = wingetContentsResponseSchema.safeParse(parsed);
+  if (contents.success) {
+    const packages = contents.data.filter((item) => item.type === undefined || item.type === "dir");
+    return { packages, totalCount: packages.length };
+  }
+  const legacy = wingetLegacySearchResponseSchema.safeParse(parsed);
+  if (!legacy.success) throw new Error(errorMessage("search"));
+  return { packages: legacy.data.items, totalCount: legacy.data.total_count };
 }
 
 // Minimal YAML field extraction for manifest (no yaml library)
@@ -126,25 +135,23 @@ export function parseWingetManifestYaml(text: string): WingetManifestFields {
   };
 }
 
-export function buildWingetSearchUrl(base: string, q: string, perPage = 20, page = 1): string {
-  const url = new URL(base);
-  // Search for PackageIdentifier in manifests path, e.g., q=Git.Git+in:path+manifests
-  url.searchParams.set("q", `${q} in:path manifests/b`);
-  url.searchParams.set("per_page", String(perPage));
-  url.searchParams.set("page", String(page));
-  return url.toString();
+function wingetPackagePath(packageId: string): string {
+  const validated = validatedWingetPackageId(packageId);
+  const segments = validated.split(".").map((segment) => encodeURIComponent(segment));
+  return `manifests/${validated[0].toLowerCase()}/${segments.join("/")}`;
+}
+
+export function buildWingetSearchUrl(base: string, q: string): string {
+  return `${base.replace(/\/$/, "")}/${wingetPackagePath(q)}`;
 }
 
 export function buildWingetManifestUrl(packageId: string, version: string): string {
-  const lowerFirst = packageId[0].toLowerCase();
-  // manifests/b/PackageId/version/PackageId.version.yaml or similar
-  return `${WINGET_RAW_BASE}/manifests/${lowerFirst}/${encodeURIComponent(packageId)}/${encodeURIComponent(version)}/${encodeURIComponent(packageId)}.yaml`;
+  const validated = validatedWingetPackageId(packageId);
+  return `${WINGET_RAW_BASE}/${wingetPackagePath(validated)}/${encodeURIComponent(version)}/${encodeURIComponent(validated)}.installer.yaml`;
 }
 
 export function buildWingetManifestListingUrl(packageId: string, version: string): string {
-  // Alternative: GitHub contents listing for version directory
-  const lowerFirst = packageId[0].toLowerCase();
-  return `https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/${lowerFirst}/${encodeURIComponent(packageId)}/${encodeURIComponent(version)}`;
+  return `${WINGET_GITHUB_SEARCH_BASE}/${wingetPackagePath(packageId)}/${encodeURIComponent(version)}`;
 }
 
 export const WINGET_PACKAGE_MAX = 128;
@@ -167,7 +174,9 @@ export function validatedWingetPackageId(id: string): string {
 
 export function validatedWingetSearch(q: string): string {
   if (typeof q !== "string" || q.trim().length === 0 || q.length > WINGET_SEARCH_MAX) throw new Error("WinGet: search query must be 1-100 characters.");
-  return q.trim();
+  const trimmed = q.trim();
+  validatedWingetPackageId(trimmed);
+  return trimmed;
 }
 
 export interface NormalizedWingetPackage extends NormalizedRemoteItem {
@@ -222,7 +231,7 @@ export function normalizeWingetManifest(
     provenance: {
       state: origin === "CACHE" ? "CACHED" : "REMOTE_REGISTRY",
       sourceId: WINGET_SOURCE_ID,
-      canonicalUrl: `https://github.com/microsoft/winget-pkgs/tree/master/manifests/${manifest.packageIdentifier[0].toLowerCase()}/${encodeURIComponent(manifest.packageIdentifier)}/${manifest.packageVersion ? encodeURIComponent(manifest.packageVersion) : ""}`,
+      canonicalUrl: `https://github.com/microsoft/winget-pkgs/tree/master/${wingetPackagePath(manifest.packageIdentifier)}/${manifest.packageVersion ? encodeURIComponent(manifest.packageVersion) : ""}`,
       retrievedAt,
       origin,
       source: origin === "CACHE" ? "Bounded KForge remote-source cache" : "Windows Package Manager Community Repository",
@@ -237,11 +246,16 @@ export function normalizeWingetSearchRecord(
   origin: "LIVE" | "CACHE",
   freshness: "CURRENT" | "CACHED" | "STALE" = origin === "CACHE" ? "CACHED" : "CURRENT",
 ): NormalizedWingetPackage {
-  // Search record only has path, not full manifest; treat as minimal
+  // Contents API search returns version directories below the exact package path.
+  // Legacy cached code-search records ending in YAML remain readable.
   const path = record.path || "";
-  const match = /manifests\/[^/]+\/([^/]+)\/([^/]+)\//.exec(path);
-  const packageId = match ? match[1] : record.name || "unknown";
-  const version = match ? match[2] : undefined;
+  const parts = path.split("/").filter(Boolean);
+  const manifestIndex = parts.indexOf("manifests");
+  const relative = manifestIndex >= 0 ? parts.slice(manifestIndex + 2) : [];
+  const yamlRecord = relative[relative.length - 1]?.toLowerCase().endsWith(".yaml") ?? false;
+  const version = relative.length >= (yamlRecord ? 3 : 2) ? relative[relative.length - (yamlRecord ? 2 : 1)] : undefined;
+  const packageSegments = version ? relative.slice(0, -(yamlRecord ? 2 : 1)) : relative;
+  const packageId = packageSegments.length >= 2 ? packageSegments.map((segment) => decodeURIComponent(segment)).join(".") : record.name || "unknown";
   return {
     kind: "winget-package",
     sourceId: WINGET_SOURCE_ID,
@@ -288,7 +302,7 @@ export function wingetPackageToMarketplaceItem(normalized: NormalizedWingetPacka
   }));
   const evidenceSource = normalized.provenance.origin === "CACHE" ? "Bounded KForge remote-source cache" : "Windows Package Manager Community Repository";
   return {
-    id: `winget:${normalized.packageId}`,
+    id: `winget:${normalized.packageId}${normalized.packageVersion ? `@${normalized.packageVersion}` : ""}`,
     category: "plugins",
     taxonomy: ["integrations"],
     name: normalized.packageId,
