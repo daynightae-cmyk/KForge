@@ -1,4 +1,5 @@
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
 import operationEvidenceRouter from "./routes/operationEvidence";
 import productTruthRouter from "./routes/productTruth";
@@ -10,16 +11,34 @@ const PROVIDER_STORAGE_ROUTE_PREFIX = "/api/workspace/ai/command-center/";
 const SAFE_PROVIDER_STORAGE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const LOOPBACK_API_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
 
+export interface CreateServerOptions {
+  enforceLoopbackHostHeader?: boolean;
+  requestAllowancePerMinute?: number;
+}
+
+/**
+ * The loopback API is reachable by every local process and by browser pages, so
+ * request volume is bounded per client address. The ceiling is deliberately far
+ * above interactive workbench and end-to-end traffic: it exists to stop a
+ * runaway or hostile local caller, not to shape normal product behaviour.
+ */
+function localRequestAllowance(limit: number) {
+  return rateLimit({
+    windowMs: 60_000,
+    limit,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "KForge local runtime request allowance exceeded. Retry shortly.", code: "KFORGE_RATE_LIMITED" },
+  });
+}
+
+
 function parseAuthorityHost(value: string): string | null {
   try {
     return new URL(`http://${value}`).hostname.replace(/^\[|\]$/g, "").toLowerCase();
   } catch {
     return null;
   }
-}
-
-export interface CreateServerOptions {
-  enforceLoopbackHostHeader?: boolean;
 }
 
 /**
@@ -104,6 +123,7 @@ export function createServer(options: CreateServerOptions = {}) {
   // workbench origin, so browser cross-site and rebound-host callers are
   // refused before any route can observe or mutate workspace truth.
   app.use(rejectUntrustedLocalCaller(options));
+  app.use(localRequestAllowance(options.requestAllowancePerMinute ?? 5_000));
 
   app.get("/api/ping", (_req, res) => {
     res.json({ message: "KForge server is online." });

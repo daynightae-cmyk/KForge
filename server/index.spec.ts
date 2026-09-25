@@ -103,6 +103,24 @@ describe("server hardening boundaries", () => {
     expect(devServerAllowsLanHost.status).toBe(200);
   });
 
+  it("bounds runaway local request volume with a truthful refusal", async () => {
+    const limited = createServer({ requestAllowancePerMinute: 5 }).listen(0, "127.0.0.1");
+    await once(limited, "listening");
+    const address = limited.address();
+    if (!address || typeof address === "string") throw new Error("Rate-limit test server did not expose a TCP port.");
+    const base = `http://127.0.0.1:${address.port}`;
+    try {
+      const burst = await Promise.all(Array.from({ length: 12 }, () => fetch(`${base}/api/ping`)));
+      expect(burst.filter((response) => response.status === 200)).toHaveLength(5);
+      const refused = burst.filter((response) => response.status === 429);
+      expect(refused).toHaveLength(7);
+      expect(await refused[0].json()).toEqual({ error: "KForge local runtime request allowance exceeded. Retry shortly.", code: "KFORGE_RATE_LIMITED" });
+    } finally {
+      limited.close();
+      await once(limited, "close");
+    }
+  });
+
   it("returns normalized JSON for malformed bodies without leaking stacks", async () => {
     const response = await fetch(`${baseUrl}/api/ping`, {
       method: "POST",
