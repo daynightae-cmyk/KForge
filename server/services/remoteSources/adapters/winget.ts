@@ -53,7 +53,9 @@ export function parseWingetSearchResponse(rawText: string): { packages: WingetSe
   const parsed = parseJson(rawText, "search");
   const contents = wingetContentsResponseSchema.safeParse(parsed);
   if (contents.success) {
-    const packages = contents.data.filter(\n      (item) => item.type === "dir" && /^\\d+(?:\\.\\d+)+/.test(item.name ?? ""),\n    );
+    const packages = contents.data.filter(
+      (item) => item.type === "dir" && /^\\d+(?:\\.\\d+)+/.test(item.name ?? ""),
+    );
     return { packages, totalCount: packages.length };
   }
   const legacy = wingetLegacySearchResponseSchema.safeParse(parsed);
@@ -74,7 +76,8 @@ export interface WingetManifestFields {
 }
 
 export function parseWingetManifestYaml(text: string): WingetManifestFields {
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/\r?
+/);
   let packageIdentifier = "";
   let packageVersion: string | undefined;
   let publisher: string | undefined;
