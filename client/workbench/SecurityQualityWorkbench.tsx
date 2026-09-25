@@ -34,6 +34,32 @@ type SecurityTool = {
   findings?: SecurityFinding[];
 };
 
+type OsvAdvisory = {
+  id: string;
+  aliases?: string[];
+  summary?: string;
+  severityLevel?: string;
+  severityScore?: number;
+  ecosystem?: string;
+  packageName?: string;
+  affectedRanges?: Array<{ ecosystem?: string; packageName?: string; rangeType?: string; introduced?: string; fixed?: string; lastAffected?: string }>;
+  fixedVersions?: string[];
+  references?: Array<{ type?: string; url: string }>;
+  published?: string;
+  modified?: string;
+  withdrawn?: string;
+  origin?: "LIVE" | "CACHE";
+  freshness?: "CURRENT" | "CACHED" | "STALE";
+};
+
+type OsvEvidence = {
+  freshness?: string;
+  fromCache?: boolean;
+  stale?: boolean;
+  destination?: string;
+  error?: string;
+};
+
 type PlatformEvidence = {
   mode: "offline" | "local-first" | "online-optional" | "online";
   policy: { externalMetadataReads: boolean };
@@ -97,6 +123,18 @@ export default function SecurityQualityWorkbench({ project }: { project: Project
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState("");
+  // Explicit OSV package intelligence: never queried by opening or
+  // refreshing this surface, only by the Check buttons below. Advisory
+  // evidence is observational; this panel never modifies dependency files.
+  const [osvEcosystem, setOsvEcosystem] = useState("npm");
+  const [osvName, setOsvName] = useState("");
+  const [osvVersion, setOsvVersion] = useState("");
+  const [osvVulnId, setOsvVulnId] = useState("");
+  const [osvAdvisories, setOsvAdvisories] = useState<OsvAdvisory[]>([]);
+  const [osvEvidence, setOsvEvidence] = useState<OsvEvidence | null>(null);
+  const [osvSearched, setOsvSearched] = useState(false);
+  const [osvRunning, setOsvRunning] = useState(false);
+  const [osvError, setOsvError] = useState("");
 
   const trusted = project.trust === "trusted";
 
@@ -196,6 +234,47 @@ export default function SecurityQualityWorkbench({ project }: { project: Project
           : selectedIsRemote && !disclosureReviewed ? "Review the network data disclosure before enabling this remote security operation."
             : "";
 
+  const osvNetworkAllowed = Boolean(platform?.policy.externalMetadataReads);
+
+  const checkOsvPackage = async () => {
+    if (!osvName.trim() || osvRunning) return;
+    setOsvRunning(true);
+    setOsvError("");
+    try {
+      const result = await fetchJson<{ advisories?: OsvAdvisory[]; evidence?: OsvEvidence }>(
+        "/api/workspace/remote-sources/osv/query",
+        jsonRequest({ package: { ecosystem: osvEcosystem.trim() || undefined, name: osvName.trim(), version: osvVersion.trim() || undefined } }),
+      );
+      setOsvAdvisories(result.advisories || []);
+      setOsvEvidence(result.evidence || null);
+      setOsvSearched(true);
+    } catch (error) {
+      setOsvError(error instanceof Error ? error.message : "OSV query failed.");
+      setOsvSearched(true);
+    } finally {
+      setOsvRunning(false);
+    }
+  };
+
+  const checkOsvVuln = async () => {
+    if (!osvVulnId.trim() || osvRunning) return;
+    setOsvRunning(true);
+    setOsvError("");
+    try {
+      const result = await fetchJson<{ advisory?: OsvAdvisory; evidence?: OsvEvidence }>(
+        `/api/workspace/remote-sources/osv/vuln?id=${encodeURIComponent(osvVulnId.trim())}`,
+      );
+      setOsvAdvisories(result.advisory ? [result.advisory] : []);
+      setOsvEvidence(result.evidence || null);
+      setOsvSearched(true);
+    } catch (error) {
+      setOsvError(error instanceof Error ? error.message : "OSV vulnerability lookup failed.");
+      setOsvSearched(true);
+    } finally {
+      setOsvRunning(false);
+    }
+  };
+
   return (
     <section className="kw-surface-section" role="region" aria-label="KForge Quality Security">
       <div className="kw-toolbar">
@@ -287,6 +366,47 @@ export default function SecurityQualityWorkbench({ project }: { project: Project
             ))}
           </div>
         ) : <EmptyState title="No current security finding" detail="The bounded local scanner produced no security finding in the current evidence. KForge does not turn missing external-tool runs into a security PASS." />}
+      </section>
+
+      <section aria-label="OSV package intelligence">
+        <h3>OSV package intelligence (explicit, observational)</h3>
+        <p>Query OSV.dev for a package version or a vulnerability id. Opening or refreshing this surface never contacts OSV.dev; a check runs only when you ask. Advisories are observational evidence: fixing (editing package.json, lockfiles, or any manifest) is a separate confirmed workflow, and this panel never modifies files.</p>
+        {!osvNetworkAllowed && <p className="kw-message">{platform?.mode || "offline"} mode blocks remote OSV queries. Cached advisories from earlier explicit checks remain readable through the API evidence below.</p>}
+        <div className="kw-quality-actions">
+          <label>Ecosystem <input aria-label="OSV ecosystem" value={osvEcosystem} onChange={(event) => setOsvEcosystem(event.target.value)} placeholder="npm" /></label>
+          <label>Package <input aria-label="OSV package name" value={osvName} onChange={(event) => setOsvName(event.target.value)} placeholder="left-pad" /></label>
+          <label>Version <input aria-label="OSV package version" value={osvVersion} onChange={(event) => setOsvVersion(event.target.value)} placeholder="1.3.0" /></label>
+          <button onClick={() => void checkOsvPackage()} disabled={!osvNetworkAllowed || osvRunning || !osvName.trim()}>{osvRunning ? "Checking…" : "Check package"}</button>
+        </div>
+        <div className="kw-quality-actions">
+          <label>Vulnerability id <input aria-label="OSV vulnerability id" value={osvVulnId} onChange={(event) => setOsvVulnId(event.target.value)} placeholder="GHSA-…" /></label>
+          <button onClick={() => void checkOsvVuln()} disabled={!osvNetworkAllowed || osvRunning || !osvVulnId.trim()}>{osvRunning ? "Checking…" : "Look up id"}</button>
+        </div>
+        {osvError && <p className="kw-message" role="status">{osvError}</p>}
+        {osvEvidence && <p className="kw-message">Source: OSV.dev · Freshness: {String(osvEvidence.freshness || (osvEvidence.fromCache ? "CACHED" : "CURRENT"))}{osvEvidence.fromCache ? " (cached)" : " (live)"} · Destination: {String(osvEvidence.destination || "https://api.osv.dev")}</p>}
+        {osvSearched && !osvAdvisories.length && !osvError && <p className="kw-message">No OSV advisories matched this query. An empty result is a negative lookup, not a clean bill of health beyond the queried package version.</p>}
+        {osvAdvisories.length ? (
+          <div className="kw-quality-list">
+            {osvAdvisories.map((advisory) => (
+              <article className="kw-quality-card" key={advisory.id}>
+                <div className="kw-row-badges">
+                  <StatusBadge value={(advisory.severityLevel || "unassessed").toUpperCase()} />
+                  <StatusBadge value="OSV_ADVISORY" />
+                  {advisory.withdrawn && <StatusBadge value="WITHDRAWN" />}
+                  <StatusBadge value={advisory.freshness || "UNKNOWN"} />
+                </div>
+                <h3>{advisory.id}</h3>
+                <p>{advisory.summary || "No summary supplied."}</p>
+                {(advisory.aliases || []).length > 0 && <p><strong>Aliases:</strong> {(advisory.aliases || []).join(", ")}</p>}
+                {(advisory.ecosystem || advisory.packageName) && <p><strong>Package:</strong> {[advisory.ecosystem, advisory.packageName].filter(Boolean).join("/")}</p>}
+                {(advisory.affectedRanges || []).length > 0 && <p><strong>Affected:</strong> {(advisory.affectedRanges || []).map((range) => `${range.rangeType || "range"}${range.introduced ? ` from ${range.introduced}` : ""}${range.fixed ? ` fixed in ${range.fixed}` : ""}${range.lastAffected ? ` last affected ${range.lastAffected}` : ""}`).join("; ")}</p>}
+                {(advisory.fixedVersions || []).length > 0 && <p><strong>Fixed versions:</strong> {(advisory.fixedVersions || []).join(", ")}</p>}
+                {(advisory.references || []).length > 0 && <p><strong>References:</strong> {(advisory.references || []).map((reference) => reference.url).join(", ")}</p>}
+                <small>{[advisory.published && `Published ${advisory.published}`, advisory.modified && `Modified ${advisory.modified}`, advisory.withdrawn && `Withdrawn ${advisory.withdrawn}`].filter(Boolean).join(" · ") || "No lifecycle dates supplied."}</small>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {runEvidence && (
