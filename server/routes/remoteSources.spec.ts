@@ -25,6 +25,12 @@ vi.mock("dns/promises", () => ({
 // local test server must keep using the real fetch implementation.
 const realFetch = globalThis.fetch.bind(globalThis);
 
+async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set("X-KForge-Client", "workbench-v1");
+  return realFetch(input, { ...init, headers });
+}
+
 function jsonResponse(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}): Response {
   return new Response(JSON.stringify(body), {
     status: init.status ?? 200,
@@ -127,7 +133,7 @@ function nugetTestFixture(url: string): unknown {
 function isWingetTestUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    if (u.hostname === "api.github.com" && u.pathname === "/search/code") return true;
+    if (u.hostname === "api.github.com" && u.pathname.startsWith("/repos/microsoft/winget-pkgs/contents/manifests/")) return true;
     if (u.hostname === "raw.githubusercontent.com" && u.pathname.includes("winget-pkgs")) return true;
     return false;
   } catch {
@@ -136,7 +142,7 @@ function isWingetTestUrl(url: string): boolean {
 }
 
 function wingetTestFixture(url: string): unknown {
-  if (url.includes("/search/code")) return WINGET_SEARCH_FIXTURE;
+  if (new URL(url).hostname === "api.github.com") return WINGET_SEARCH_FIXTURE;
   return WINGET_MANIFEST_FIXTURE;
 }
 
@@ -230,8 +236,28 @@ describe("Remote sources API", () => {
     await fs.writeFile(path.join(workspaceRoot, ".kforge", "local-platform.json"), JSON.stringify({ mode }), "utf8");
   }
 
+  it("rejects unmarked and cross-site callers before any remote contact", async () => {
+    await setMode("online-optional");
+    const before = fetchStub.mock.calls.length;
+
+    const unmarked = await realFetch(`${baseUrl}/api/workspace/remote-sources/mcp/servers?search=fs`);
+    expect(unmarked.status).toBe(403);
+    await expect(unmarked.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_CALLER_REQUIRED" });
+
+    const crossSite = await realFetch(`${baseUrl}/api/workspace/remote-sources/mcp/servers?search=fs`, {
+      headers: {
+        "X-KForge-Client": "workbench-v1",
+        "Origin": "https://malicious.example",
+        "Sec-Fetch-Site": "cross-site",
+      },
+    });
+    expect(crossSite.status).toBe(403);
+    await expect(crossSite.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_CALLER_REJECTED" });
+    expect(fetchStub.mock.calls.length).toBe(before);
+  });
+
   it("lists approved sources locally without contacting any provider", async () => {
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string }> };
     expect(body.sources.map((source) => source.id)).toEqual(["mcp-official-registry", "open-vsx", "osv", "hugging-face-hub", "github-releases-kforge", "remote-doc-openapi", "npm-registry", "pypi", "nuget-v3", "winget-community"]);
@@ -239,7 +265,7 @@ describe("Remote sources API", () => {
   });
 
   it("refuses explicit search in OFFLINE mode with zero external requests", async () => {
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/mcp/servers?search=fs`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/mcp/servers?search=fs`);
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
     expect(fetchStub).not.toHaveBeenCalled();
@@ -247,7 +273,7 @@ describe("Remote sources API", () => {
 
   it("searches the MCP Registry explicitly in online-optional mode", async () => {
     await setMode("online-optional");
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/mcp/servers?search=fs&limit=10`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/mcp/servers?search=fs&limit=10`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { items: Array<{ id: string; availability: string }>; evidence: { freshness: string } };
     expect(body.items).toHaveLength(2);
@@ -261,22 +287,22 @@ describe("Remote sources API", () => {
 
   it("validates query bounds before any request", async () => {
     await setMode("online-optional");
-    const badLimit = await realFetch(`${baseUrl}/api/workspace/remote-sources/mcp/servers?limit=500`);
+    const badLimit = await apiFetch(`${baseUrl}/api/workspace/remote-sources/mcp/servers?limit=500`);
     expect(badLimit.status).toBe(400);
-    const missingServer = await realFetch(`${baseUrl}/api/workspace/remote-sources/mcp/versions`);
+    const missingServer = await apiFetch(`${baseUrl}/api/workspace/remote-sources/mcp/versions`);
     expect(missingServer.status).toBe(400);
-    const unsafeServer = await realFetch(`${baseUrl}/api/workspace/remote-sources/mcp/versions?server=../../etc`);
+    const unsafeServer = await apiFetch(`${baseUrl}/api/workspace/remote-sources/mcp/versions?server=../../etc`);
     expect(unsafeServer.status).toBe(400);
-    const badSize = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?size=500`);
+    const badSize = await apiFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?size=500`);
     expect(badSize.status).toBe(400);
-    const missingNamespace = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/extension?extension=only`);
+    const missingNamespace = await apiFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/extension?extension=only`);
     expect(missingNamespace.status).toBe(400);
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
   it("refuses Open VSX search in OFFLINE mode with zero external requests", async () => {
     const before = fetchStub.mock.calls.length;
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?query=yaml`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?query=yaml`);
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
     expect(fetchStub.mock.calls.length).toBe(before);
@@ -285,7 +311,7 @@ describe("Remote sources API", () => {
   it("searches Open VSX explicitly in online-optional mode", async () => {
     await setMode("online-optional");
     const before = fetchStub.mock.calls.length;
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?query=yaml&size=10`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/search?query=yaml&size=10`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { items: Array<{ id: string; availability: string }>; evidence: { freshness: string } };
     expect(body.items).toHaveLength(2);
@@ -305,19 +331,19 @@ describe("Remote sources API", () => {
         return jsonResponse(OVSX_SEARCH_FIXTURE);
       }),
     );
-    const detail = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/extension?namespace=redhat&extension=vscode-yaml`);
+    const detail = await apiFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/extension?namespace=redhat&extension=vscode-yaml`);
     expect(detail.status).toBe(200);
     const detailBody = (await detail.json()) as { item: { version: string; availability: string } };
     expect(detailBody.item.version).toBe("1.18.0");
     expect(detailBody.item.availability).toBe("CATALOG");
-    const versions = await realFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/versions?namespace=redhat&extension=vscode-yaml`);
+    const versions = await apiFetch(`${baseUrl}/api/workspace/remote-sources/open-vsx/versions?namespace=redhat&extension=vscode-yaml`);
     expect(versions.status).toBe(200);
     await expect(versions.json()).resolves.toMatchObject({ versions: ["1.18.0", "1.17.0", "1.16.0"] });
   });
 
   it("refuses OSV queries in OFFLINE mode with zero external requests", async () => {
     const before = fetchStub.mock.calls.length;
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ package: { ecosystem: "npm", name: "test-package", version: "1.0.0" } }),
@@ -329,7 +355,7 @@ describe("Remote sources API", () => {
 
   it("queries OSV explicitly in online-optional mode without modifying manifests", async () => {
     await setMode("online-optional");
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ package: { ecosystem: "npm", name: "test-package", version: "1.0.0" } }),
@@ -349,40 +375,40 @@ describe("Remote sources API", () => {
   it("validates OSV request shapes before any request", async () => {
     await setMode("online-optional");
     const before = fetchStub.mock.calls.length;
-    const missingSelector = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
+    const missingSelector = await apiFetch(`${baseUrl}/api/workspace/remote-sources/osv/query`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ package: { version: "1.0.0" } }),
     });
     expect(missingSelector.status).toBe(400);
-    const emptyBatch = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/querybatch`, {
+    const emptyBatch = await apiFetch(`${baseUrl}/api/workspace/remote-sources/osv/querybatch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ queries: [] }),
     });
     expect(emptyBatch.status).toBe(400);
-    const unsafeId = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/vuln?id=../../etc`);
+    const unsafeId = await apiFetch(`${baseUrl}/api/workspace/remote-sources/osv/vuln?id=../../etc`);
     expect(unsafeId.status).toBe(400);
     expect(fetchStub.mock.calls.length).toBe(before);
   });
 
   it("reads OSV batch and vulnerability detail explicitly", async () => {
     await setMode("online-optional");
-    const batch = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/querybatch`, {
+    const batch = await apiFetch(`${baseUrl}/api/workspace/remote-sources/osv/querybatch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ queries: [{ ecosystem: "npm", name: "test-package", version: "1.0.0" }] }),
     });
     expect(batch.status).toBe(200);
     await expect(batch.json()).resolves.toMatchObject({ results: [{ advisories: [{ id: "GHSA-test-0001" }] }] });
-    const vuln = await realFetch(`${baseUrl}/api/workspace/remote-sources/osv/vuln?id=GHSA-test-0001`);
+    const vuln = await apiFetch(`${baseUrl}/api/workspace/remote-sources/osv/vuln?id=GHSA-test-0001`);
     expect(vuln.status).toBe(200);
     await expect(vuln.json()).resolves.toMatchObject({ advisory: { id: "GHSA-test-0001" } });
   });
 
   it("refuses Hugging Face search in OFFLINE mode with zero external requests", async () => {
     const before = hfCallCount(fetchStub);
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?search=coder`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?search=coder`);
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
     expect(hfCallCount(fetchStub)).toBe(before);
@@ -390,7 +416,7 @@ describe("Remote sources API", () => {
 
   it("searches Hugging Face explicitly in online-optional mode as catalog only", async () => {
     await setMode("online-optional");
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?search=coder&limit=10`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?search=coder&limit=10`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       models: Array<{ modelId: string; revision?: string }>;
@@ -409,25 +435,25 @@ describe("Remote sources API", () => {
   it("validates Hugging Face request shapes before any request", async () => {
     await setMode("online-optional");
     const before = hfCallCount(fetchStub);
-    const badLimit = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?limit=500`);
+    const badLimit = await apiFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?limit=500`);
     expect(badLimit.status).toBe(400);
-    const badSort = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?sort=nope`);
+    const badSort = await apiFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/models?sort=nope`);
     expect(badSort.status).toBe(400);
-    const badId = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/model?id=../../etc`);
+    const badId = await apiFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/model?id=../../etc`);
     expect(badId.status).toBe(400);
     expect(hfCallCount(fetchStub)).toBe(before);
   });
 
   it("reads Hugging Face model detail explicitly", async () => {
     await setMode("online-optional");
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/model?id=Qwen/Qwen2.5-Coder-1.5B`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/huggingface/model?id=Qwen/Qwen2.5-Coder-1.5B`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ model: { modelId: "Qwen/Qwen2.5-Coder-1.5B" } });
   });
 
   it("refuses KForge update discovery in OFFLINE mode with zero external requests", async () => {
     const before = fetchStub.mock.calls.length;
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/status`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/status`);
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ code: "REMOTE_SOURCE_OFFLINE_BLOCKED" });
     expect(fetchStub.mock.calls.length).toBe(before);
@@ -435,13 +461,13 @@ describe("Remote sources API", () => {
 
   it("discovers KForge releases explicitly in online-optional mode", async () => {
     await setMode("online-optional");
-    const releases = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?channel=stable`);
+    const releases = await apiFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?channel=stable`);
     expect(releases.status).toBe(200);
     const releasesBody = (await releases.json()) as { releases: Array<{ tag: string; channel: string }> };
     expect(releasesBody.releases.map((release) => release.tag)).toEqual(["v0.1.0", "v0.2.0"]);
 
     // Installed version is package.json 0.1.0; fixture latest stable is v0.2.0.
-    const status = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/status`);
+    const status = await apiFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/status`);
     expect(status.status).toBe(200);
     const statusBody = (await status.json()) as {
       decision: { availability: string; trustedUpdate: string; trustedBlockers: Array<{ id: string }> };
@@ -458,18 +484,18 @@ describe("Remote sources API", () => {
   it("validates KForge update request shapes before any request", async () => {
     await setMode("online-optional");
     const before = fetchStub.mock.calls.length;
-    const badPage = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?per_page=500`);
+    const badPage = await apiFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?per_page=500`);
     expect(badPage.status).toBe(400);
-    const badChannel = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?channel=nightly`);
+    const badChannel = await apiFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/releases?channel=nightly`);
     expect(badChannel.status).toBe(400);
-    const unsafeTag = await realFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/release?tag=../../etc`);
+    const unsafeTag = await apiFetch(`${baseUrl}/api/workspace/remote-sources/kforge-updates/release?tag=../../etc`);
     expect(unsafeTag.status).toBe(400);
     expect(fetchStub.mock.calls.length).toBe(before);
   });
 
   it("lists documentation sources locally without contacting any provider", async () => {
     const before = fetchStub.mock.calls.length;
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/sources`);
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/documentation/sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { sources: Array<{ id: string; url: string }> };
     expect(body.sources.map((source) => source.id)).toEqual([
@@ -484,7 +510,7 @@ describe("Remote sources API", () => {
 
   it("refuses documentation refresh in OFFLINE mode with zero external requests", async () => {
     const before = fetchStub.mock.calls.length;
-    const response = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
+    const response = await apiFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceId: "hf-openapi" }),
@@ -496,7 +522,7 @@ describe("Remote sources API", () => {
 
   it("refreshes an allowlisted document explicitly and searches cache locally", async () => {
     await setMode("online-optional");
-    const refresh = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
+    const refresh = await apiFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceId: "hf-openapi" }),
@@ -511,7 +537,7 @@ describe("Remote sources API", () => {
     expect(refreshBody.evidence.freshness).toBe("CURRENT");
 
     const callsAfterRefresh = fetchStub.mock.calls.length;
-    const search = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/search?q=${encodeURIComponent("pagination")}`);
+    const search = await apiFetch(`${baseUrl}/api/workspace/remote-sources/documentation/search?q=${encodeURIComponent("pagination")}`);
     expect(search.status).toBe(200);
     const searchBody = (await search.json()) as { hits: Array<{ sourceId: string }>; searchedSources: number };
     expect(searchBody.hits.map((hit) => hit.sourceId)).toEqual(["hf-openapi"]);
@@ -519,16 +545,35 @@ describe("Remote sources API", () => {
     expect(fetchStub.mock.calls.length).toBe(callsAfterRefresh);
   });
 
+  it("looks up WinGet versions and manifest through the guarded exact-ID routes", async () => {
+    await setMode("online-optional");
+
+    const search = await apiFetch(`${baseUrl}/api/workspace/remote-sources/winget/search?q=Git.Git`);
+    expect(search.status).toBe(200);
+    const searchBody = (await search.json()) as { items: Array<{ id: string }> };
+    expect(searchBody.items.map((item) => item.id)).toEqual([
+      "winget:Git.Git@2.44.0",
+      "winget:Git.Git@2.43.0",
+    ]);
+
+    const manifest = await apiFetch(`${baseUrl}/api/workspace/remote-sources/winget/manifest?packageId=Git.Git&version=2.44.0`);
+    expect(manifest.status).toBe(200);
+    await expect(manifest.json()).resolves.toMatchObject({
+      item: { id: "winget:Git.Git@2.44.0" },
+      manifest: { packageIdentifier: "Git.Git", packageVersion: "2.44.0" },
+    });
+  });
+
   it("validates documentation request shapes before any request", async () => {
     await setMode("online-optional");
     const before = fetchStub.mock.calls.length;
-    const unknownSource = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
+    const unknownSource = await apiFetch(`${baseUrl}/api/workspace/remote-sources/documentation/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceId: "not-a-source" }),
     });
     expect(unknownSource.status).toBe(400);
-    const missingQuery = await realFetch(`${baseUrl}/api/workspace/remote-sources/documentation/search`);
+    const missingQuery = await apiFetch(`${baseUrl}/api/workspace/remote-sources/documentation/search`);
     expect(missingQuery.status).toBe(400);
     expect(fetchStub.mock.calls.length).toBe(before);
   });
