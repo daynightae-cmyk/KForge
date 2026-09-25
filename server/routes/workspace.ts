@@ -40,6 +40,7 @@ import { isWorkspaceAction } from "../../shared/workspace";
 import { checkForModelUpdates, deleteOllamaModel, detectLocalAIProvider, generateWithLocalAI, getCloudAIConfiguration, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, isCloudAIProviderId, listAIProviders, listCloudAIProviders, requestLocalPlan, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
 import { createProviderSession, discoverProviderModels, listDiscoveredModels, listProviderSessions, listProviderSummaries, replaceProviderKey, revealProviderKey, testProviderConnection, upsertCustomProvider } from "../services/providerCommandCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
+import { listCachedDocumentation, type CachedDocRecord } from "../services/remoteSources/documentationService";
 import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
@@ -58,6 +59,7 @@ import { selectProjectRuntime } from "../services/projectExecution";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
 import { completeOperationTransparency, createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "../services/onlineControlCenter";
+import { GH_DEFAULT_CONCURRENCY, GH_LEAST_PRIVILEGE_GUIDANCE, classifyGhRateLimit, ghPagination, mapWithConcurrency, readGhRateLimit, runGhApi } from "../services/githubClient";
 import { redactProjectText } from "../services/redaction";
 import { createSelfAuditRecord, inspectKForgeIdentity, markSelfAuditWaitingForRestart, persistSelfAuditRecord, readSelfAuditRecord, recordSelfAuditStage } from "../services/selfAudit";
 
@@ -1707,9 +1709,16 @@ export function githubReadState(execution: { ok: boolean; output: string }): Git
   return "UNKNOWN";
 }
 
-function githubSource(label: string, endpoint: string, execution: CommandExecution) {
+function githubSource(label: string, endpoint: string, execution: CommandExecution, perPage?: number) {
   const state = githubReadState(execution);
-  return { label, endpoint, state, reason: state === "AVAILABLE" ? "Remote GitHub evidence was retrieved by the authenticated read-only adapter." : execution.output || "GitHub returned no diagnostic reason.", fetchedAt: new Date().toISOString() };
+  return {
+    label,
+    endpoint,
+    state,
+    reason: state === "AVAILABLE" ? "Remote GitHub evidence was retrieved by the authenticated read-only adapter." : execution.output || "GitHub returned no diagnostic reason.",
+    fetchedAt: new Date().toISOString(),
+    ...(perPage !== undefined ? { pagination: ghPagination(perPage) } : {}),
+  };
 }
 
 router.get("/projects/:id/git", async (req, res) => {
@@ -1787,7 +1796,7 @@ router.get("/projects/:id/github", async (req, res) => {
   if (!auth.ok) {
     const completedAt = new Date().toISOString();
     const state = githubReadState(auth);
-    const reason = auth.output || "GitHub CLI authentication is unavailable.";
+    const reason = `${auth.output || "GitHub CLI authentication is unavailable."} ${GH_LEAST_PRIVILEGE_GUIDANCE}`;
     const unavailable = (label: string) => ({ label, endpoint: null, state, reason, fetchedAt: completedAt });
     const sources = Object.fromEntries(["repository", "branches", "commits", "pullRequests", "issues", "actions", "checkRuns", "commitStatus", "releases"].map((label) => [label, unavailable(label)]));
     const transparency = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: `https://api.github.com/repos/${slug}`, purpose: "Read GitHub engineering and Checks evidence.", startedAt, completedAt, result: "BLOCKED", reason });
@@ -1806,25 +1815,36 @@ router.get("/projects/:id/github", async (req, res) => {
     commitStatus: `repos/${slug}/commits/${commitRef}/status`,
     releases: `repos/${slug}/releases?per_page=20`,
   };
-  const [repository, branches, commits, issues, pullRequests, actions, checkRuns, commitStatus, releases] = await Promise.all([
-    run("gh", ["api", `repos/${slug}`], project.path, 20_000),
-    run("gh", ["api", endpoints.branches], project.path, 20_000),
-    run("gh", ["api", endpoints.commits], project.path, 20_000),
-    run("gh", ["api", `repos/${slug}/issues?state=open&per_page=20`], project.path, 20_000),
-    run("gh", ["api", `repos/${slug}/pulls?state=open&per_page=20`], project.path, 20_000),
-    run("gh", ["api", endpoints.actions], project.path, 20_000),
-    run("gh", ["api", endpoints.checkRuns, "-H", "Accept: application/vnd.github+json"], project.path, 20_000),
-    run("gh", ["api", endpoints.commitStatus, "-H", "Accept: application/vnd.github+json"], project.path, 20_000),
-    run("gh", ["api", endpoints.releases], project.path, 20_000),
-  ]);
+  // One explicit refresh, one bounded batch: the nine reads below run through
+  // the hardened gh api wrapper (pinned API version + Accept headers) with
+  // at most GH_DEFAULT_CONCURRENCY simultaneous CLI invocations so a single
+  // refresh cannot burst secondary rate limits.
+  const readSpecs = [
+    { key: "repository", endpoint: endpoints.repository },
+    { key: "branches", endpoint: endpoints.branches, perPage: 100 },
+    { key: "commits", endpoint: endpoints.commits, perPage: 20 },
+    { key: "issues", endpoint: endpoints.issues, perPage: 20 },
+    { key: "pullRequests", endpoint: endpoints.pullRequests, perPage: 20 },
+    { key: "actions", endpoint: endpoints.actions, perPage: 20 },
+    { key: "checkRuns", endpoint: endpoints.checkRuns },
+    { key: "commitStatus", endpoint: endpoints.commitStatus },
+    { key: "releases", endpoint: endpoints.releases, perPage: 20 },
+  ] as const;
+  const [repository, branches, commits, issues, pullRequests, actions, checkRuns, commitStatus, releases] = await mapWithConcurrency(
+    readSpecs,
+    GH_DEFAULT_CONCURRENCY,
+    (spec) => runGhApi(run, { endpoint: spec.endpoint, cwd: project.path, timeoutMs: 20_000 }),
+  );
+  const rateLimit = await readGhRateLimit(run, project.path);
   const parse = (execution: CommandExecution) => { try { return execution.ok ? JSON.parse(execution.output) : { error: execution.output }; } catch { return { error: execution.output || "GitHub returned invalid JSON." }; } };
   const completedAt = new Date().toISOString();
   const ok = repository.ok;
   const error = ok ? undefined : repository.output || "GitHub repository metadata request failed.";
+  const rateLimitClassification = ok ? classifyGhRateLimit("") : classifyGhRateLimit(repository.output);
   const sources = {
-    repository: githubSource("Repository", endpoints.repository, repository), branches: githubSource("Branches", endpoints.branches, branches), commits: githubSource("Commits", endpoints.commits, commits),
-    issues: githubSource("Issues", endpoints.issues, issues), pullRequests: githubSource("Pull requests", endpoints.pullRequests, pullRequests), actions: githubSource("Actions", endpoints.actions, actions),
-    checkRuns: githubSource("Check runs", endpoints.checkRuns, checkRuns), commitStatus: githubSource("Commit status", endpoints.commitStatus, commitStatus), releases: githubSource("Releases", endpoints.releases, releases),
+    repository: githubSource("Repository", endpoints.repository, repository), branches: githubSource("Branches", endpoints.branches, branches, 100), commits: githubSource("Commits", endpoints.commits, commits, 20),
+    issues: githubSource("Issues", endpoints.issues, issues, 20), pullRequests: githubSource("Pull requests", endpoints.pullRequests, pullRequests, 20), actions: githubSource("Actions", endpoints.actions, actions, 20),
+    checkRuns: githubSource("Check runs", endpoints.checkRuns, checkRuns), commitStatus: githubSource("Commit status", endpoints.commitStatus, commitStatus), releases: githubSource("Releases", endpoints.releases, releases, 20),
   };
   const checkStates = [sources.checkRuns.state, sources.commitStatus.state];
   const checksState: GitHubReadState = checkStates.every((state) => state === "AVAILABLE") ? "AVAILABLE" : checkStates.includes("BLOCKED") ? "BLOCKED" : checkStates.includes("NOT_CONNECTED") ? "NOT_CONNECTED" : checkStates.includes("UNAVAILABLE") ? "UNAVAILABLE" : "UNKNOWN";
@@ -1834,7 +1854,7 @@ router.get("/projects/:id/github", async (req, res) => {
     recordRemoteContact(getWorkspaceRoot(), "remote-ci", { attemptedAt: completedAt, succeeded: actions.ok && checkRuns.ok && commitStatus.ok, destination: `https://api.github.com/repos/${slug}/actions/runs`, error: actions.ok && checkRuns.ok && commitStatus.ok ? null : checksReason || actions.output }),
   ]);
   const transparency = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub CLI", destination: `https://api.github.com/repos/${slug}`, purpose: "Read repository, branch, commit, issue, pull request, action, check-run, commit-status, and release metadata.", startedAt, completedAt, result: ok ? "SUCCEEDED" : "FAILED", reason: error });
-  return res.json({ slug, connection: { state: ok ? "AVAILABLE" : githubReadState(repository), authenticated: true, reason: error || "GitHub CLI authentication and repository read access are available." }, repository: parse(repository), branches: parse(branches), commits: parse(commits), issues: parse(issues), pullRequests: parse(pullRequests), actions: parse(actions), checks: { state: checksState, commitSha: commitRef, reason: checksReason, checkRuns: parse(checkRuns), status: parse(commitStatus) }, releases: parse(releases), sources, transparency, ...(error ? { error } : {}) });
+  return res.json({ slug, connection: { state: ok ? "AVAILABLE" : githubReadState(repository), authenticated: true, reason: error || "GitHub CLI authentication and repository read access are available." }, repository: parse(repository), branches: parse(branches), commits: parse(commits), issues: parse(issues), pullRequests: parse(pullRequests), actions: parse(actions), checks: { state: checksState, commitSha: commitRef, reason: checksReason, checkRuns: parse(checkRuns), status: parse(commitStatus) }, releases: parse(releases), sources, rateLimit: { ...rateLimit, ...(rateLimitClassification.limited ? { classification: rateLimitClassification } : {}) }, transparency, ...(error ? { error } : {}) });
 });
 
 async function environmentExamplePreview(project: ProjectSummary, problem: ScanIssue) {
@@ -2756,6 +2776,18 @@ router.get("/search", async (req, res) => {
     add({ kind: item.category === "models" ? "model" : "marketplace", entity: item.category === "models" ? "Models" : "Marketplace", entityId: item.id, title: item.name, detail: `${item.category} · ${item.description} · ${item.capabilities.join(", ")}`, projectId: preferredProjectId, target: item.category === "models" ? "Models" : "Marketplace", source: item.source });
   }
 
+  // Cached remote provider documentation joins Global Search as CACHED
+  // REMOTE evidence. This is a bounded local cache read: typing never
+  // contacts a provider; live content arrives only through explicit
+  // per-source refresh in Online Documentation.
+  let remoteDocCount = 0;
+  const cachedDocs = await listCachedDocumentation(getWorkspaceRoot()).catch((): CachedDocRecord[] => []);
+  for (const entry of cachedDocs) {
+    const detail = `${entry.record.provider} · v${entry.record.version} · ${entry.record.freshness} cached remote (explicit refresh only)`;
+    if (`${entry.record.title} ${detail} remote-documentation Documentation Cached remote documentation`.toLowerCase().includes(query)) remoteDocCount += 1;
+    add({ kind: "remote-documentation", entity: "Documentation", entityId: `remote-doc:${entry.record.sourceId}`, title: entry.record.title, detail, projectId: preferredProjectId, target: "Online Documentation", source: `Cached remote documentation (${entry.record.provider})` });
+  }
+
   const graphCoverage = (count: number): GlobalSearchCoverage => ({
     state: graphLimited || projectBounded ? "LIMIT_REACHED" : "COMPLETE",
     searchedCount: count,
@@ -2788,7 +2820,11 @@ router.get("/search", async (req, res) => {
     Git: projectCoverage("Local Git commands", projects.length, projects.length, all.length),
     GitHub: githubCount ? projectCoverage("Local Git remote configuration; no remote API contact", githubCount) : { state: "NOT_CONFIGURED", searchedCount: 0, totalOrUnknown: 0, limit: projectLimit, source: "Local Git remote configuration", reason: "No GitHub remote is configured in the searched projects; no remote API call was made." },
     Release: projectCoverage("Current local project summary", projects.length, projects.length, all.length),
-    Documentation: projectCoverage("Local documentation audit", documentCount),
+    Documentation: {
+      ...projectCoverage("Local documentation audit", documentCount),
+      searchedCount: documentCount + remoteDocCount,
+      reason: `Search inspected local documentation audit evidence${remoteDocCount ? ` plus ${remoteDocCount} cached remote-doc match(es)` : ""}; live provider search requires explicit refresh in Online Documentation.`,
+    },
     Dependencies: projectCoverage("Local manifest declarations and bounded project-graph dependencies", dependencyCount + graphDependencyCount),
     Technologies: projectCoverage("Local project profile detection", technologyCount),
     Results: { state: sorted.length > resultLimit ? "LIMIT_REACHED" : "COMPLETE", searchedCount: Math.min(sorted.length, resultLimit), totalOrUnknown: sorted.length, limit: resultLimit, source: "Ranked local evidence matches", reason: sorted.length > resultLimit ? `Showing the first ${resultLimit} of ${sorted.length} matching evidence records.` : `Showing all ${sorted.length} matching evidence record(s).` },

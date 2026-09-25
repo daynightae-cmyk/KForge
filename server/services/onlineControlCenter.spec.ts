@@ -31,14 +31,14 @@ afterEach(async () => {
 });
 
 describe("Online Control Center", () => {
-  it("reports all eleven sources without claiming that opening contacted a remote", async () => {
+  it("reports all twelve sources without claiming that opening contacted a remote", async () => {
     const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-online-control-"));
     roots.push(root);
     const result = await getOnlineControlCenter({ workspaceRoot: root, platform: platform("offline"), project: project("https://github.com/knoux/forge.git"), hasCiConfiguration: true, preview: preview() });
     expect(result.remoteContactPerformed).toBe(false);
     expect(result.openingDisclosure).toMatchObject({ execution: "LOCAL", network: "NOT_REQUIRED", projectSourceSent: false, result: "SUCCEEDED" });
     expect(result.services.map((service) => service.id)).toEqual([
-      "connection-mode", "network-state", "github", "remote-repository", "marketplace-registry", "model-registry", "cloud-ai", "remote-documentation", "remote-ci", "remote-preview", "updates",
+      "connection-mode", "network-state", "github", "remote-repository", "marketplace-registry", "model-registry", "cloud-ai", "remote-documentation", "remote-ci", "security-intelligence", "remote-preview", "updates",
     ]);
     expect(result.services.find((service) => service.id === "github")?.state).toBe("OFFLINE");
     expect(result.services.every((service) => "lastSuccessfulContact" in service && "lastAttemptedContact" in service && "freshness" in service && "reason" in service)).toBe(true);

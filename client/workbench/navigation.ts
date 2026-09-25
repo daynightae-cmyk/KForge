@@ -16,7 +16,7 @@ export const ACTIVITIES: WorkbenchActivity[] = [
     { id: "discover", label: "Discover", group: "Discover" }, { id: "marketplace", label: "Marketplace", group: "Discover" },
     { id: "extensions", label: "Extensions", group: "Catalog" }, { id: "models", label: "Models", group: "Catalog" }, { id: "agents", label: "Agents", group: "Catalog" }, { id: "tools", label: "Tools", group: "Catalog" }, { id: "integrations", label: "Integrations", group: "Catalog" },
     { id: "installed", label: "Installed", group: "Manage" }, { id: "updates", label: "Updates", group: "Manage" }, { id: "downloads", label: "Downloads", group: "Manage" },
-    { id: "providers", label: "Providers", group: "Sources" }, { id: "remote-sources", label: "Remote Sources", group: "Sources" },
+    { id: "providers", label: "Providers", group: "Sources" }, { id: "remote-sources", label: "Remote Sources", group: "Sources" }, { id: "documentation", label: "Documentation", group: "Sources" },
     { id: "security", label: "Security", group: "Trust" }, { id: "activity", label: "Activity", group: "Observe" },
   ] },
   { id: "intelligence", label: "Intelligence", views: [
