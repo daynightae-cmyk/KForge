@@ -1,4 +1,4 @@
-import { Router, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { promises as fs } from "fs";
 import path from "path";
 import { isOptionalOnlineFeatureEnabled } from "../services/localPlatform";
@@ -27,6 +27,47 @@ import { getWingetManifest, searchWingetPackages } from "../services/remoteSourc
  * exists). All responses carry provenance + freshness + transparency.
  */
 const router = Router();
+
+const KFORGE_WORKBENCH_CLIENT_VALUE = "workbench-v1";
+
+function rejectUntrustedRemoteSourceCaller(req: Request, res: Response, next: NextFunction) {
+  if (req.get("x-kforge-client") !== KFORGE_WORKBENCH_CLIENT_VALUE) {
+    return res.status(403).json({
+      error: "Remote-source requests require an explicit KForge Workbench caller marker.",
+      code: "REMOTE_SOURCE_CALLER_REQUIRED",
+    });
+  }
+
+  const fetchSite = req.get("sec-fetch-site");
+  if (fetchSite === "cross-site") {
+    return res.status(403).json({
+      error: "Cross-site browser requests cannot trigger KForge remote-source contact.",
+      code: "REMOTE_SOURCE_CALLER_REJECTED",
+    });
+  }
+
+  const origin = req.get("origin");
+  const host = req.get("host");
+  if (origin && host) {
+    try {
+      if (new URL(origin).host !== host) {
+        return res.status(403).json({
+          error: "Cross-origin browser requests cannot trigger KForge remote-source contact.",
+          code: "REMOTE_SOURCE_CALLER_REJECTED",
+        });
+      }
+    } catch {
+      return res.status(403).json({
+        error: "Malformed request origin was rejected.",
+        code: "REMOTE_SOURCE_CALLER_REJECTED",
+      });
+    }
+  }
+
+  return next();
+}
+
+router.use("/remote-sources", rejectUntrustedRemoteSourceCaller);
 
 function getWorkspaceRoot() {
   return path.resolve(process.env.KFORGE_WORKSPACE_ROOT || path.resolve(process.cwd(), ".."));
