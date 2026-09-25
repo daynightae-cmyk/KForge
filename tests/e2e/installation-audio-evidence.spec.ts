@@ -3,17 +3,10 @@ import { expect, test } from "@playwright/test";
 test("KForge startup reveal serves compact valid Ogg Opus audio through the product media contract", async ({ page, request }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  // Browser evidence: the same media capability the product relies on when it creates
-  // HTMLAudioElement for the startup reveal. Keep this separate from transport evidence so
-  // an installed Edge build cannot turn a successful HTTP response into a zero-byte body
-  // through page-fetch/media interception quirks.
   const support = await page.evaluate(() =>
     document.createElement("audio").canPlayType('audio/ogg; codecs="opus"'),
   );
 
-  // Transport evidence: Playwright's request context reads the bytes directly from the
-  // production server. This verifies the served asset deterministically while still using
-  // the exact production route rather than reading a repository file from disk.
   const response = await request.get("/audio/logo-reveal-slow.ogg", {
     headers: {
       "cache-control": "no-cache",
