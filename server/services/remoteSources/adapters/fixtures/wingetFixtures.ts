@@ -2,23 +2,20 @@
  * Deterministic WinGet fixtures (P1-4).
  */
 
-export const WINGET_SEARCH_FIXTURE = {
-  total_count: 2,
-  items: [
-    {
-      name: "Git.Git.yaml",
-      path: "manifests/g/Git.Git/2.44.0/Git.Git.yaml",
-      sha: "abc123",
-      repository: { full_name: "microsoft/winget-pkgs" },
-    },
-    {
-      name: "Git.Git.yaml",
-      path: "manifests/g/Git.Git/2.43.0/Git.Git.yaml",
-      sha: "def456",
-      repository: { full_name: "microsoft/winget-pkgs" },
-    },
-  ],
-};
+export const WINGET_SEARCH_FIXTURE = [
+  {
+    name: "2.44.0",
+    path: "manifests/g/Git/Git/2.44.0",
+    sha: "abc123",
+    type: "dir",
+  },
+  {
+    name: "2.43.0",
+    path: "manifests/g/Git/Git/2.43.0",
+    sha: "def456",
+    type: "dir",
+  },
+];
 
 export const WINGET_MANIFEST_FIXTURE = `
 PackageIdentifier: Git.Git
