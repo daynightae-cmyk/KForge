@@ -76,8 +76,7 @@ export interface WingetManifestFields {
 }
 
 export function parseWingetManifestYaml(text: string): WingetManifestFields {
-  const lines = text.split(/\r?
-/);
+  const lines = text.split(/\r?\n/);
   let packageIdentifier = "";
   let packageVersion: string | undefined;
   let publisher: string | undefined;
