@@ -20,7 +20,7 @@ describe("WinGet response validation", () => {
   });
 
   it("parses empty search without fabricating", () => {
-    expect(parseWingetSearchResponse(JSON.stringify({ items: [] })).packages).toEqual([]);
+    expect(parseWingetSearchResponse(JSON.stringify([])).packages).toEqual([]);
   });
 
   it("refuses malformed JSON and schema mismatches", () => {
@@ -47,9 +47,11 @@ describe("WinGet response validation", () => {
   });
 
   it("builds URLs correctly", () => {
-    expect(buildWingetSearchUrl("https://api.github.com/search/code", "Git.Git")).toContain("q=Git.Git");
+    expect(buildWingetSearchUrl("https://api.github.com/repos/microsoft/winget-pkgs/contents", "Git.Git")).toBe(
+      "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/g/Git/Git",
+    );
     expect(buildWingetManifestUrl("Git.Git", "2.44.0")).toBe(
-      "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/g/Git.Git/2.44.0/Git.Git.yaml",
+      "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/g/Git/Git/2.44.0/Git.Git.installer.yaml",
     );
   });
 });
@@ -87,7 +89,7 @@ describe("WinGet normalization truth boundaries", () => {
   it("projects onto MarketplaceItem as catalog with install disabled", () => {
     const manifest = parseWingetManifestYaml(WINGET_MANIFEST_FIXTURE);
     const item = wingetPackageToMarketplaceItem(normalizeWingetManifest(manifest, retrievedAt, "LIVE"), retrievedAt);
-    expect(item.id).toBe("winget:Git.Git");
+    expect(item.id).toBe("winget:Git.Git@2.44.0");
     expect(item.category).toBe("plugins");
     expect(item.authority.kind).toBe("REMOTE_REGISTRY");
     expect(item.availability).toBe("CATALOG");
