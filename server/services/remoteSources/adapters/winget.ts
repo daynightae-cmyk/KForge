@@ -54,7 +54,7 @@ export function parseWingetSearchResponse(rawText: string): { packages: WingetSe
   const contents = wingetContentsResponseSchema.safeParse(parsed);
   if (contents.success) {
     const packages = contents.data.filter(
-      (item) => item.type === "dir" && /^\\d+(?:\\.\\d+)+/.test(item.name ?? ""),
+      (item) => item.type === "dir" && /^\d+(?:\.\d+)+/.test(item.name ?? ""),
     );
     return { packages, totalCount: packages.length };
   }
