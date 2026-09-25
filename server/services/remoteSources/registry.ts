@@ -261,6 +261,31 @@ export const APPROVED_REMOTE_SOURCES: RemoteSourceDefinition[] = [
     legalStatus: "APPROVED_METADATA_ONLY",
     notes: "RepositorySignatures resource identifies signing certificates. Catalog presence is not installation.",
   },
+  {
+    id: "winget-community",
+    name: "Windows Package Manager Community Repository",
+    category: "Windows Software Source",
+    priority: "P1",
+    official: true,
+    authority: "MICROSOFT_COMMUNITY_REPOSITORY",
+    baseUrl: "https://github.com/microsoft/winget-pkgs",
+    allowedOrigins: ["https://api.github.com", "https://raw.githubusercontent.com"],
+    readEndpoints: [
+      "GET /repos/microsoft/winget-pkgs/contents/manifests/{letter}/{publisherSegments}/{packageSegments}",
+      "GET /repos/microsoft/winget-pkgs/contents/manifests/{letter}/{publisherSegments}/{packageSegments}/{version}",
+      "GET raw installer manifest YAML via raw.githubusercontent.com",
+    ],
+    auth: "Public repository metadata. No auth is required for the exact package-ID and manifest reads used here; GitHub API rate limits apply.",
+    pagination: "Exact package-ID lookup returns the package version-directory listing; no code-search pagination is used.",
+    rateLimitPolicy: "GitHub REST limits apply (60/hour anonymous, 5000/hour authenticated). Respect Retry-After and provider cache headers.",
+    caching: "Use ETag/Cache-Control when present plus bounded KForge cache.",
+    licenseTerms: "Microsoft/winget-pkgs repository policy and package-specific publisher licenses apply.",
+    capabilities: ["DETAIL", "VERSIONS", "ARTIFACTS", "INSTALL_METADATA"],
+    targetCapabilities: ["Developer Tools", "Windows software discovery"],
+    risk: "MEDIUM",
+    legalStatus: "APPROVED_METADATA_ONLY",
+    notes: "Installer manifests expose InstallerUrl, InstallerSha256, optional SignatureSha256, architecture, installer type, scope, switches. Community-manifest presence is not publisher authenticity.",
+  },
 ];
 
 export function listRemoteSources(): RemoteSourceDefinition[] {
