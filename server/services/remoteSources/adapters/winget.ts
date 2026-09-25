@@ -53,7 +53,7 @@ export function parseWingetSearchResponse(rawText: string): { packages: WingetSe
   const parsed = parseJson(rawText, "search");
   const contents = wingetContentsResponseSchema.safeParse(parsed);
   if (contents.success) {
-    const packages = contents.data.filter((item) => item.type === undefined || item.type === "dir");
+    const packages = contents.data.filter(\n      (item) => item.type === "dir" && /^\\d+(?:\\.\\d+)+/.test(item.name ?? ""),\n    );
     return { packages, totalCount: packages.length };
   }
   const legacy = wingetLegacySearchResponseSchema.safeParse(parsed);
