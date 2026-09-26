@@ -119,11 +119,15 @@ export function createServer(options: CreateServerOptions = {}) {
     return next(error);
   });
 
+  // Volume first, trust second: an untrusted or hostile local caller must not
+  // be able to make this process perform unbounded per-request work before the
+  // caller boundary below decides whether it is allowed to be answered at all.
+  app.use(localRequestAllowance(options.requestAllowancePerMinute ?? 5_000));
+
   // Local-caller boundary: the packaged runtime only ever serves its own
   // workbench origin, so browser cross-site and rebound-host callers are
   // refused before any route can observe or mutate workspace truth.
   app.use(rejectUntrustedLocalCaller(options));
-  app.use(localRequestAllowance(options.requestAllowancePerMinute ?? 5_000));
 
   app.get("/api/ping", (_req, res) => {
     res.json({ message: "KForge server is online." });
