@@ -33,6 +33,44 @@ async function exists(file: string) {
   try { await fs.access(file); return true; } catch { return false; }
 }
 
+function isInsideRealRoot(realRoot: string, realTarget: string) {
+  const relative = path.relative(realRoot, realTarget);
+  if (!relative || path.isAbsolute(relative)) return false;
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`);
+}
+
+async function nearestExistingRealPath(target: string) {
+  let directory = path.dirname(target);
+  for (;;) {
+    try {
+      return path.join(await fs.realpath(directory), path.relative(directory, target));
+    } catch {
+      const parent = path.dirname(directory);
+      if (parent === directory) throw new Error("Unsafe documentation path.");
+      directory = parent;
+    }
+  }
+}
+
+/**
+ * A documentation document is a real path inside the project, not a path whose
+ * string form merely starts with the project root. A trusted project can contain
+ * a symlinked document, and a lexical or prefix check would let KForge read and
+ * then rewrite a file outside the project it was pointed at.
+ */
+async function resolveProjectDocument(projectPath: string, document: string): Promise<string> {
+  const resolved = path.resolve(projectPath, document);
+  const realRoot = await fs.realpath(projectPath);
+  let realTarget: string;
+  try {
+    realTarget = await fs.realpath(resolved);
+  } catch {
+    realTarget = await nearestExistingRealPath(resolved);
+  }
+  if (!isInsideRealRoot(realRoot, realTarget)) throw new Error("Unsafe documentation path.");
+  return resolved;
+}
+
 function isMarkdownCommandContext(text: string, index: number) {
   const lineStart = text.lastIndexOf("\n", index - 1) + 1;
   const prefix = text.slice(lineStart, index);
@@ -118,8 +156,12 @@ export async function auditDocumentation(projectPath: string, profile: ProjectPr
 export async function previewDocumentationFix(projectPath: string, audit: DocumentationAudit, findingId: string) {
   const finding = audit.findings.find((entry) => entry.id === findingId);
   if (!finding?.fix) return { finding, patch: undefined, reason: "This finding requires manual review; no exact safe text replacement is available." };
-  const documentPath = path.resolve(projectPath, finding.sourceDocument);
-  if (!documentPath.startsWith(path.resolve(projectPath) + path.sep)) return { finding, patch: undefined, reason: "Unsafe documentation path." };
+  let documentPath: string;
+  try {
+    documentPath = await resolveProjectDocument(projectPath, finding.sourceDocument);
+  } catch {
+    return { finding, patch: undefined, reason: "Unsafe documentation path." };
+  }
   const text = await fs.readFile(documentPath, "utf8").catch(() => "");
   const occurrences = text.split(finding.fix.before).length - 1;
   if (occurrences === 0) return { finding, patch: undefined, reason: "The documented claim no longer matches the preview source." };
@@ -130,7 +172,14 @@ export async function previewDocumentationFix(projectPath: string, audit: Docume
 export async function applyDocumentationFix(projectPath: string, profile: ProjectProfile, audit: DocumentationAudit, findingId: string) {
   const preview = await previewDocumentationFix(projectPath, audit, findingId);
   if (!preview.patch) return { ...preview, applied: false, verified: false };
-  const target = path.resolve(projectPath, preview.patch.document);
+  // Re-checked immediately before the write so a document that became a symlink
+  // escape after the preview cannot be rewritten.
+  let target: string;
+  try {
+    target = await resolveProjectDocument(projectPath, preview.patch.document);
+  } catch {
+    return { ...preview, patch: undefined, applied: false, verified: false, reason: "Unsafe documentation path." };
+  }
   const text = await fs.readFile(target, "utf8");
   const next = text.replace(preview.patch.before, preview.patch.after);
   const temporary = `${target}.kforge-tmp`;

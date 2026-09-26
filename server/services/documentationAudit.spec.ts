@@ -1,8 +1,9 @@
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import type { ProjectProfile } from "../../shared/workspace";
-import { auditDocumentation, previewDocumentationFix } from "./documentationAudit";
+import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "./documentationAudit";
 
 describe("KForge documentation safe fixes", () => {
   it("refuses a preview when the exact documented claim occurs more than once", async () => {
@@ -25,6 +26,67 @@ describe("KForge documentation safe fixes", () => {
       }, "documentation:duplicate");
       expect(preview.patch).toBeUndefined();
       expect(preview.reason).toContain("not unique");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to read or rewrite a document that is a symlink escaping the project", async () => {
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-docs-outside-"));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-docs-symlink-"));
+    try {
+      const outsideDocument = path.join(outsideDir, "notes.md");
+      await fs.writeFile(outsideDocument, "Run npm run obsolete\n", "utf8");
+      await fs.symlink(outsideDocument, path.join(root, "README.md"));
+      const audit = {
+        auditedAt: new Date().toISOString(),
+        documents: ["README.md"],
+        findings: [{
+          id: "documentation:symlink-escape",
+          sourceDocument: "README.md",
+          claim: "npm run obsolete",
+          evidence: "outside",
+          actualState: "unavailable",
+          severity: "high" as const,
+          suggestedFix: "Use npm run test.",
+          fix: { before: "npm run obsolete", after: "npm run test" },
+        }],
+      };
+      const preview = await previewDocumentationFix(root, audit, "documentation:symlink-escape");
+      expect(preview.patch).toBeUndefined();
+      expect(preview.reason).toBe("Unsafe documentation path.");
+
+      const applied = await applyDocumentationFix(root, { scripts: {}, commands: {}, envFiles: [] } as ProjectProfile, audit, "documentation:symlink-escape");
+      expect(applied.applied).toBe(false);
+      expect(applied.reason).toBe("Unsafe documentation path.");
+      expect(await fs.readFile(outsideDocument, "utf8")).toBe("Run npm run obsolete\n");
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a document path that escapes the project lexically", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-docs-traversal-"));
+    try {
+      await fs.writeFile(path.join(root, "README.md"), "Run npm run obsolete\n", "utf8");
+      const audit = {
+        auditedAt: new Date().toISOString(),
+        documents: ["../outside.md"],
+        findings: [{
+          id: "documentation:traversal",
+          sourceDocument: "../outside.md",
+          claim: "npm run obsolete",
+          evidence: "outside",
+          actualState: "unavailable",
+          severity: "high" as const,
+          suggestedFix: "Use npm run test.",
+          fix: { before: "npm run obsolete", after: "npm run test" },
+        }],
+      };
+      const preview = await previewDocumentationFix(root, audit, "documentation:traversal");
+      expect(preview.patch).toBeUndefined();
+      expect(preview.reason).toBe("Unsafe documentation path.");
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
