@@ -1,0 +1,78 @@
+.knoux-living-mark {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 1;
+  transition: opacity 420ms ease;
+}
+
+.knoux-living-mark[data-suspended="true"] {
+  opacity: 0;
+}
+
+.knoux-living-mark canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.knoux-living-mark[data-mode="workspace"] {
+  opacity: 0.34;
+  filter: saturate(0.82) contrast(0.96);
+}
+
+.knoux-living-mark[data-mode="idle"] {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  opacity: 0.96;
+  background: #030404;
+}
+
+.knoux-living-mark[data-mode="splash"] {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  opacity: 1;
+  background: #030404;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .knoux-living-mark {
+    transition: none;
+  }
+}
+
+.kw-loading-living-mark {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #030404;
+  color: #d9e7e5;
+}
+
+.kw-loading-living-mark > span {
+  position: relative;
+  z-index: 101;
+}
+
+.kw-workbench {
+  position: relative;
+}
+
+.kw-workbench > .knoux-living-mark[data-mode="workspace"] {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.kw-workbench > :not(.knoux-living-mark) {
+  position: relative;
+  z-index: 1;
+}
+
+.kw-shell[data-living-mark="workspace"] .kw-workbench {
+  background: color-mix(in srgb, var(--kw-surface) 78%, transparent);
+}

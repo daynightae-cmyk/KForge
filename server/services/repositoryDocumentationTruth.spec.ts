@@ -118,7 +118,9 @@ describe("repository documentation truth contract", () => {
     expect(readme).not.toContain("pending install-script review");
     expect(readme).not.toContain("does not claim target-application browser-console");
 
-    for (const name of ["@react-three/drei", "@react-three/fiber", "@types/three", "framer-motion", "three"]) {
+    expect(manifest.dependencies?.three).toMatch(/^\^0\.183\.2$/);
+
+    for (const name of ["@react-three/drei", "@react-three/fiber", "@types/three", "framer-motion"]) {
       expect(manifest.dependencies?.[name]).toBeUndefined();
       expect(manifest.devDependencies?.[name]).toBeUndefined();
       expect(manifest.optionalDependencies?.[name]).toBeUndefined();
