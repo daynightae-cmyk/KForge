@@ -3,6 +3,7 @@ import type { LocalPlatformMode, LocalPlatformStatus, ProjectSummary, SelfAuditR
 import type { RecordRow } from "./surfaceContracts";
 import { fetchEvidence, fetchJson, jsonRequest } from "./api";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import { ProjectRequired } from "./ProjectStartActions";
 
 type SystemControlView = "online-offline" | "self-audit" | "system-diagnostics";
 type DiagnosticsRow = RecordRow & { id: string; name: string; state: string; source?: string };
@@ -16,7 +17,7 @@ const MODE_COPY: Record<LocalPlatformMode, { label: string; detail: string }> = 
 
 function SystemControlCenter({ view, project }: { view: SystemControlView; project?: ProjectSummary }) {
   if (view === "online-offline") return <OperatingModeCenter />;
-  if (view === "self-audit") return project ? <SelfAuditCenter project={project} /> : <EmptyState title="No project selected" detail="Self Audit is project-scoped. Select the KForge repository itself to run the full persisted audit sequence." />;
+  if (view === "self-audit") return project ? <SelfAuditCenter project={project} /> : <ProjectRequired detail="Self Audit is project-scoped. Select the KForge repository itself to run the full persisted audit sequence." />;
   return <DiagnosticsCenter />;
 }
 

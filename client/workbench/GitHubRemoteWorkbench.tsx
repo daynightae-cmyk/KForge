@@ -3,6 +3,7 @@ import { CircleDot, ExternalLink, GitBranch, GitCommit, Github, GitPullRequest, 
 import { fetchJson } from "./api";
 import type { SurfaceProps } from "./surfaceContracts";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import { ProjectRequired } from "./ProjectStartActions";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -282,7 +283,7 @@ export default function GitHubRemoteWorkbench({ view, project, onExecution }: Pr
     releases: rows(data?.releases).length,
   }), [data]);
 
-  if (!project) return <EmptyState title="No project selected" detail="GitHub evidence requires project context." />;
+  if (!project) return <ProjectRequired detail="GitHub evidence requires project context." />;
   if (loading) return <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground" role="status">Contacting the configured GitHub read-only adapter…</div>;
   if (!data) return <EmptyState title="GitHub evidence unavailable" detail={notice || "KForge could not retrieve remote GitHub metadata."} action={<button className={buttonClass} onClick={() => void load(true)}>Retry GitHub read</button>} />;
 

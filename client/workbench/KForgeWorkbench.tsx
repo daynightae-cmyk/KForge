@@ -7,6 +7,7 @@ import { StatusBadge } from "./ui";
 import type { ExecutionSnapshot, InspectorContext, RecordRow } from "./surfaceContracts";
 import { WorkbenchSurface } from "./surfaces";
 import PersistentPreviewDock from "./PersistentPreviewDock";
+import { PROJECT_OPENED_EVENT } from "./ProjectStartActions";
 import "./workbench.css";
 
 const CanonicalInspector = lazy(() => import("./CanonicalInspector"));
@@ -97,6 +98,17 @@ export default function KForgeWorkbench() {
     };
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
   }, []);
+  useEffect(() => {
+    const opened = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string; name?: string }>).detail;
+      if (!detail?.projectId) return;
+      setProjectId(detail.projectId);
+      setMessage(`${detail.name || "Project"} is now the active project.`);
+      void refreshWorkspace();
+    };
+    window.addEventListener(PROJECT_OPENED_EVENT, opened);
+    return () => window.removeEventListener(PROJECT_OPENED_EVENT, opened);
+  }, []);
   useEffect(() => { if (paletteOpen) requestAnimationFrame(() => paletteInput.current?.focus()); }, [paletteOpen]);
   useEffect(() => {
     if (!paletteOpen) return;
@@ -119,6 +131,11 @@ export default function KForgeWorkbench() {
     const timer = window.setTimeout(() => void fetchJson<{ results: Array<RecordRow & { target?: string; projectId?: string }> }>(`/api/workspace/search?q=${encodeURIComponent(paletteQuery.trim())}${projectId ? `&projectId=${encodeURIComponent(projectId)}` : ""}`).then((data) => setSearchRows(data.results || [])).catch(() => setSearchRows([])), 160);
     return () => window.clearTimeout(timer);
   }, [paletteOpen, paletteQuery, projectId]);
+  useEffect(() => {
+    const navigate = (event: Event) => deepNavigate(String((event as CustomEvent<{ target?: string }>).detail?.target || ""));
+    window.addEventListener("kforge:navigate", navigate);
+    return () => window.removeEventListener("kforge:navigate", navigate);
+  });
 
   const navigate = (nextActivity: KForgeActivity, nextView: string) => {
     setActivity(nextActivity);
@@ -128,7 +145,7 @@ export default function KForgeWorkbench() {
   };
   const changeActivity = (next: KForgeActivity) => navigate(next, next === "online" && settings ? settings.general.startupOnlineView : defaultView(next));
   const deepNavigate = (target: string) => {
-    const map: Record<string, [KForgeActivity, string]> = { Workspace: ["projects", "workspace"], Agents: ["ai", "agents"], Models: ["ai", "models"], Tasks: ["ai", "tasks"], Marketplace: ["online", "marketplace"], Extensions: ["online", "extensions"], "Online Documentation": ["online", "documentation"], "Project graph": ["intelligence", "project-graph"], Dependencies: ["intelligence", "dependencies"], Architecture: ["intelligence", "architecture"], Problems: ["quality", "problems"], Documentation: ["quality", "documentation"], "KForge Sonar": ["quality", "sonar"], Tests: ["developer-tools", "tests"], Build: ["developer-tools", "build"], Runtime: ["developer-tools", "runtime"], Preview: ["developer-tools", "preview"], Git: ["remote", "git"], GitHub: ["remote", "github"], "Release Gate": ["release", "release-gate"], Settings: ["system", "settings"] };
+    const map: Record<string, [KForgeActivity, string]> = { Workspace: ["projects", "workspace"], Agents: ["ai", "agents"], Models: ["ai", "models"], Tasks: ["ai", "tasks"], Providers: ["ai", "providers"], Marketplace: ["online", "marketplace"], Extensions: ["online", "extensions"], "Online Documentation": ["online", "documentation"], "Project graph": ["intelligence", "project-graph"], Dependencies: ["intelligence", "dependencies"], Architecture: ["intelligence", "architecture"], Problems: ["quality", "problems"], Documentation: ["quality", "documentation"], "KForge Sonar": ["quality", "sonar"], Tests: ["developer-tools", "tests"], Build: ["developer-tools", "build"], Runtime: ["developer-tools", "runtime"], "Project commands": ["developer-tools", "terminal"], Preview: ["developer-tools", "preview"], Git: ["remote", "git"], GitHub: ["remote", "github"], "Release Gate": ["release", "release-gate"], Settings: ["system", "settings"] };
     const destination = map[target] || ["projects", "workspace"]; navigate(destination[0], destination[1]);
   };
   const changeProject = (next: string) => {

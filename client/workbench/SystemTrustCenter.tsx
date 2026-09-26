@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LocalPlatformStatus, ProjectSummary } from "@shared/workspace";
 import type { RecordRow, SurfaceProps } from "./surfaceContracts";
 import { fetchJson, jsonRequest } from "./api";
-import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import { AdvancedEvidence, StatusBadge } from "./ui";
+import { ProjectRequired } from "./ProjectStartActions";
 
 type ToolEvidence = RecordRow & {
   name: string;
@@ -111,7 +112,7 @@ function SystemTrustCenter({ project, onRefresh }: { project?: ProjectSummary; o
     }
   };
 
-  if (!project) return <EmptyState title="No project selected" detail="Trust is project-scoped. Select a local project to inspect, grant, or revoke execution authority." />;
+  if (!project) return <ProjectRequired detail="Trust is project-scoped. Select a local project to inspect, grant, or revoke execution authority." />;
   if (loading) return <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground" role="status">Loading project trust evidence…</div>;
 
   return <section className="space-y-4" aria-label="KForge Trust Center" data-project-trust={project.trust}>

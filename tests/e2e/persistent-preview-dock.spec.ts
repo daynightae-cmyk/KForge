@@ -52,6 +52,12 @@ test.describe("KForge shell-owned Persistent Preview", () => {
     await setProjectContext(page, projectId);
     const dock = page.getByRole("complementary", { name: "Persistent Preview Dock", exact: true });
     await expect(dock).toBeVisible();
+    // The bottom area stays collapsed while no runtime is live so the workbench
+    // keeps its full height, so the operator reveals it before driving Preview.
+    await expect(dock).toHaveAttribute("data-minimized", "true");
+    await expect(page.getByRole("region", { name: "KForge workbench" })).toBeVisible();
+    await dock.getByLabel("Restore persistent Preview", { exact: true }).click();
+    await expect(dock).toHaveAttribute("data-minimized", "false");
     await expect(dock).toContainText(openedPayload.project.name);
 
     const start = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${projectId}/preview/start`) && response.request().method() === "POST");

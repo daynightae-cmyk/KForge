@@ -3,6 +3,7 @@ import type { BoundedEvidenceCoverage, ProjectHealth, ProjectSummary, ReleaseDec
 import type { SurfaceProps } from "./surfaceContracts";
 import { fetchJson } from "./api";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import { ProjectRequired } from "./ProjectStartActions";
 
 type PersistedHealthSummary = {
   path: string;
@@ -72,7 +73,7 @@ function ProjectHealthWorkbench({ project, onRefresh }: { project?: ProjectSumma
     };
   }, [data]);
 
-  if (!project) return <EmptyState title="No project selected" detail="Project Health is project-scoped. Select a local project before running a bounded scan." />;
+  if (!project) return <ProjectRequired detail="Project Health is project-scoped. Select a local project before running a bounded scan." />;
 
   return <section className="space-y-4" aria-label="KForge Project Health Workbench" data-health-scan-state={running ? "RUNNING" : data ? "SCANNED" : "NOT_RUN_THIS_SESSION"}>
     <header className="flex flex-wrap items-start gap-3 rounded-lg border bg-card p-4">

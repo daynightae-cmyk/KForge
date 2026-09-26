@@ -10,9 +10,10 @@ import SnapshotRecoveryWorkbench from "./SnapshotRecoveryWorkbench";
 import SecurityQualityWorkbench from "./SecurityQualityWorkbench";
 import PerformanceQualityWorkbench from "./PerformanceQualityWorkbench";
 import TechnicalDebtWorkbench from "./TechnicalDebtWorkbench";
+import { ProjectRequired } from "./ProjectStartActions";
 
 function QualitySurface({ view, project, onNavigate }: SurfaceProps) {
-  if (!project) return <EmptyState title="No project selected" detail={`${viewLabel("quality", view)} needs project context.`} />;
+  if (!project) return <ProjectRequired detail={`${viewLabel("quality", view)} needs project context.`} />;
   if (view === "problems" || view === "solutions") return <QualityTriageWorkbench project={project} view={view} onNavigate={onNavigate} />;
   if (view === "snapshots") return <SnapshotRecoveryWorkbench project={project} />;
   if (view === "documentation") return <DocumentationConsistencyWorkbench project={project} />;

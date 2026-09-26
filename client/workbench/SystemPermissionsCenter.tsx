@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProjectSummary } from "@shared/workspace";
 import type { RecordRow } from "./surfaceContracts";
 import { fetchJson } from "./api";
-import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import { AdvancedEvidence, StatusBadge } from "./ui";
+import { ProjectRequired } from "./ProjectStartActions";
 
 type PermissionClass = "read-only" | "safe" | "safe-write" | "dangerous" | "blocked";
 type ToolStatus = "AVAILABLE" | "AVAILABLE_WITH_CONFIRMATION" | "UNAVAILABLE" | "BLOCKED" | "ERROR";
@@ -89,7 +90,7 @@ function SystemPermissionsCenter({ project }: { project?: ProjectSummary }) {
     });
   }, [permission, query, status, tools]);
 
-  if (!project) return <EmptyState title="No project selected" detail="Permissions are derived from the selected project, its trust state, detected commands, and registered KForge handlers." />;
+  if (!project) return <ProjectRequired detail="Permissions are derived from the selected project, its trust state, detected commands, and registered KForge handlers." />;
   if (loading && !data) return <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground" role="status">Loading project permission evidence…</div>;
 
   return <section className="space-y-4" aria-label="KForge Permissions Center" data-project-trust={project.trust} data-tool-count={tools.length}>

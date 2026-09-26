@@ -6,11 +6,12 @@ import { fetchJson } from "./api";
 import { EmptyState } from "./ui";
 import { viewLabel, ACTIVITIES, activityDefinition } from "./navigation";
 import SystemStorageCenter from "./SystemStorageCenter";
+import { ProjectRequired } from "./ProjectStartActions";
 
 function SystemSurface(props: SurfaceProps) {
   const { view, project, settings, onSettings } = props;
   if (view === "settings") return settings ? <SettingsSurface settings={settings} onSettings={onSettings} /> : <p className="kw-message">Settings unavailable.</p>;
-  if (!project) return <EmptyState title="No project selected" detail={`${viewLabel("system", view)} needs project context.`} />;
+  if (!project) return <ProjectRequired detail={`${viewLabel("system", view)} needs project context.`} />;
   if (view === "storage") return <SystemStorageCenter project={project} />;
   return <EmptyState title="Specialized system surface unavailable" detail={`${viewLabel("system", view)} must be routed through its dedicated System surface. KForge does not fall back to a duplicate generic implementation.`} />;
 }

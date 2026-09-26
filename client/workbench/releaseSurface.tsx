@@ -4,9 +4,10 @@ import type { ProjectSummary } from "@shared/workspace";
 import { fetchEvidence } from "./api";
 import { EmptyState, StatusBadge } from "./ui";
 import ReleaseDistributionWorkbench from "./ReleaseDistributionWorkbench";
+import { ProjectRequired } from "./ProjectStartActions";
 
 function ReleaseSurface({ view, project, onExecution }: SurfaceProps) {
-  if (!project) return <EmptyState title="No project selected" detail="Release evidence is project scoped." />;
+  if (!project) return <ProjectRequired detail="Release evidence is project scoped." />;
   if (view === "release-gate") return <ReleaseGate project={project} onExecution={onExecution} />;
   if (view === "release-preparation" || view === "artifacts" || view === "versioning") return <ReleaseDistributionWorkbench project={project} view={view} />;
   return <EmptyState title="Specialized release surface unavailable" detail="This Release view has no canonical specialized implementation. KForge does not fall back to raw JSON as the primary release UX." />;

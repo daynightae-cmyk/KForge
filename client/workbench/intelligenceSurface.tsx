@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import type { SurfaceProps, RecordRow } from "./surfaceContracts";
 import type { ProjectSummary } from "@shared/workspace";
 import { fetchJson, jsonRequest } from "./api";
-import { EmptyState } from "./ui";
 import { viewLabel } from "./navigation";
 import { SimpleFetchSurface } from "./surfaceShared";
+import { ProjectRequired } from "./ProjectStartActions";
 
 function IntelligenceSurface({ view, project }: SurfaceProps) {
-  if (!project) return <EmptyState title="No project selected" detail={`${viewLabel("intelligence", view)} needs project context.`} />;
+  if (!project) return <ProjectRequired detail={`${viewLabel("intelligence", view)} needs project context.`} />;
   if (view === "impact-analysis") return <ImpactAnalysis project={project} />;
   if (view === "ask-kforge") return <AskKForge project={project} />;
   if (view === "code-understanding") return <CodeUnderstanding project={project} />;

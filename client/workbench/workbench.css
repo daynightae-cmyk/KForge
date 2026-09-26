@@ -781,3 +781,84 @@
   transition: none !important;
   transform: none !important;
 }
+
+/* Project-first recovery: a real way in, never an inert "no project" panel. */
+.kw-start-actions {
+  display: grid;
+  gap: 10px;
+  width: min(680px, 100%);
+  margin-top: 12px;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid color-mix(in srgb, var(--kw-primary) 30%, var(--kw-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--kw-panel) 96%, var(--kw-primary) 4%);
+}
+
+.kw-start-actions--compact { margin-top: 8px; }
+
+.kw-start-actions__tabs { display: flex; gap: 6px; }
+
+.kw-start-actions__tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--kw-muted);
+  border: 1px solid var(--kw-border);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.kw-start-actions__tabs button.is-active {
+  color: var(--kw-fg);
+  border-color: color-mix(in srgb, var(--kw-primary) 55%, var(--kw-border));
+  background: color-mix(in srgb, var(--kw-primary) 12%, transparent);
+}
+
+.kw-start-actions__row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.kw-start-actions__field { display: grid; flex: 1 1 260px; gap: 3px; min-width: 0; }
+.kw-start-actions__field--narrow { flex: 0 1 160px; }
+.kw-start-actions__field span { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--kw-muted); }
+.kw-start-actions__field input { width: 100%; min-width: 0; }
+
+.kw-start-actions__primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--kw-bg);
+  border-radius: 7px;
+  background: var(--kw-primary);
+  cursor: pointer;
+}
+
+.kw-start-actions__primary:disabled { opacity: .45; cursor: not-allowed; }
+.kw-start-actions__note { margin: 0; font-size: 10.5px; line-height: 1.45; color: var(--kw-muted); }
+.kw-start-actions__wrap { display: grid; gap: 8px; justify-items: start; }
+
+.kw-start-actions__quick { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.kw-start-actions__quick button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  color: var(--kw-muted);
+  border: 1px solid var(--kw-border);
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.kw-start-actions__quick button:hover { color: var(--kw-fg); border-color: var(--kw-primary); }
+.kw-spin { animation: kw-spin 900ms linear infinite; }
+
+@keyframes kw-spin { to { transform: rotate(360deg); } }
+
+[data-kf-reduced-motion="true"] .kw-spin { animation: none; }

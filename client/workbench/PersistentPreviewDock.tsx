@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, ExternalLink, Maximize2, Minimize2, Monitor, PanelBottom, PanelRight, Play, RefreshCcw, RotateCw, Smartphone, Square, Tablet, X } from "lucide-react";
 import type { ProjectSummary } from "@shared/workspace";
 import type { RuntimeService, RuntimeTopologyDiscovery, TopologySession } from "@shared/topology";
@@ -34,14 +34,14 @@ const VIEWPORTS: Record<Viewport, { label: string; width?: number; height?: numb
   mobile: { label: "Mobile 390×844", width: 390, height: 844, icon: Smartphone },
 };
 
-const defaults: PersistedDock = { open: true, minimized: false, layout: "bottom", viewport: "fluid", routes: {}, routeIndexes: {} };
+const defaults: PersistedDock = { open: true, minimized: true, layout: "bottom", viewport: "fluid", routes: {}, routeIndexes: {} };
 
 function readPersisted(): PersistedDock {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") as Partial<PersistedDock>;
     return {
       open: parsed.open !== false,
-      minimized: parsed.minimized === true,
+      minimized: parsed.minimized !== false,
       layout: ["floating", "side", "bottom"].includes(String(parsed.layout)) ? parsed.layout as DockLayout : "bottom",
       viewport: ["fluid", "desktop", "tablet", "mobile"].includes(String(parsed.viewport)) ? parsed.viewport as Viewport : "fluid",
       routes: parsed.routes && typeof parsed.routes === "object" ? parsed.routes : {},
@@ -78,6 +78,12 @@ export default function PersistentPreviewDock({ project, fullWorkbenchActive, in
   const updateDock = useCallback((recipe: (current: PersistedDock) => PersistedDock) => {
     setDock((current) => { const next = recipe(current); persist(next); return next; });
   }, []);
+
+  const userSetVisibility = useRef(false);
+  const setVisibility = useCallback((next: Partial<Pick<PersistedDock, "open" | "minimized">>) => {
+    userSetVisibility.current = true;
+    updateDock((current) => ({ ...current, ...next }));
+  }, [updateDock]);
 
   const load = useCallback(async () => {
     if (!endpoint) { setData(null); setCapability(null); return null; }
@@ -166,6 +172,15 @@ export default function PersistentPreviewDock({ project, fullWorkbenchActive, in
     ? Boolean(project?.trust === "trusted" && topology && ["STARTING", "RUNNING", "HEALTHY", "DEGRADED"].includes(topology.state))
     : Boolean(project?.trust === "trusted" && data && ["starting", "running"].includes(data.state));
 
+  // The bottom area is collapsed by default so an idle workspace keeps its full
+  // height. It reveals itself the moment a Preview or topology is actually
+  // running, and stays out of the way afterwards unless the operator asks for it.
+  const runtimeActive = live || Boolean(topology && ["STARTING", "RUNNING", "HEALTHY", "DEGRADED"].includes(topology.state)) || data?.state === "running";
+  useEffect(() => {
+    if (userSetVisibility.current) return;
+    if (runtimeActive && dock.minimized) updateDock((current) => ({ ...current, open: true, minimized: false }));
+    if (!runtimeActive && !dock.minimized && dock.open && !live) updateDock((current) => ({ ...current, minimized: true }));
+  }, [runtimeActive, live, dock.minimized, dock.open, updateDock]);
   const operate = async (operation: "start" | "health" | "restart" | "stop") => {
     if (!endpoint) return;
     setBusy(operation); setNotice("");
@@ -210,7 +225,7 @@ export default function PersistentPreviewDock({ project, fullWorkbenchActive, in
     setRouteInput(routeHistory[next] || "/");
   };
 
-  if (!dock.open) return <button className="kw-persistent-preview-launcher" aria-label="Open persistent Preview" onClick={() => updateDock((current) => ({ ...current, open: true, minimized: false }))}><Monitor size={17} /><span>Preview</span>{data?.state === "running" && data.health?.ok ? <i aria-label="Preview healthy" /> : null}</button>;
+  if (!dock.open) return <button className="kw-persistent-preview-launcher" aria-label="Open persistent Preview" onClick={() => setVisibility({ open: true, minimized: false })}><Monitor size={17} /><span>Preview</span>{data?.state === "running" && data.health?.ok ? <i aria-label="Preview healthy" /> : null}</button>;
 
   return <aside className="kw-persistent-preview" data-layout={dock.layout} data-minimized={dock.minimized} data-inspector-open={inspectorOpen} aria-label="Persistent Preview Dock">
     <header className="kw-persistent-preview__header">
@@ -220,8 +235,8 @@ export default function PersistentPreviewDock({ project, fullWorkbenchActive, in
         <button aria-label="Floating Preview layout" aria-pressed={dock.layout === "floating"} onClick={() => updateDock((current) => ({ ...current, layout: "floating", minimized: false }))}><Maximize2 size={13} /></button>
         <button aria-label="Right-side Preview layout" aria-pressed={dock.layout === "side"} onClick={() => updateDock((current) => ({ ...current, layout: "side", minimized: false }))}><PanelRight size={13} /></button>
         <button aria-label="Bottom Preview layout" aria-pressed={dock.layout === "bottom"} onClick={() => updateDock((current) => ({ ...current, layout: "bottom", minimized: false }))}><PanelBottom size={13} /></button>
-        <button aria-label={dock.minimized ? "Restore persistent Preview" : "Minimize persistent Preview"} onClick={() => updateDock((current) => ({ ...current, minimized: !current.minimized }))}>{dock.minimized ? <Maximize2 size={13} /> : <Minimize2 size={13} />}</button>
-        <button aria-label="Close persistent Preview" onClick={() => updateDock((current) => ({ ...current, open: false }))}><X size={13} /></button>
+        <button aria-label={dock.minimized ? "Restore persistent Preview" : "Minimize persistent Preview"} onClick={() => setVisibility({ minimized: !dock.minimized })}>{dock.minimized ? <Maximize2 size={13} /> : <Minimize2 size={13} />}</button>
+        <button aria-label="Close persistent Preview" onClick={() => setVisibility({ open: false })}><X size={13} /></button>
       </div>
     </header>
 

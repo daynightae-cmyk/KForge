@@ -4,6 +4,7 @@ import type { SurfaceProps } from "./surfaceContracts";
 import { EmptyState, StatusBadge } from "./ui";
 import GitHubRemoteWorkbench from "./GitHubRemoteWorkbench";
 import { fetchJson, jsonRequest } from "./api";
+import { ProjectRequired } from "./ProjectStartActions";
 
 type GitFileChange = {
   file: string;
@@ -47,7 +48,7 @@ const buttonClass = "inline-flex items-center justify-center gap-1.5 rounded-md 
 const primaryButtonClass = `${buttonClass} border-primary bg-primary text-primary-foreground hover:bg-primary/90`;
 
 function RemoteSurface({ view, project, onExecution, onRefresh }: SurfaceProps) {
-  if (!project) return <EmptyState title="No project selected" detail="Git and GitHub evidence requires project context." />;
+  if (!project) return <ProjectRequired detail="Git and GitHub evidence requires project context." />;
   if (["git", "branches", "commits"].includes(view)) return <GitWorkbench view={view} project={project} onExecution={onExecution} onRefresh={onRefresh} />;
   if (["github", "pull-requests", "issues", "actions", "releases"].includes(view)) return <GitHubRemoteWorkbench view={view} project={project} onExecution={onExecution} />;
   return <EmptyState title="Unknown Remote / Git view" detail={`No verified Remote / Git surface is registered for '${view}'.`} />;

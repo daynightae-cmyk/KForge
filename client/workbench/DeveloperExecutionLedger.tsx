@@ -3,7 +3,8 @@ import { Activity, Clock3, RefreshCcw, Search, ShieldCheck } from "lucide-react"
 import type { ProjectSummary } from "@shared/workspace";
 import type { SurfaceProps } from "./surfaceContracts";
 import { fetchJson } from "./api";
-import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import { AdvancedEvidence, StatusBadge } from "./ui";
+import { ProjectRequired } from "./ProjectStartActions";
 
 type TaskLog = { at: string; message: string; stream: "system" | "stdout" | "stderr" };
 type DeveloperTask = {
@@ -135,7 +136,7 @@ export default function DeveloperExecutionLedger({ project, onExecution }: { pro
   const confirmed = (ledger?.records || []).filter((entry) => entry.transparency.confirmation === "CONFIRMED").length;
   const failed = (ledger?.records || []).filter((entry) => ["FAILED", "BLOCKED"].includes(entry.transparency.result)).length;
 
-  if (!project) return <EmptyState title="No project selected" detail="Developer execution evidence is project scoped." />;
+  if (!project) return <ProjectRequired detail="Developer execution evidence is project scoped." />;
   if (loading) return <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground" role="status">Loading persisted developer task and execution evidence…</div>;
 
   return <section className="space-y-4" aria-label="KForge Developer Logs">

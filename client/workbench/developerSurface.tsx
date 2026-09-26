@@ -4,9 +4,10 @@ import type { ProjectSummary, WorkspaceActionDescriptor, CommandResult } from "@
 import type { SurfaceProps } from "./surfaceContracts";
 import { fetchJson, jsonRequest } from "./api";
 import { EmptyState, StatusBadge } from "./ui";
+import { ProjectRequired } from "./ProjectStartActions";
 
 function DeveloperSurface({ view, project, onExecution }: SurfaceProps) {
-  if (!project) return <EmptyState title="No project selected" detail="Developer execution requires explicit project context." />;
+  if (!project) return <ProjectRequired detail="Developer execution requires explicit project context." />;
   if (view === "terminal") return <CommandTerminal project={project} onExecution={onExecution} />;
   return <EmptyState title="Specialized developer surface unavailable" detail={`${view} must be routed through its dedicated Workbench implementation. KForge does not fall back to a duplicate generic executor.`} />;
 }

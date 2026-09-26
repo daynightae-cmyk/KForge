@@ -4,6 +4,7 @@ import type { ProjectHealth, ProjectSummary, ScanIssue } from "@shared/workspace
 import type { SurfaceProps } from "./surfaceContracts";
 import { fetchJson } from "./api";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import { ProjectRequired } from "./ProjectStartActions";
 
 type TaskKind = "scan" | "audit" | "test" | "build" | "typecheck" | "runtime" | "git" | "github" | "clone" | "agent" | "snapshot";
 type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked" | "retrying";
@@ -225,7 +226,7 @@ function DeveloperDiagnostics({ project, onExecution }: { project: ProjectSummar
 }
 
 export default function DeveloperObservabilityWorkbench({ view, project, onExecution }: Props) {
-  if (!project) return <EmptyState title="No project selected" detail="Developer observability requires explicit project context." />;
+  if (!project) return <ProjectRequired detail="Developer observability requires explicit project context." />;
   if (view === "logs") return <DeveloperLogs project={project} onExecution={onExecution} />;
   if (view === "diagnostics") return <DeveloperDiagnostics project={project} onExecution={onExecution} />;
   return <EmptyState title="Unknown developer observability view" detail={`No observability surface is registered for '${view}'.`} />;
