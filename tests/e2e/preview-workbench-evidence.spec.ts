@@ -122,7 +122,13 @@ test.describe("KForge canonical Preview Workbench", () => {
     expect((await settingsSaved).ok()).toBeTruthy();
     await expect(page.locator("html")).toHaveClass(/light/);
     await selectExplorerView(page, "Developer Tools", "Preview");
-    await page.getByLabel("Preview viewport").selectOption("mobile");
+    // The Preview controls live in the shell-owned dock, which stays collapsed
+    // until a runtime is live, so reveal it before driving viewport evidence.
+    const dockViewport = page.getByLabel("Preview viewport");
+    if (await dockViewport.count() === 0) {
+      await page.getByRole("complementary", { name: "Persistent Preview Dock", exact: true }).getByLabel("Restore persistent Preview", { exact: true }).click();
+    }
+    await dockViewport.selectOption("mobile");
     await page.screenshot({ path: path.join(visualRoot, "preview-workbench-light-mobile.png"), fullPage: true });
 
     const axe = await new AxeBuilder({ page }).include(".kw-shell").analyze();

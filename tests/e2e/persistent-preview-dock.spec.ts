@@ -55,7 +55,7 @@ test.describe("KForge shell-owned Persistent Preview", () => {
     // The bottom area stays collapsed while no runtime is live so the workbench
     // keeps its full height, so the operator reveals it before driving Preview.
     await expect(dock).toHaveAttribute("data-minimized", "true");
-    await expect(page.getByRole("region", { name: "KForge workbench" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Workbench surface content", exact: true })).toBeVisible();
     await dock.getByLabel("Restore persistent Preview", { exact: true }).click();
     await expect(dock).toHaveAttribute("data-minimized", "false");
     await expect(dock).toContainText(openedPayload.project.name);
