@@ -76,12 +76,26 @@ interface SessionRun {
 const activeRuns = new Map<string, SessionRun>();
 const listeners = new Map<string, Set<(event: ProviderSessionEvent) => void>>();
 
+const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Session identifiers become local `.kforge` storage filenames. They are
+ * server-generated UUIDs, so anything that is not a canonical UUID is refused
+ * before it can reach the filesystem rather than relying on every caller
+ * having already resolved the id against a stored session.
+ */
+function assertSessionId(value: string): string {
+  const id = value.trim();
+  if (!SESSION_ID_PATTERN.test(id) || id.includes("..")) throw new Error("Invalid provider session identifier.");
+  return id;
+}
+
 function eventPath(root: string, sessionId: string) {
-  return path.join(root, ".kforge", "provider-session-events", `${sessionId}.json`);
+  return path.join(root, ".kforge", "provider-session-events", `${assertSessionId(sessionId)}.json`);
 }
 
 function patchPath(root: string, sessionId: string) {
-  return path.join(root, ".kforge", "provider-session-patches", `${sessionId}.json`);
+  return path.join(root, ".kforge", "provider-session-patches", `${assertSessionId(sessionId)}.json`);
 }
 
 async function readJson<T>(target: string, fallback: T): Promise<T> {
