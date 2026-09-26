@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getOvsxExtension, getOvsxVersion, getOvsxVersions, searchOvsxExtensions } from "./openVsxService";
-import { remoteCacheKey, writeRemoteCache } from "./cacheStore";
+import { readRemoteCache, remoteCacheKey, writeRemoteCache } from "./cacheStore";
 import { RemoteFetchError } from "./fetchPolicy";
 import { OVSX_EXTENSION_FIXTURE, OVSX_SEARCH_FIXTURE, OVSX_VERSIONS_FIXTURE, OVSX_VERSION_FIXTURE } from "./adapters/fixtures/openVsxFixtures";
 
@@ -119,6 +119,24 @@ describe("Open VSX service", () => {
     const result = await searchOvsxExtensions({ workspaceRoot, networkAllowed: true, query: "yaml", fetchImpl: revalidate, hostResolver: PUBLIC_RESOLVER });
     expect(result.evidence.notModified).toBe(true);
     expect(result.evidence.freshness).toBe("CURRENT");
+  });
+
+  it("refreshes persisted version cache freshness after a 304 revalidation", async () => {
+    const staleAt = new Date(Date.now() - 60 * 60_000).toISOString();
+    await writeRemoteCache(workspaceRoot, {
+      sourceId: "open-vsx",
+      key: remoteCacheKey(["open-vsx", "versions", "redhat", "vscode-yaml"]),
+      url: "https://open-vsx.org/api/redhat/vscode-yaml/versions",
+      fetchedAt: staleAt,
+      etag: '"old-etag"',
+      data: OVSX_VERSIONS_FIXTURE,
+    });
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 304, headers: { etag: '"new-etag"' } }));
+    const result = await getOvsxVersions({ workspaceRoot, networkAllowed: true, namespace: "redhat", extension: "vscode-yaml", fetchImpl, hostResolver: PUBLIC_RESOLVER });
+    expect(result.evidence.notModified).toBe(true);
+    const refreshed = await readRemoteCache(workspaceRoot, "open-vsx", remoteCacheKey(["open-vsx", "versions", "redhat", "vscode-yaml"]));
+    expect(refreshed?.fetchedAt).not.toBe(staleAt);
+    expect(refreshed?.etag).toBe('"new-etag"');
   });
 
   it("validates search bounds before any request", async () => {

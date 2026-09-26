@@ -190,22 +190,34 @@ describe("KForge contextual workbench architecture", () => {
     const navigation = navigationSource();
     const audit = surfaceTypesSource();
     const activityRe = /\{\s*id:\s*"(projects|ai|online|intelligence|quality|developer-tools|remote|release|system)"[\s\S]*?views:\s*\[([\s\S]*?)\]\s*\}/g;
-    const navViewIds = new Set<string>();
-    const navActivityIds = new Set<string>();
+    const navByActivity = new Map<string, Set<string>>();
     for (const m of navigation.matchAll(activityRe)) {
-      navActivityIds.add(m[1]);
-      for (const v of m[2].matchAll(/\{\s*id:\s*"([^"]+)"/g)) navViewIds.add(v[1]);
+      const views = navByActivity.get(m[1]) || new Set<string>();
+      for (const v of m[2].matchAll(/\{\s*id:\s*"([^"]+)"/g)) views.add(v[1]);
+      navByActivity.set(m[1], views);
     }
-    expect(navActivityIds.size).toBe(9);
+    expect(navByActivity.size).toBe(9);
+    const navViewIds = new Set([...navByActivity.values()].flatMap((views) => [...views]));
     expect(navViewIds.size).toBeGreaterThan(0);
     expect(audit).toContain("export const SURFACE_AUDIT_MATRIX");
-    const auditViewIds = new Set<string>();
-    for (const m of audit.matchAll(/(?<![\w-])([a-z][a-z0-9-]*|"[a-z][a-z0-9-]*"):\s*"(SPECIALIZED|INTENTIONALLY_SHARED|UNAVAILABLE_WITH_REASON)"/g)) {
-      const id = m[1].replace(/^"|"$/g, "");
-      auditViewIds.add(id);
+    const auditByActivity = new Map<string, Set<string>>();
+    for (const [activity] of navByActivity) {
+      const row = audit.match(new RegExp(`(?<![\\w-])\"?'?${activity}\"?'?\\s*:\\s*\\{([^{}]*)\\}`));
+      if (!row) throw new Error(`audit matrix has no row for activity "${activity}"`);
+      const views = new Set<string>();
+      for (const v of row[1].matchAll(/(?<![\w-])([a-z][a-z0-9-]*|"[a-z][a-z0-9-]*")\s*:\s*"(SPECIALIZED|INTENTIONALLY_SHARED|UNAVAILABLE_WITH_REASON)"/g)) {
+        views.add(v[1].replace(/^"|"$/g, ""));
+      }
+      auditByActivity.set(activity, views);
     }
-    for (const id of navViewIds) expect(auditViewIds, `navigation view "${id}" missing from audit matrix`).toContain(id);
-    for (const id of auditViewIds) expect(navViewIds, `audit view "${id}" not present in navigation`).toContain(id);
+    const auditViewIds = new Set([...auditByActivity.values()].flatMap((views) => [...views]));
+    for (const [activity, views] of navByActivity) {
+      for (const id of views) expect(auditByActivity.get(activity), `navigation view "${activity}:${id}" missing from audit matrix`).toContain(id);
+    }
+    for (const [activity, views] of auditByActivity) {
+      for (const id of views) expect(navByActivity.get(activity), `audit view "${activity}:${id}" not present in navigation`).toContain(id);
+    }
+    for (const id of navViewIds) expect(auditViewIds).toContain(id);
   });
 
   it("routes production /workspace to the lazy contextual workbench rather than the legacy flat mega-component", () => {

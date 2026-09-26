@@ -2,7 +2,7 @@ import type { MarketplaceItem } from "../marketplaceCore";
 import type { RemoteRequestEvidence } from "./contracts";
 import { createOperationTransparency, recordRemoteContact } from "../onlineControlCenter";
 import type { OperationTransparency } from "../../../shared/workspace";
-import { isCacheFresh, readRemoteCache, remoteCacheKey, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
+import { isCacheFresh, readRemoteCache, remoteCacheKey, revalidateRemoteCache, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
 import { RemoteFetchError, safeFetchRemote, type FetchImpl, type SafeFetchPolicy } from "./fetchPolicy";
 import { getRemoteSource } from "./registry";
 import {
@@ -154,7 +154,7 @@ export async function searchWingetPackages(input: ServiceInput & { q: string }):
     const completedAt = new Date().toISOString();
     await recordContact(input.workspaceRoot, startedAt, true, DESTINATION_SEARCH, null);
     if (fetched.notModified && cached) {
-      await writeRemoteCache(input.workspaceRoot, { ...cached, fetchedAt: completedAt, etag: fetched.headers.etag ?? cached.etag }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
       const parsed = parseWingetSearchResponse(JSON.stringify(cached.data));
       const items = parsed.packages.map((pkg) => wingetPackageToMarketplaceItem(normalizeWingetSearchRecord(pkg, completedAt, "CACHE", "CURRENT"), completedAt));
       return {
@@ -232,13 +232,7 @@ export async function getWingetManifest(input: ServiceInput & { packageId: strin
     const manifest = parseRequestedManifest(text, packageId, input.version);
     const normalized = normalizeWingetManifest(manifest, completedAt, fetched.notModified ? "CACHE" : "LIVE", "CURRENT");
     if (fetched.notModified && cached) {
-      await writeRemoteCache(input.workspaceRoot, {
-        ...cached,
-        fetchedAt: completedAt,
-        etag: fetched.headers.etag ?? cached.etag,
-        lastModified: fetched.headers.lastModified ?? cached.lastModified,
-        cacheControl: fetched.headers.cacheControl ?? cached.cacheControl,
-      }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
     } else if (!fetched.notModified) {
       await writeRemoteCache(input.workspaceRoot, { sourceId: WINGET_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: { text } }).catch(() => undefined);
     }

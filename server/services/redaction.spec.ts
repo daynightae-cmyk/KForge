@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { redactProjectText } from "./redaction";
+import { isSensitivePath, redactProjectText } from "./redaction";
 
 describe("KForge redaction", () => {
   it("removes provider tokens, headers, cookies, connection secrets, private keys, and URL credentials", () => {
@@ -22,5 +22,15 @@ describe("KForge redaction", () => {
     expect(result.content).not.toContain("ABCDEFGHIJKLMNOPQRSTUVWXYZ123456");
     expect(result.content).not.toContain("private-material");
     expect(result.reasons).toEqual(expect.arrayContaining(["secret-assignment", "private-key", "authorization-header", "cookie-header", "connection-string", "credentialed-url", "provider-token"]));
+  });
+
+  it("classifies sensitive path segments and bounds repeated bearer input", () => {
+    expect(isSensitivePath("config/.env.production")).toBe(true);
+    expect(isSensitivePath("config/service.key")).toBe(true);
+    expect(isSensitivePath("config/environment.txt")).toBe(false);
+    const token = "a".repeat(20_000);
+    const result = redactProjectText("command-output", `Bearer ${token}`);
+    expect(result.content).toBe("Bearer [REDACTED]");
+    expect(result.reasons).toContain("bearer-token");
   });
 });

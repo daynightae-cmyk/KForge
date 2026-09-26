@@ -219,7 +219,7 @@ router.post("/ai/command-center/providers/:providerId/discover", async (req, res
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : "Discovery failed.";
     const kind = (error as { errorKind?: string }).errorKind;
-    return res.status(detail.startsWith("NOT_CONFIGURED") ? 428 : 502).json({ error: detail, errorKind: kind || "PROVIDER_ERROR" });
+    return res.status(detail.startsWith("BLOCKED") ? 409 : detail.startsWith("NOT_CONFIGURED") ? 428 : 502).json({ error: detail, errorKind: kind || "PROVIDER_ERROR", state: detail.startsWith("BLOCKED") ? "BLOCKED" : undefined });
   }
 });
 
@@ -228,7 +228,7 @@ router.post("/ai/command-center/providers/:providerId/refresh", async (req, res)
     return res.json(await refreshProviderModels(getWorkspaceRoot(), req.params.providerId));
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : "Refresh failed.";
-    return res.status(detail.startsWith("NOT_CONFIGURED") ? 428 : 502).json({ error: detail });
+    return res.status(detail.startsWith("BLOCKED") ? 409 : detail.startsWith("NOT_CONFIGURED") ? 428 : 502).json({ error: detail, state: detail.startsWith("BLOCKED") ? "BLOCKED" : undefined });
   }
 });
 
@@ -242,7 +242,7 @@ router.post("/ai/command-center/providers/:providerId/test", async (req, res) =>
   try {
     return res.json(await testProviderConnection(getWorkspaceRoot(), req.params.providerId, kind, modelId));
   } catch (error: unknown) {
-    return res.status(400).json({ error: error instanceof Error ? error.message : "Provider test failed." });
+    return res.status(error instanceof Error && error.message.startsWith("BLOCKED") ? 409 : 400).json({ error: error instanceof Error ? error.message : "Provider test failed.", state: error instanceof Error && error.message.startsWith("BLOCKED") ? "BLOCKED" : undefined });
   }
 });
 

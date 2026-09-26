@@ -58,7 +58,7 @@ import { checkTopologyHealth, getRuntimeTopology, getTopologySession, restartTop
 import { selectProjectRuntime } from "../services/projectExecution";
 import { collectionCategories, getProjectCollectionEntry, listProjectCollectionEntries, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, updatePlatformSettings } from "../services/platformSettings";
-import { completeOperationTransparency, createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "../services/onlineControlCenter";
+import { completeOperationTransparency, createOperationTransparency, getOnlineControlCenter, isGitHubRemoteUrl, recordRemoteContact } from "../services/onlineControlCenter";
 import { GH_DEFAULT_CONCURRENCY, GH_LEAST_PRIVILEGE_GUIDANCE, classifyGhRateLimit, ghPagination, mapWithConcurrency, readGhRateLimit, runGhApi } from "../services/githubClient";
 import { redactProjectText } from "../services/redaction";
 import { createSelfAuditRecord, inspectKForgeIdentity, markSelfAuditWaitingForRestart, persistSelfAuditRecord, readSelfAuditRecord, recordSelfAuditStage } from "../services/selfAudit";
@@ -482,7 +482,7 @@ export async function makeProjectSummary(projectPath: string): Promise<ProjectSu
   ]);
   const stats = await fs.stat(projectPath);
   const collection = await getProjectCollectionEntry(getWorkspaceRoot(), projectPath);
-  const provider = git.remoteUrl?.includes("github.com") ? "GitHub" : git.isGit ? "Git" : "Local";
+  const provider = isGitHubRemoteUrl(git.remoteUrl) ? "GitHub" : git.isGit ? "Git" : "Local";
   return {
     id: projectId(projectPath), name: path.basename(projectPath), trust, path: projectPath, provider, remoteUrl: git.remoteUrl, branch: git.branch,
     lastActivity: git.lastActivity === "No commits" ? stats.mtime.toISOString() : git.lastActivity,

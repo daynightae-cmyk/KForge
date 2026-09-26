@@ -101,7 +101,7 @@ function redactUrl(value: string): string {
     return parsed.toString().replace(/\/$/, "").slice(0, 500);
   } catch {
     return value
-      .replace(/(token|password|secret|authorization)=([^\s&]+)/gi, "$1=[REDACTED]")
+      .replace(/(api[_-]?key|token|password|secret|authorization|access[_-]?token|refresh[_-]?token)=([^\s&]+)/gi, "$1=[REDACTED]")
       .slice(0, 200);
   }
 }
@@ -164,6 +164,11 @@ function isBlockedLiteral(host: string): boolean {
   return false;
 }
 
+function isLoopbackLiteral(host: string): boolean {
+  const bare = host.toLowerCase().replace(/^\[(.*)\]$/, "$1");
+  return bare === "localhost" || bare === "127.0.0.1" || bare === "::1";
+}
+
 function originOf(url: string): string {
   const parsed = new URL(url);
   return `${parsed.protocol}//${parsed.host}`;
@@ -179,7 +184,7 @@ function assertOriginAllowed(url: string, allowedOrigins: string[], sourceId: Re
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new RemoteFetchError("ORIGIN_NOT_ALLOWED", `Remote source '${sourceId}': URL scheme '${parsed.protocol}' is not allowed.`);
   }
-  if (parsed.protocol === "http:" && parsed.hostname.toLowerCase() !== "localhost" && !isIPv4Literal(parsed.hostname)) {
+  if (parsed.protocol === "http:" && !isLoopbackLiteral(parsed.hostname)) {
     throw new RemoteFetchError("ORIGIN_NOT_ALLOWED", `Remote source '${sourceId}': remote metadata reads require HTTPS.`);
   }
   if (!allowedOrigins.includes(originOf(url))) {
@@ -200,10 +205,10 @@ async function assertNoBlockedResolution(
   hostResolver?: SafeFetchPolicy["hostResolver"],
 ): Promise<void> {
   const bare = hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
-  if (isBlockedLiteral(bare) && !allowLoopback) {
+  if (allowLoopback && isLoopbackLiteral(bare)) return;
+  if (isBlockedLiteral(bare)) {
     throw new RemoteFetchError("SSRF_BLOCKED", `Remote source '${sourceId}': blocked host '${bare}' (loopback/private/reserved).`);
   }
-  if (allowLoopback) return;
   // Best-effort DNS-rebinding mitigation: refuse when the current DNS answer
   // resolves to a blocked address. (TOCTOU between lookup and connect is a
   // documented residual; the origin allowlist remains the primary boundary.)

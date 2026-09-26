@@ -1,5 +1,6 @@
 import type { CanonicalModel, NormalizedErrorKind, ProviderAdapterKind } from "../../shared/providerCommandCenter";
 import { normalizeModelRecord, normalizeProviderError, UNKNOWN_CAPABILITIES } from "../../shared/providerCommandCenter";
+import { boundedProviderStreamReader, providerRequest, readBoundedProviderJson, readBoundedProviderText } from "./providerNetworkPolicy";
 
 export interface AdapterContext {
   baseUrl: string;
@@ -92,6 +93,8 @@ export interface AdapterToolTestResult {
 
 export interface ProviderAdapter {
   kind: ProviderAdapterKind;
+  /** Real network adapter: every provider request passes the destination policy. */
+  providerFetch(): typeof fetch;
   validateConfiguration(ctx: AdapterContext): Promise<{ ok: boolean; reason: string }>;
   testConnection(ctx: AdapterContext, fetcher?: typeof fetch): Promise<AdapterConnectionResult>;
   listModels(ctx: AdapterContext, fetcher?: typeof fetch): Promise<CanonicalModel[]>;
@@ -104,6 +107,10 @@ export interface ProviderAdapter {
 }
 
 const emptyUsage = (): CanonicalUsage => ({ input: null, output: null, total: null, reasoning: null, cached: null, source: "UNKNOWN" });
+
+function guardedProviderFetch(kind: ProviderAdapterKind): typeof fetch {
+  return (url: string, init?: RequestInit) => providerRequest(url, init ?? {}, kind, globalThis.fetch);
+}
 
 function safeJson(value: string) {
   try { return JSON.parse(value) as unknown; } catch { return null; }
@@ -126,7 +133,9 @@ function numberOrNull(value: unknown) {
 }
 
 function base(ctx: AdapterContext) {
-  return ctx.baseUrl.replace(/\/+$/, "");
+  let end = ctx.baseUrl.length;
+  while (end > 0 && ctx.baseUrl.charCodeAt(end - 1) === 47) end -= 1;
+  return ctx.baseUrl.slice(0, end);
 }
 
 function mergeHeaders(...parts: Array<Record<string, string> | undefined>) {
@@ -139,7 +148,7 @@ function signalFor(ctx: AdapterContext, external?: AbortSignal) {
 }
 
 async function responseError(response: Response) {
-  const text = await response.text().catch(() => "");
+  const text = await readBoundedProviderText(response).catch(() => "");
   return text.slice(0, 2_000) || `HTTP ${response.status}`;
 }
 
@@ -268,6 +277,8 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
   private credentialRequired: boolean;
   private fixedHeaders: Record<string, string>;
 
+  providerFetch() { return guardedProviderFetch(this.kind); }
+
   constructor(options: { kind: ProviderAdapterKind; providerId: string; modelsPath: string; chatPath: string; credentialRequired: boolean; fixedHeaders?: Record<string, string> }) {
     this.kind = options.kind;
     this.providerId = options.providerId;
@@ -305,7 +316,7 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
     return ctx.chatEndpointOverride?.trim() || `${base(ctx)}${this.chatPath}`;
   }
 
-  async testConnection(ctx: AdapterContext, fetcher: typeof fetch = fetch): Promise<AdapterConnectionResult> {
+  async testConnection(ctx: AdapterContext, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterConnectionResult> {
     const started = Date.now();
     try {
       const response = await fetcher(this.modelsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) });
@@ -320,16 +331,16 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
     }
   }
 
-  async listModels(ctx: AdapterContext, fetcher: typeof fetch = fetch) {
+  async listModels(ctx: AdapterContext, fetcher: typeof fetch = this.providerFetch()) {
     const response = await fetcher(this.modelsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) });
     if (!response.ok) throw new Error(await responseError(response));
-    const payload = record(await response.json());
+    const payload = record(await readBoundedProviderJson(response));
     const rows = array(payload.data ?? payload.models);
     const now = new Date().toISOString();
     return rows.map((row) => openAIModel(this.providerId, row, now));
   }
 
-  async createResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = fetch): Promise<AdapterResponse> {
+  async createResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterResponse> {
     const response = await fetcher(this.chatUrl(ctx), {
       method: "POST",
       headers: this.headers(ctx),
@@ -337,7 +348,7 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
       signal: signalFor(ctx, request.signal),
     });
     if (!response.ok) throw new Error(await responseError(response));
-    const payload = record(await response.json());
+    const payload = record(await readBoundedProviderJson(response));
     const choice = record(array(payload.choices)[0]);
     const message = record(choice.message);
     const toolCalls = array(message.tool_calls).map((item, index) => {
@@ -355,7 +366,7 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
     };
   }
 
-  async *streamResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = fetch): AsyncGenerator<ModelEvent> {
+  async *streamResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = this.providerFetch()): AsyncGenerator<ModelEvent> {
     let response: Response;
     try {
       response = await fetcher(this.chatUrl(ctx), {
@@ -374,7 +385,7 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
       yield { type: "error", errorKind: this.normalizeError(response.status, detail), detail, httpStatus: response.status };
       return;
     }
-    const reader = response.body.getReader();
+    const reader = boundedProviderStreamReader(response);
     const decoder = new TextDecoder();
     let buffer = "";
     const toolAcc = new Map<number, { id: string; name: string; args: string }>();
@@ -416,7 +427,7 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
     yield { type: "done", finishReason, requestId: requestId(response) };
   }
 
-  async testModel(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch): Promise<AdapterModelTestResult> {
+  async testModel(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterModelTestResult> {
     const started = Date.now();
     try {
       const result = await this.createResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher);
@@ -427,7 +438,7 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
     }
   }
 
-  async testStreaming(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch): Promise<AdapterStreamingTestResult> {
+  async testStreaming(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterStreamingTestResult> {
     const started = Date.now();
     let eventCount = 0;
     let terminalOk = false;
@@ -441,7 +452,7 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
     return { ok: terminalOk && eventCount > 0 && !errorKind, eventCount, terminalOk, latencyMs: Date.now() - started, httpStatus: errorKind ? null : 200, requestId: null, errorKind, errorDetail };
   }
 
-  async testTools(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch): Promise<AdapterToolTestResult> {
+  async testTools(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterToolTestResult> {
     const started = Date.now();
     try {
       const result = await this.createResponse(ctx, { model: modelId, messages: toolProbeMessages(), tools: [modelProbeTool()], maxOutputTokens: 64 }, fetcher);
@@ -459,6 +470,7 @@ class OpenAIProtocolAdapter implements ProviderAdapter {
 
 class AnthropicAdapter implements ProviderAdapter {
   kind: ProviderAdapterKind = "anthropic";
+  providerFetch() { return guardedProviderFetch(this.kind); }
   async validateConfiguration(ctx: AdapterContext) {
     if (!/^https?:\/\//i.test(ctx.baseUrl)) return { ok: false, reason: "Anthropic base URL must be http(s)." };
     if (!ctx.credential) return { ok: false, reason: "NOT_CONFIGURED: add an Anthropic API key." };
@@ -469,7 +481,7 @@ class AnthropicAdapter implements ProviderAdapter {
   }
   private modelsUrl(ctx: AdapterContext) { return ctx.modelsEndpointOverride?.trim() || `${base(ctx)}/models`; }
   private messagesUrl(ctx: AdapterContext) { return ctx.chatEndpointOverride?.trim() || `${base(ctx)}/messages`; }
-  async testConnection(ctx: AdapterContext, fetcher: typeof fetch = fetch): Promise<AdapterConnectionResult> {
+  async testConnection(ctx: AdapterContext, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterConnectionResult> {
     const started = Date.now();
     try {
       const response = await fetcher(this.modelsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) });
@@ -477,10 +489,10 @@ class AnthropicAdapter implements ProviderAdapter {
       return { ok: true, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: null, errorDetail: null };
     } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Connection failed."; return { ok: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail }; }
   }
-  async listModels(ctx: AdapterContext, fetcher: typeof fetch = fetch) {
+  async listModels(ctx: AdapterContext, fetcher: typeof fetch = this.providerFetch()) {
     const response = await fetcher(this.modelsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) });
     if (!response.ok) throw new Error(await responseError(response));
-    const payload = record(await response.json());
+    const payload = record(await readBoundedProviderJson(response));
     const now = new Date().toISOString();
     return array(payload.data).map((raw) => {
       const row = record(raw);
@@ -513,21 +525,21 @@ class AnthropicAdapter implements ProviderAdapter {
       ...(request.tools?.length ? { tools: request.tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.inputSchema })) } : {}),
     };
   }
-  async createResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = fetch): Promise<AdapterResponse> {
+  async createResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterResponse> {
     const response = await fetcher(this.messagesUrl(ctx), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request, false)), signal: signalFor(ctx, request.signal) });
     if (!response.ok) throw new Error(await responseError(response));
-    const payload = record(await response.json());
+    const payload = record(await readBoundedProviderJson(response));
     const blocks = array(payload.content).map(record);
     const text = blocks.filter((item) => item.type === "text").map((item) => string(item.text)).join("");
     const toolCalls = blocks.filter((item) => item.type === "tool_use").map((item, index) => ({ id: string(item.id) || `tool-${index}`, name: string(item.name), arguments: record(item.input) })).filter((call) => Boolean(call.name));
     return { text, toolCalls, usage: anthropicUsage(payload), requestId: requestId(response), finishReason: string(payload.stop_reason) || null, httpStatus: response.status };
   }
-  async *streamResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = fetch): AsyncGenerator<ModelEvent> {
+  async *streamResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = this.providerFetch()): AsyncGenerator<ModelEvent> {
     let response: Response;
     try { response = await fetcher(this.messagesUrl(ctx), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request, true)), signal: signalFor(ctx, request.signal) }); }
     catch (error: unknown) { const detail = error instanceof Error ? error.message : "Streaming request failed."; yield { type: "error", errorKind: this.normalizeError(null, detail), detail, httpStatus: null }; return; }
     if (!response.ok || !response.body) { const detail = await responseError(response); yield { type: "error", errorKind: this.normalizeError(response.status, detail), detail, httpStatus: response.status }; return; }
-    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; const tools = new Map<number, { id: string; name: string; json: string }>(); let finish: string | null = null;
+    const reader = boundedProviderStreamReader(response); const decoder = new TextDecoder(); let buffer = ""; const tools = new Map<number, { id: string; name: string; json: string }>(); let finish: string | null = null;
     while (true) {
       const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true });
       const blocks = buffer.split(/\r?\n\r?\n/); buffer = blocks.pop() || "";
@@ -543,45 +555,47 @@ class AnthropicAdapter implements ProviderAdapter {
     for (const tool of tools.values()) if (tool.name) yield { type: "tool_call", toolCall: { id: tool.id, name: tool.name, arguments: normalizeToolArguments(tool.json || "{}") } };
     yield { type: "done", finishReason: finish, requestId: requestId(response) };
   }
-  async testModel(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher); return { ok: Boolean(r.text || r.toolCalls.length), responseObserved: Boolean(r.text || r.toolCalls.length), latencyMs: Date.now() - started, httpStatus: r.httpStatus, requestId: r.requestId, errorKind: null, errorDetail: null, usage: r.usage }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Model test failed."; return { ok: false, responseObserved: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail, usage: emptyUsage() }; } }
-  async testStreaming(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); let eventCount = 0; let terminalOk = false; let errorKind: NormalizedErrorKind | null = null; let errorDetail: string | null = null; for await (const event of this.streamResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher)) { if (event.type === "delta" || event.type === "tool_call") eventCount++; if (event.type === "done") terminalOk = true; if (event.type === "error") { errorKind = event.errorKind; errorDetail = event.detail; } } return { ok: terminalOk && eventCount > 0 && !errorKind, eventCount, terminalOk, latencyMs: Date.now() - started, httpStatus: errorKind ? null : 200, requestId: null, errorKind, errorDetail }; }
-  async testTools(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: toolProbeMessages(), tools: [modelProbeTool()], maxOutputTokens: 64 }, fetcher); const supported = r.toolCalls.some((call) => call.name === "kforge_capability_probe"); return { verdict: supported ? "SUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: r.httpStatus, errorKind: null, detail: supported ? "Anthropic returned a structured tool_use block." : "Anthropic returned no structured tool_use block." }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Tool test failed."; const kind = this.normalizeError(null, detail); return { verdict: /tool/i.test(detail) ? "UNSUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: null, errorKind: kind, detail }; } }
+  async testModel(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher); return { ok: Boolean(r.text || r.toolCalls.length), responseObserved: Boolean(r.text || r.toolCalls.length), latencyMs: Date.now() - started, httpStatus: r.httpStatus, requestId: r.requestId, errorKind: null, errorDetail: null, usage: r.usage }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Model test failed."; return { ok: false, responseObserved: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail, usage: emptyUsage() }; } }
+  async testStreaming(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); let eventCount = 0; let terminalOk = false; let errorKind: NormalizedErrorKind | null = null; let errorDetail: string | null = null; for await (const event of this.streamResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher)) { if (event.type === "delta" || event.type === "tool_call") eventCount++; if (event.type === "done") terminalOk = true; if (event.type === "error") { errorKind = event.errorKind; errorDetail = event.detail; } } return { ok: terminalOk && eventCount > 0 && !errorKind, eventCount, terminalOk, latencyMs: Date.now() - started, httpStatus: errorKind ? null : 200, requestId: null, errorKind, errorDetail }; }
+  async testTools(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: toolProbeMessages(), tools: [modelProbeTool()], maxOutputTokens: 64 }, fetcher); const supported = r.toolCalls.some((call) => call.name === "kforge_capability_probe"); return { verdict: supported ? "SUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: r.httpStatus, errorKind: null, detail: supported ? "Anthropic returned a structured tool_use block." : "Anthropic returned no structured tool_use block." }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Tool test failed."; const kind = this.normalizeError(null, detail); return { verdict: /tool/i.test(detail) ? "UNSUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: null, errorKind: kind, detail }; } }
   normalizeError(status: number | null, message: string) { return normalizeProviderError(status, message); }
 }
 
 class GeminiAdapter implements ProviderAdapter {
   kind: ProviderAdapterKind = "gemini";
+  providerFetch() { return guardedProviderFetch(this.kind); }
   async validateConfiguration(ctx: AdapterContext) { if (!/^https?:\/\//i.test(ctx.baseUrl)) return { ok: false, reason: "Gemini base URL must be http(s)." }; if (!ctx.credential) return { ok: false, reason: "NOT_CONFIGURED: add a Gemini API key." }; return { ok: true, reason: "Configuration is structurally valid." }; }
   private headers(ctx: AdapterContext) { return mergeHeaders({ "content-type": "application/json", "x-goog-api-key": ctx.credential }, ctx.customHeaders); }
   private modelsUrl(ctx: AdapterContext) { return ctx.modelsEndpointOverride?.trim() || `${base(ctx)}/models`; }
   private generateUrl(ctx: AdapterContext, model: string, stream = false) { if (ctx.chatEndpointOverride?.trim()) return ctx.chatEndpointOverride.trim(); const id = model.replace(/^models\//, ""); return `${base(ctx)}/models/${encodeURIComponent(id)}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`; }
-  async testConnection(ctx: AdapterContext, fetcher: typeof fetch = fetch): Promise<AdapterConnectionResult> { const started = Date.now(); try { const response = await fetcher(this.modelsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) }); if (!response.ok) { const detail = await responseError(response); return { ok: false, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: this.normalizeError(response.status, detail), errorDetail: detail }; } return { ok: true, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: null, errorDetail: null }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Connection failed."; return { ok: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail }; } }
-  async listModels(ctx: AdapterContext, fetcher: typeof fetch = fetch) { const response = await fetcher(this.modelsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) }); if (!response.ok) throw new Error(await responseError(response)); const payload = record(await response.json()); const now = new Date().toISOString(); return array(payload.models).map((raw) => { const row = record(raw); const full = string(row.name); const id = full.replace(/^models\//, "") || "UNKNOWN"; const methods = array(row.supportedGenerationMethods).map(string); return { id, displayName: string(row.displayName) || id, providerId: "gemini", family: id.split("-").slice(0, 2).join("-") || id, version: string(row.version) || "UNKNOWN", aliases: [], contextWindow: numberOrNull(row.inputTokenLimit), maxOutput: numberOrNull(row.outputTokenLimit), inputModalities: ["text"], outputModalities: ["text"], capabilities: { ...UNKNOWN_CAPABILITIES, text: methods.includes("generateContent") ? "SUPPORTED" : "PROVIDER_NOT_REPORTED", streaming: methods.includes("streamGenerateContent") || methods.includes("generateContent") ? "SUPPORTED" : "PROVIDER_NOT_REPORTED", tools: "PROVIDER_NOT_REPORTED" }, priceInput: null, priceOutput: null, priceCache: null, priceSource: "UNKNOWN" as const, availability: "UNKNOWN" as const, preview: /preview|experimental/i.test(id), rateLimitEvidence: null, lastDiscoveredAt: now, rawEvidenceState: "PROVIDER_REPORTED" as const } satisfies CanonicalModel; }); }
+  async testConnection(ctx: AdapterContext, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterConnectionResult> { const started = Date.now(); try { const response = await fetcher(this.modelsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) }); if (!response.ok) { const detail = await responseError(response); return { ok: false, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: this.normalizeError(response.status, detail), errorDetail: detail }; } return { ok: true, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: null, errorDetail: null }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Connection failed."; return { ok: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail }; } }
+  async listModels(ctx: AdapterContext, fetcher: typeof fetch = this.providerFetch()) { const response = await fetcher(this.modelsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) }); if (!response.ok) throw new Error(await responseError(response)); const payload = record(await readBoundedProviderJson(response)); const now = new Date().toISOString(); return array(payload.models).map((raw) => { const row = record(raw); const full = string(row.name); const id = full.replace(/^models\//, "") || "UNKNOWN"; const methods = array(row.supportedGenerationMethods).map(string); return { id, displayName: string(row.displayName) || id, providerId: "gemini", family: id.split("-").slice(0, 2).join("-") || id, version: string(row.version) || "UNKNOWN", aliases: [], contextWindow: numberOrNull(row.inputTokenLimit), maxOutput: numberOrNull(row.outputTokenLimit), inputModalities: ["text"], outputModalities: ["text"], capabilities: { ...UNKNOWN_CAPABILITIES, text: methods.includes("generateContent") ? "SUPPORTED" : "PROVIDER_NOT_REPORTED", streaming: methods.includes("streamGenerateContent") || methods.includes("generateContent") ? "SUPPORTED" : "PROVIDER_NOT_REPORTED", tools: "PROVIDER_NOT_REPORTED" }, priceInput: null, priceOutput: null, priceCache: null, priceSource: "UNKNOWN" as const, availability: "UNKNOWN" as const, preview: /preview|experimental/i.test(id), rateLimitEvidence: null, lastDiscoveredAt: now, rawEvidenceState: "PROVIDER_REPORTED" as const } satisfies CanonicalModel; }); }
   private body(request: AdapterRequest) { const system = request.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n"); const contents = request.messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })); return { ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}), contents, generationConfig: { ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}), ...(typeof request.temperature === "number" ? { temperature: request.temperature } : {}) }, ...(request.tools?.length ? { tools: [{ functionDeclarations: request.tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.inputSchema })) }] } : {}) }; }
   private parse(payload: Record<string, unknown>, response: Response): AdapterResponse { const candidate = record(array(payload.candidates)[0]); const content = record(candidate.content); const parts = array(content.parts).map(record); const text = parts.map((part) => string(part.text)).join(""); const toolCalls = parts.map((part, index) => ({ call: record(part.functionCall), index })).filter(({ call }) => Object.keys(call).length).map(({ call, index }) => ({ id: `gemini-${index}`, name: string(call.name), arguments: record(call.args) })).filter((call) => Boolean(call.name)); return { text, toolCalls, usage: geminiUsage(payload), requestId: requestId(response), finishReason: string(candidate.finishReason) || null, httpStatus: response.status }; }
-  async createResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = fetch) { const response = await fetcher(this.generateUrl(ctx, request.model), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request)), signal: signalFor(ctx, request.signal) }); if (!response.ok) throw new Error(await responseError(response)); return this.parse(record(await response.json()), response); }
-  async *streamResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = fetch): AsyncGenerator<ModelEvent> { let response: Response; try { response = await fetcher(this.generateUrl(ctx, request.model, true), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request)), signal: signalFor(ctx, request.signal) }); } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Streaming request failed."; yield { type: "error", errorKind: this.normalizeError(null, detail), detail, httpStatus: null }; return; } if (!response.ok || !response.body) { const detail = await responseError(response); yield { type: "error", errorKind: this.normalizeError(response.status, detail), detail, httpStatus: response.status }; return; } const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let finish: string | null = null; while (true) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const blocks = buffer.split(/\r?\n\r?\n/); buffer = blocks.pop() || ""; for (const block of blocks) for (const line of block.split(/\r?\n/)) { if (!line.startsWith("data:")) continue; const payload = record(safeJson(line.slice(5).trim())); const candidate = record(array(payload.candidates)[0]); finish = string(candidate.finishReason) || finish; const parts = array(record(candidate.content).parts).map(record); for (const part of parts) { if (string(part.text)) yield { type: "delta", text: string(part.text) }; const fn = record(part.functionCall); if (string(fn.name)) yield { type: "tool_call", toolCall: { id: `gemini-${Date.now()}`, name: string(fn.name), arguments: record(fn.args) } }; } if (Object.keys(record(payload.usageMetadata)).length) yield { type: "usage", usage: geminiUsage(payload) }; } } yield { type: "done", finishReason: finish, requestId: requestId(response) }; }
-  async testModel(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher); return { ok: Boolean(r.text || r.toolCalls.length), responseObserved: Boolean(r.text || r.toolCalls.length), latencyMs: Date.now() - started, httpStatus: r.httpStatus, requestId: r.requestId, errorKind: null, errorDetail: null, usage: r.usage }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Model test failed."; return { ok: false, responseObserved: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail, usage: emptyUsage() }; } }
-  async testStreaming(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); let eventCount = 0; let terminalOk = false; let errorKind: NormalizedErrorKind | null = null; let errorDetail: string | null = null; for await (const event of this.streamResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher)) { if (event.type === "delta" || event.type === "tool_call") eventCount++; if (event.type === "done") terminalOk = true; if (event.type === "error") { errorKind = event.errorKind; errorDetail = event.detail; } } return { ok: terminalOk && eventCount > 0 && !errorKind, eventCount, terminalOk, latencyMs: Date.now() - started, httpStatus: errorKind ? null : 200, requestId: null, errorKind, errorDetail }; }
-  async testTools(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: toolProbeMessages(), tools: [modelProbeTool()], maxOutputTokens: 64 }, fetcher); const supported = r.toolCalls.some((call) => call.name === "kforge_capability_probe"); return { verdict: supported ? "SUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: r.httpStatus, errorKind: null, detail: supported ? "Gemini returned a structured functionCall." : "Gemini returned no structured functionCall." }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Tool test failed."; const kind = this.normalizeError(null, detail); return { verdict: /function|tool/i.test(detail) ? "UNSUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: null, errorKind: kind, detail }; } }
+  async createResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = this.providerFetch()) { const response = await fetcher(this.generateUrl(ctx, request.model), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request)), signal: signalFor(ctx, request.signal) }); if (!response.ok) throw new Error(await responseError(response)); return this.parse(record(await readBoundedProviderJson(response)), response); }
+  async *streamResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = this.providerFetch()): AsyncGenerator<ModelEvent> { let response: Response; try { response = await fetcher(this.generateUrl(ctx, request.model, true), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request)), signal: signalFor(ctx, request.signal) }); } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Streaming request failed."; yield { type: "error", errorKind: this.normalizeError(null, detail), detail, httpStatus: null }; return; } if (!response.ok || !response.body) { const detail = await responseError(response); yield { type: "error", errorKind: this.normalizeError(response.status, detail), detail, httpStatus: response.status }; return; } const reader = boundedProviderStreamReader(response); const decoder = new TextDecoder(); let buffer = ""; let finish: string | null = null; while (true) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const blocks = buffer.split(/\r?\n\r?\n/); buffer = blocks.pop() || ""; for (const block of blocks) for (const line of block.split(/\r?\n/)) { if (!line.startsWith("data:")) continue; const payload = record(safeJson(line.slice(5).trim())); const candidate = record(array(payload.candidates)[0]); finish = string(candidate.finishReason) || finish; const parts = array(record(candidate.content).parts).map(record); for (const part of parts) { if (string(part.text)) yield { type: "delta", text: string(part.text) }; const fn = record(part.functionCall); if (string(fn.name)) yield { type: "tool_call", toolCall: { id: `gemini-${Date.now()}`, name: string(fn.name), arguments: record(fn.args) } }; } if (Object.keys(record(payload.usageMetadata)).length) yield { type: "usage", usage: geminiUsage(payload) }; } } yield { type: "done", finishReason: finish, requestId: requestId(response) }; }
+  async testModel(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher); return { ok: Boolean(r.text || r.toolCalls.length), responseObserved: Boolean(r.text || r.toolCalls.length), latencyMs: Date.now() - started, httpStatus: r.httpStatus, requestId: r.requestId, errorKind: null, errorDetail: null, usage: r.usage }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Model test failed."; return { ok: false, responseObserved: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail, usage: emptyUsage() }; } }
+  async testStreaming(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); let eventCount = 0; let terminalOk = false; let errorKind: NormalizedErrorKind | null = null; let errorDetail: string | null = null; for await (const event of this.streamResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher)) { if (event.type === "delta" || event.type === "tool_call") eventCount++; if (event.type === "done") terminalOk = true; if (event.type === "error") { errorKind = event.errorKind; errorDetail = event.detail; } } return { ok: terminalOk && eventCount > 0 && !errorKind, eventCount, terminalOk, latencyMs: Date.now() - started, httpStatus: errorKind ? null : 200, requestId: null, errorKind, errorDetail }; }
+  async testTools(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: toolProbeMessages(), tools: [modelProbeTool()], maxOutputTokens: 64 }, fetcher); const supported = r.toolCalls.some((call) => call.name === "kforge_capability_probe"); return { verdict: supported ? "SUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: r.httpStatus, errorKind: null, detail: supported ? "Gemini returned a structured functionCall." : "Gemini returned no structured functionCall." }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Tool test failed."; const kind = this.normalizeError(null, detail); return { verdict: /function|tool/i.test(detail) ? "UNSUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: null, errorKind: kind, detail }; } }
   normalizeError(status: number | null, message: string) { return normalizeProviderError(status, message); }
 }
 
 class OllamaAdapter implements ProviderAdapter {
   kind: ProviderAdapterKind = "ollama";
+  providerFetch() { return guardedProviderFetch(this.kind); }
   async validateConfiguration(ctx: AdapterContext) { return /^https?:\/\//i.test(ctx.baseUrl) ? { ok: true, reason: "Configuration is structurally valid." } : { ok: false, reason: "Ollama base URL must be http(s)." }; }
   private headers(ctx: AdapterContext) { return mergeHeaders({ "content-type": "application/json" }, ctx.customHeaders); }
   private tagsUrl(ctx: AdapterContext) { return ctx.modelsEndpointOverride?.trim() || `${base(ctx)}/api/tags`; }
   private chatUrl(ctx: AdapterContext) { return ctx.chatEndpointOverride?.trim() || `${base(ctx)}/api/chat`; }
-  async testConnection(ctx: AdapterContext, fetcher: typeof fetch = fetch): Promise<AdapterConnectionResult> { const started = Date.now(); try { const response = await fetcher(this.tagsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) }); if (!response.ok) { const detail = await responseError(response); return { ok: false, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: this.normalizeError(response.status, detail), errorDetail: detail }; } return { ok: true, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: null, errorDetail: null }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Connection failed."; return { ok: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail }; } }
-  async listModels(ctx: AdapterContext, fetcher: typeof fetch = fetch) { const response = await fetcher(this.tagsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) }); if (!response.ok) throw new Error(await responseError(response)); const payload = record(await response.json()); const now = new Date().toISOString(); return array(payload.models).map((raw) => { const row = record(raw); const details = record(row.details); return localModel("ollama", string(row.name) || string(row.model) || "UNKNOWN", { ...row, family: details.family }, now); }); }
+  async testConnection(ctx: AdapterContext, fetcher: typeof fetch = this.providerFetch()): Promise<AdapterConnectionResult> { const started = Date.now(); try { const response = await fetcher(this.tagsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) }); if (!response.ok) { const detail = await responseError(response); return { ok: false, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: this.normalizeError(response.status, detail), errorDetail: detail }; } return { ok: true, latencyMs: Date.now() - started, httpStatus: response.status, requestId: requestId(response), errorKind: null, errorDetail: null }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Connection failed."; return { ok: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail }; } }
+  async listModels(ctx: AdapterContext, fetcher: typeof fetch = this.providerFetch()) { const response = await fetcher(this.tagsUrl(ctx), { headers: this.headers(ctx), signal: signalFor(ctx) }); if (!response.ok) throw new Error(await responseError(response)); const payload = record(await readBoundedProviderJson(response)); const now = new Date().toISOString(); return array(payload.models).map((raw) => { const row = record(raw); const details = record(row.details); return localModel("ollama", string(row.name) || string(row.model) || "UNKNOWN", { ...row, family: details.family }, now); }); }
   private body(request: AdapterRequest, stream: boolean) { return { model: request.model, messages: request.messages.filter((m) => m.role !== "tool").map((m) => ({ role: m.role === "system" ? "system" : m.role === "assistant" ? "assistant" : "user", content: m.content })), stream, ...(request.tools?.length ? { tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })) } : {}), options: { ...(typeof request.temperature === "number" ? { temperature: request.temperature } : {}) } }; }
   private parse(payload: Record<string, unknown>, status = 200): AdapterResponse { const message = record(payload.message); const toolCalls = array(message.tool_calls).map((raw, index) => { const call = record(raw); const fn = record(call.function); return { id: `ollama-${index}`, name: string(fn.name), arguments: record(fn.arguments) }; }).filter((call) => Boolean(call.name)); const input = numberOrNull(payload.prompt_eval_count); const output = numberOrNull(payload.eval_count); return { text: string(message.content) || string(payload.response), toolCalls, usage: { input, output, total: input !== null && output !== null ? input + output : null, reasoning: null, cached: null, source: input !== null || output !== null ? "PROVIDER_REPORTED" : "UNKNOWN" }, requestId: null, finishReason: payload.done === true ? string(payload.done_reason) || "stop" : null, httpStatus: status }; }
-  async createResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = fetch) { const response = await fetcher(this.chatUrl(ctx), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request, false)), signal: signalFor(ctx, request.signal) }); if (!response.ok) throw new Error(await responseError(response)); return this.parse(record(await response.json()), response.status); }
-  async *streamResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = fetch): AsyncGenerator<ModelEvent> { let response: Response; try { response = await fetcher(this.chatUrl(ctx), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request, true)), signal: signalFor(ctx, request.signal) }); } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Streaming request failed."; yield { type: "error", errorKind: this.normalizeError(null, detail), detail, httpStatus: null }; return; } if (!response.ok || !response.body) { const detail = await responseError(response); yield { type: "error", errorKind: this.normalizeError(response.status, detail), detail, httpStatus: response.status }; return; } const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; while (true) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ""; for (const line of lines) { if (!line.trim()) continue; const payload = record(safeJson(line)); const parsed = this.parse(payload, response.status); if (parsed.text) yield { type: "delta", text: parsed.text }; for (const toolCall of parsed.toolCalls) yield { type: "tool_call", toolCall }; if (parsed.usage.source === "PROVIDER_REPORTED") yield { type: "usage", usage: parsed.usage }; if (payload.done === true) yield { type: "done", finishReason: parsed.finishReason, requestId: null }; } } }
-  async testModel(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher); return { ok: Boolean(r.text || r.toolCalls.length), responseObserved: Boolean(r.text || r.toolCalls.length), latencyMs: Date.now() - started, httpStatus: r.httpStatus, requestId: null, errorKind: null, errorDetail: null, usage: r.usage }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Model test failed."; return { ok: false, responseObserved: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail, usage: emptyUsage() }; } }
-  async testStreaming(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); let eventCount = 0; let terminalOk = false; let errorKind: NormalizedErrorKind | null = null; let errorDetail: string | null = null; for await (const event of this.streamResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher)) { if (event.type === "delta" || event.type === "tool_call") eventCount++; if (event.type === "done") terminalOk = true; if (event.type === "error") { errorKind = event.errorKind; errorDetail = event.detail; } } return { ok: terminalOk && eventCount > 0 && !errorKind, eventCount, terminalOk, latencyMs: Date.now() - started, httpStatus: errorKind ? null : 200, requestId: null, errorKind, errorDetail }; }
-  async testTools(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = fetch) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: toolProbeMessages(), tools: [modelProbeTool()] }, fetcher); const supported = r.toolCalls.some((call) => call.name === "kforge_capability_probe"); return { verdict: supported ? "SUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: r.httpStatus, errorKind: null, detail: supported ? "Ollama returned a structured tool call." : "Ollama completed without a structured tool call; model support remains unknown." }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Tool test failed."; const kind = this.normalizeError(null, detail); return { verdict: /tool/i.test(detail) ? "UNSUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: null, errorKind: kind, detail }; } }
+  async createResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = this.providerFetch()) { const response = await fetcher(this.chatUrl(ctx), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request, false)), signal: signalFor(ctx, request.signal) }); if (!response.ok) throw new Error(await responseError(response)); return this.parse(record(await readBoundedProviderJson(response)), response.status); }
+  async *streamResponse(ctx: AdapterContext, request: AdapterRequest, fetcher: typeof fetch = this.providerFetch()): AsyncGenerator<ModelEvent> { let response: Response; try { response = await fetcher(this.chatUrl(ctx), { method: "POST", headers: this.headers(ctx), body: JSON.stringify(this.body(request, true)), signal: signalFor(ctx, request.signal) }); } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Streaming request failed."; yield { type: "error", errorKind: this.normalizeError(null, detail), detail, httpStatus: null }; return; } if (!response.ok || !response.body) { const detail = await responseError(response); yield { type: "error", errorKind: this.normalizeError(response.status, detail), detail, httpStatus: response.status }; return; } const reader = boundedProviderStreamReader(response); const decoder = new TextDecoder(); let buffer = ""; while (true) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ""; for (const line of lines) { if (!line.trim()) continue; const payload = record(safeJson(line)); const parsed = this.parse(payload, response.status); if (parsed.text) yield { type: "delta", text: parsed.text }; for (const toolCall of parsed.toolCalls) yield { type: "tool_call", toolCall }; if (parsed.usage.source === "PROVIDER_REPORTED") yield { type: "usage", usage: parsed.usage }; if (payload.done === true) yield { type: "done", finishReason: parsed.finishReason, requestId: null }; } } }
+  async testModel(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher); return { ok: Boolean(r.text || r.toolCalls.length), responseObserved: Boolean(r.text || r.toolCalls.length), latencyMs: Date.now() - started, httpStatus: r.httpStatus, requestId: null, errorKind: null, errorDetail: null, usage: r.usage }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Model test failed."; return { ok: false, responseObserved: false, latencyMs: Date.now() - started, httpStatus: null, requestId: null, errorKind: this.normalizeError(null, detail), errorDetail: detail, usage: emptyUsage() }; } }
+  async testStreaming(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); let eventCount = 0; let terminalOk = false; let errorKind: NormalizedErrorKind | null = null; let errorDetail: string | null = null; for await (const event of this.streamResponse(ctx, { model: modelId, messages: modelProbeMessages(), maxOutputTokens: 16 }, fetcher)) { if (event.type === "delta" || event.type === "tool_call") eventCount++; if (event.type === "done") terminalOk = true; if (event.type === "error") { errorKind = event.errorKind; errorDetail = event.detail; } } return { ok: terminalOk && eventCount > 0 && !errorKind, eventCount, terminalOk, latencyMs: Date.now() - started, httpStatus: errorKind ? null : 200, requestId: null, errorKind, errorDetail }; }
+  async testTools(ctx: AdapterContext, modelId: string, fetcher: typeof fetch = this.providerFetch()) { const started = Date.now(); try { const r = await this.createResponse(ctx, { model: modelId, messages: toolProbeMessages(), tools: [modelProbeTool()] }, fetcher); const supported = r.toolCalls.some((call) => call.name === "kforge_capability_probe"); return { verdict: supported ? "SUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: r.httpStatus, errorKind: null, detail: supported ? "Ollama returned a structured tool call." : "Ollama completed without a structured tool call; model support remains unknown." }; } catch (error: unknown) { const detail = error instanceof Error ? error.message : "Tool test failed."; const kind = this.normalizeError(null, detail); return { verdict: /tool/i.test(detail) ? "UNSUPPORTED" as const : "UNKNOWN" as const, latencyMs: Date.now() - started, httpStatus: null, errorKind: kind, detail }; } }
   normalizeError(status: number | null, message: string) { return normalizeProviderError(status, message); }
 }
 

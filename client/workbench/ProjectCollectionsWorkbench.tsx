@@ -83,10 +83,17 @@ function ProjectCollectionsWorkbench({ view, workspace, project, onProjectSelect
     setBusy(true);
     setMessage(`Applying ${label} to ${targets.length} selected project(s)…`);
     try {
-      for (const entry of targets) await patchOne(entry, patch, label);
-      setSelected([]);
+      const outcomes = await Promise.allSettled(targets.map((entry) => patchOne(entry, patch, label)));
+      const failed = outcomes.filter((outcome) => outcome.status === "rejected");
+      const applied = outcomes.length - failed.length;
+      if (!failed.length) setSelected([]);
       await onRefresh();
-      setMessage(`${label} persisted for ${targets.length} project(s). No source files or remote services were touched.`);
+      if (!failed.length) {
+        setMessage(`${label} persisted for ${applied} project(s). No source files or remote services were touched.`);
+        return;
+      }
+      const firstFailure = failed[0]?.status === "rejected" ? failed[0].reason : undefined;
+      setMessage(`${label} applied to ${applied} of ${targets.length} project(s). ${failed.length} project(s) were not changed and no rollback was applied: ${firstFailure instanceof Error ? firstFailure.message : "unknown failure"}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk collection update failed.");
     } finally {

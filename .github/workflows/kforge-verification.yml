@@ -90,6 +90,9 @@ jobs:
           KFORGE_PLAYWRIGHT_CHANNEL: msedge
         run: npm run test:e2e
 
+      - name: Verify packaged desktop shell over the production build
+        run: node scripts/verify-desktop.mjs
+
       - name: Build signed-state-transparent NSIS installer
         run: npm run package:windows
 

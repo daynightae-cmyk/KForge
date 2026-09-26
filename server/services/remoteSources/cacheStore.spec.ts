@@ -7,6 +7,7 @@ import {
   isCacheFresh,
   readRemoteCache,
   remoteCacheKey,
+  revalidateRemoteCache,
   writeRemoteCache,
 } from "./cacheStore";
 
@@ -57,6 +58,25 @@ describe("remote-source bounded cache", () => {
         data: {},
       }),
     ).rejects.toThrow();
+  });
+
+  it("refreshes persisted validators and timestamp after revalidation", async () => {
+    const key = remoteCacheKey(["revalidated"]);
+    const oldFetchedAt = new Date(Date.now() - 60 * 60_000).toISOString();
+    const entry = await writeRemoteCache(workspaceRoot, {
+      sourceId: "mcp-official-registry",
+      key,
+      url: "https://registry.modelcontextprotocol.io/v0.1/servers",
+      fetchedAt: oldFetchedAt,
+      etag: '"old"',
+      lastModified: "old-date",
+      cacheControl: "old-control",
+      data: { servers: [] },
+    });
+    const refreshedAt = new Date().toISOString();
+    await revalidateRemoteCache(workspaceRoot, entry, refreshedAt, { etag: '"new"', lastModified: "new-date", cacheControl: "new-control" });
+    const refreshed = await readRemoteCache(workspaceRoot, "mcp-official-registry", key);
+    expect(refreshed).toMatchObject({ fetchedAt: refreshedAt, etag: '"new"', lastModified: "new-date", cacheControl: "new-control" });
   });
 
   it("reports stale entries past the TTL but keeps them readable", async () => {

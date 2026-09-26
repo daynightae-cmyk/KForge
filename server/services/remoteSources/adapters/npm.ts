@@ -46,7 +46,7 @@ const npmSearchObjectSchema = z
 
 const npmSearchResponseSchema = z
   .object({
-    objects: z.array(npmSearchObjectSchema),
+    objects: z.array(npmSearchObjectSchema).max(500),
     total: z.number().optional(),
     time: z.string().optional(),
   })

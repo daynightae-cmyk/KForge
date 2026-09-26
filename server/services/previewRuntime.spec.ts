@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import type { ProjectProfile } from "../../shared/workspace";
-import { evaluatePreviewEmbedding, getPreviewStatus, inspectPreviewCapability, inspectPreviewDocument, recordPreviewBrowserConsole, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "./previewRuntime";
+import { evaluatePreviewEmbedding, getPreviewStatus, inspectPreviewCapability, inspectPreviewDocument, readBoundedPreviewBody, recordPreviewBrowserConsole, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "./previewRuntime";
 
 const profileWithoutPreview = { packageManager: "npm", scripts: {} } as ProjectProfile;
 
@@ -49,6 +49,13 @@ describe("local Preview runtime", () => {
     const explicitAllowlist = evaluatePreviewEmbedding(new Headers({ "content-security-policy": "frame-ancestors https://example.com" }));
     expect(explicitAllowlist).toMatchObject({ state: "UNKNOWN" });
     expect(explicitAllowlist.reason).toContain("cannot prove");
+  });
+
+  it("bounds Preview document inspection bodies", async () => {
+    const oversized = new Response("x".repeat(2 * 1024 * 1024 + 1), { headers: { "content-type": "text/html" } });
+    await expect(readBoundedPreviewBody(oversized)).rejects.toThrow(/inspection bound/);
+    const bounded = new Response("<html lang=\"en\"></html>", { headers: { "content-type": "text/html" } });
+    await expect(readBoundedPreviewBody(bounded)).resolves.toContain("<html");
   });
 
   it("records only attributed packaged-Electron browser console evidence with sensitive values redacted", async () => {

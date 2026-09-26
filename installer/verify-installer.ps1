@@ -401,4 +401,8 @@ http.createServer((_request, response) => { response.writeHead(200, { "content-t
 }
 
 $record | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $evidenceDirectory 'installer-verification.json') -Encoding UTF8
-Write-Output "Installer verification passed. SHA-256: $hash; observed signature: $effectiveSignatureState"
+if ($SkipLifecycle) {
+  Write-Output "Installer artifact verification passed; install/uninstall lifecycle was SKIPPED and its checks are NOT_TESTED. SHA-256: $hash; observed signature: $effectiveSignatureState"
+} else {
+  Write-Output "Installer verification passed. SHA-256: $hash; observed signature: $effectiveSignatureState"
+}

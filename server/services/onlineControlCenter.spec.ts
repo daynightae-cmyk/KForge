@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LocalPlatformStatus, ProjectSummary } from "../../shared/workspace";
 import type { PreviewStatus } from "./previewRuntime";
 import { localPlatformPolicy } from "./localPlatform";
-import { createOperationTransparency, getOnlineControlCenter, recordRemoteContact } from "./onlineControlCenter";
+import { createOperationTransparency, getOnlineControlCenter, isGitHubRemoteUrl, recordRemoteContact } from "./onlineControlCenter";
 
 const roots: string[] = [];
 
@@ -31,6 +31,12 @@ afterEach(async () => {
 });
 
 describe("Online Control Center", () => {
+  it("redacts credentials from malformed destination evidence", () => {
+    const evidence = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA"], provider: "Fixture", destination: "not a url?api_key=super-secret-value", purpose: "Read" });
+    expect(evidence.destination).not.toContain("super-secret-value");
+    expect(evidence.destination).toContain("api_key=[REDACTED]");
+  });
+
   it("reports all twelve sources without claiming that opening contacted a remote", async () => {
     const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-online-control-"));
     roots.push(root);
@@ -62,6 +68,19 @@ describe("Online Control Center", () => {
   it("builds a complete transparency envelope with measured duration", () => {
     const evidence = createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "CREDENTIAL_REFERENCE"], provider: "GitHub", destination: "https://token@api.github.com/repos/knoux/forge", purpose: "Read repository metadata", confirmation: "CONFIRMED", startedAt: "2026-08-24T00:00:00.000Z", completedAt: "2026-08-24T00:00:01.250Z", result: "SUCCEEDED" });
     expect(evidence).toMatchObject({ secretRedaction: true, projectSourceSent: false, durationMs: 1250, destination: "https://api.github.com/repos/knoux/forge", result: "SUCCEEDED" });
+  });
+
+  it("classifies only exact GitHub remotes as GitHub evidence", async () => {
+    expect(isGitHubRemoteUrl("https://github.com/example/repo.git")).toBe(true);
+    expect(isGitHubRemoteUrl("git@github.com:example/repo.git")).toBe(true);
+    expect(isGitHubRemoteUrl("https://github.com.evil.example/example/repo.git")).toBe(false);
+    expect(isGitHubRemoteUrl("https://evil.example/?next=github.com")).toBe(false);
+    expect(isGitHubRemoteUrl("https://user:secret@github.com/example/repo.git")).toBe(false);
+
+    const root = await fs.mkdtemp(path.join(process.cwd(), "kforge-online-control-"));
+    roots.push(root);
+    const result = await getOnlineControlCenter({ workspaceRoot: root, platform: platform("online-optional"), project: project("https://github.com.evil.example/example/repo.git"), hasCiConfiguration: false, preview: preview() });
+    expect(result.services.find((service) => service.id === "github")?.state).toBe("NOT_CONFIGURED");
   });
 
   it("reports configured cloud providers without contacting them when the control center opens", async () => {

@@ -56,7 +56,10 @@ export async function startKForgeProductionServer({
   // of its installed resources and other local tasks may share this process.
   process.env.KFORGE_APP_ROOT = resolvedRoot;
 
-  const app = createServer();
+  // The packaged/E2E runtime is loopback-only, so it also refuses any Host
+  // header that is not a loopback authority. That closes DNS-rebinding access
+  // to workspace, provider, marketplace and remote-source truth.
+  const app = createServer({ enforceLoopbackHostHeader: true });
   const distPath = path.join(resolvedRoot, "dist", "spa");
   app.disable("x-powered-by");
   app.use(express.static(distPath));
@@ -64,7 +67,14 @@ export async function startKForgeProductionServer({
     if (req.path.startsWith("/api/") || req.path.startsWith("/health")) {
       return res.status(404).json({ error: "API endpoint not found" });
     }
-    return res.sendFile(path.join(distPath, "index.html"));
+    // Express percent-encodes an absolute sendFile path, so an install root that
+    // contains a space ("C:\Program Files\KNOuX Forge", a user profile with a
+    // space) would 404 on every workbench route. Resolving through `root` keeps
+    // the real filesystem path intact.
+    return res.sendFile("index.html", { root: distPath }, (error: unknown) => {
+      if (!error) return;
+      res.status(500).json({ error: "KForge workbench shell is unavailable in this build." });
+    });
   });
 
   const server = createHttpServer(app);

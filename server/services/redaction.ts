@@ -5,16 +5,68 @@ export interface RedactionResult {
 }
 
 const secretAssignment = /((?:api[_-]?key|token|secret|password|passwd|credential|private[_-]?key)\s*[:=]\s*)([^\s,;]+)/gi;
-const privateKeyBlock = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
-const bearerToken = /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/gi;
 const githubToken = /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g;
 const authorizationHeader = /(Authorization\s*:\s*)([^\r\n]+)/gi;
 const cookieHeader = /((?:Set-)?Cookie\s*:\s*)([^\r\n]+)/gi;
 const connectionStringSecret = /((?:Password|Pwd|User Id|Uid)\s*=\s*)([^;\r\n]+)/gi;
 const credentialedUrl = /\b([a-z][a-z0-9+.-]*:\/\/)([^:\s/@]+):([^@\s/]+)@/gi;
 
+function redactPrivateKeyBlocks(value: string): { content: string; redacted: boolean } {
+  let cursor = 0;
+  let output = "";
+  let redacted = false;
+  while (cursor < value.length) {
+    const begin = value.indexOf("-----BEGIN ", cursor);
+    if (begin < 0) break;
+    const beginMatch = /^-----BEGIN [A-Z ]*PRIVATE KEY-----/.exec(value.slice(begin));
+    if (!beginMatch) {
+      cursor = begin + "-----BEGIN ".length;
+      continue;
+    }
+    const endSearch = value.indexOf("-----END ", begin + beginMatch[0].length);
+    if (endSearch < 0) break;
+    const endMatch = /^-----END [A-Z ]*PRIVATE KEY-----/.exec(value.slice(endSearch));
+    if (!endMatch) {
+      cursor = endSearch + "-----END ".length;
+      continue;
+    }
+    output += `${value.slice(cursor, begin)}[REDACTED PRIVATE KEY]`;
+    cursor = endSearch + endMatch[0].length;
+    redacted = true;
+  }
+  return { content: output + value.slice(cursor), redacted };
+}
+
+function isBearerTokenCharacter(value: string) {
+  return /[A-Za-z0-9._~+/=-]/.test(value);
+}
+
+function redactBearerTokens(value: string): { content: string; redacted: boolean } {
+  const lower = value.toLowerCase();
+  let cursor = 0;
+  let output = "";
+  let redacted = false;
+  while (cursor < value.length) {
+    const index = lower.indexOf("bearer", cursor);
+    if (index < 0) break;
+    const boundary = index === 0 || !/[A-Za-z0-9]/.test(value[index - 1]);
+    let tokenStart = index + 6;
+    while (tokenStart < value.length && /\s/.test(value[tokenStart])) tokenStart += 1;
+    let tokenEnd = tokenStart;
+    while (tokenEnd < value.length && isBearerTokenCharacter(value[tokenEnd])) tokenEnd += 1;
+    if (boundary && tokenEnd - tokenStart >= 12) {
+      output += `${value.slice(cursor, index)}Bearer [REDACTED]`;
+      cursor = tokenEnd;
+      redacted = true;
+    } else {
+      cursor = index + 6;
+    }
+  }
+  return { content: output + value.slice(cursor), redacted };
+}
+
 export function isSensitivePath(filePath: string) {
-  return /(^|[\\/])\.env(?:\.|$)|(^|[\\/])(?:id_rsa|id_dsa|.*\.pem|.*\.key|.*\.p12|.*\.pfx)$/i.test(filePath);
+  return filePath.replace(/\\/g, "/").split("/").some((segment) => segment === ".env" || segment.startsWith(".env.") || segment === "id_rsa" || segment === "id_dsa" || /\.(?:pem|key|p12|pfx)$/i.test(segment));
 }
 
 export function redactProjectText(filePath: string, text: string): RedactionResult {
@@ -32,15 +84,15 @@ export function redactProjectText(filePath: string, text: string): RedactionResu
     reasons.push("secret-assignment");
     content = content.replace(secretAssignment, "$1[REDACTED]");
   }
-  if (privateKeyBlock.test(content)) {
-    privateKeyBlock.lastIndex = 0;
+  const privateKeyResult = redactPrivateKeyBlocks(content);
+  if (privateKeyResult.redacted) {
     reasons.push("private-key");
-    content = content.replace(privateKeyBlock, "[REDACTED PRIVATE KEY]");
+    content = privateKeyResult.content;
   }
-  if (bearerToken.test(content)) {
-    bearerToken.lastIndex = 0;
+  const bearerResult = redactBearerTokens(content);
+  if (bearerResult.redacted) {
     reasons.push("bearer-token");
-    content = content.replace(bearerToken, "Bearer [REDACTED]");
+    content = bearerResult.content;
   }
   if (githubToken.test(content)) {
     githubToken.lastIndex = 0;

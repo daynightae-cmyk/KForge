@@ -2,7 +2,7 @@ import type { MarketplaceItem } from "../marketplaceCore";
 import type { RemoteRequestEvidence } from "./contracts";
 import { createOperationTransparency, recordRemoteContact } from "../onlineControlCenter";
 import type { OperationTransparency } from "../../../shared/workspace";
-import { isCacheFresh, readRemoteCache, remoteCacheKey, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
+import { isCacheFresh, readRemoteCache, remoteCacheKey, revalidateRemoteCache, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
 import { RemoteFetchError, safeFetchRemote, type FetchImpl, type SafeFetchPolicy } from "./fetchPolicy";
 import { getRemoteSource } from "./registry";
 import {
@@ -247,7 +247,7 @@ export async function searchOvsxExtensions(input: ServiceInput & OvsxSearchParam
     const completedAt = new Date().toISOString();
     await recordContact(input.workspaceRoot, startedAt, true, fetched.destination, null);
     if (fetched.notModified && cached) {
-      await writeRemoteCache(input.workspaceRoot, { ...cached, fetchedAt: completedAt, etag: fetched.headers.etag ?? cached.etag }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
       const parsed = parseOvsxSearchResponse(JSON.stringify(cached.data));
       return {
         items: parsed.extensions.map((record) => ovsxExtensionToMarketplaceItem(normalizeOvsxExtension(record, completedAt, "CACHE"), completedAt)),
@@ -425,7 +425,7 @@ async function readVersionedDetail(input: {
     const completedAt = new Date().toISOString();
     await recordContact(input.workspaceRoot, startedAt, true, fetched.destination, null);
     if (fetched.notModified && cached) {
-      await writeRemoteCache(input.workspaceRoot, { ...cached, fetchedAt: completedAt, etag: fetched.headers.etag ?? cached.etag }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
       return fromCache({ ...cached, fetchedAt: completedAt, etag: fetched.headers.etag ?? cached.etag }, false, undefined, true);
     }
     const { record, versions } = input.parse(fetched.text);
@@ -603,7 +603,9 @@ export async function getOvsxVersions(
     await recordContact(input.workspaceRoot, startedAt, true, fetched.destination, null);
     const rawText = fetched.notModified && cached ? JSON.stringify(cached.data) : fetched.text;
     const versions = parseOvsxVersionsResponse(rawText);
-    if (!fetched.notModified) {
+    if (fetched.notModified && cached) {
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
+    } else if (!fetched.notModified) {
       await writeRemoteCache(
         input.workspaceRoot,
         { sourceId: OPEN_VSX_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: JSON.parse(fetched.text) as unknown },

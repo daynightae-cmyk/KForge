@@ -59,7 +59,7 @@ function safeCommand(value: unknown): { executable: string; args: string[]; disp
   const parts = Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
     : typeof value === "string" ? value.trim().split(/\s+/).filter(Boolean) : [];
-  if (!parts.length || parts.some((part) => /[;&|`$<>\r\n]/.test(part))) return undefined;
+  if (!parts.length || parts.some((part) => /[;&|`$<>\r\n%!]/.test(part))) return undefined;
   return { executable: parts[0], args: parts.slice(1), display: parts.join(" ") };
 }
 

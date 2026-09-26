@@ -1,4 +1,5 @@
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
 import operationEvidenceRouter from "./routes/operationEvidence";
 import productTruthRouter from "./routes/productTruth";
@@ -8,6 +9,75 @@ import workspaceRouter from "./routes/workspace";
 
 const PROVIDER_STORAGE_ROUTE_PREFIX = "/api/workspace/ai/command-center/";
 const SAFE_PROVIDER_STORAGE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
+const LOOPBACK_API_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
+
+export interface CreateServerOptions {
+  enforceLoopbackHostHeader?: boolean;
+  requestAllowancePerMinute?: number;
+}
+
+/**
+ * The loopback API is reachable by every local process and by browser pages, so
+ * request volume is bounded per client address. The ceiling is deliberately far
+ * above interactive workbench and end-to-end traffic: it exists to stop a
+ * runaway or hostile local caller, not to shape normal product behaviour.
+ */
+function localRequestAllowance(limit: number) {
+  return rateLimit({
+    windowMs: 60_000,
+    limit,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "KForge local runtime request allowance exceeded. Retry shortly.", code: "KFORGE_RATE_LIMITED" },
+  });
+}
+
+
+function parseAuthorityHost(value: string): string | null {
+  try {
+    return new URL(`http://${value}`).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Loopback API callers are only the packaged workbench origin. A browser page on
+ * another site can still send loopback "simple" requests whose response it
+ * cannot read, and a rebound DNS name can make such a page same-origin with
+ * this API. Both shapes are refused here so no workspace, provider, marketplace
+ * or remote-source route depends on browser-enforced origin alone.
+ */
+function rejectUntrustedLocalCaller({ enforceLoopbackHostHeader }: CreateServerOptions) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (!req.path.startsWith("/api/")) return next();
+
+    const host = (req.get("host") || "").trim();
+    const hostname = host ? parseAuthorityHost(host) : null;
+    if (enforceLoopbackHostHeader && (!hostname || !LOOPBACK_API_HOSTNAMES.has(hostname))) {
+      return res.status(403).json({ error: "KForge API requests require a loopback Host header.", code: "KFORGE_HOST_REJECTED" });
+    }
+
+    if ((req.get("sec-fetch-site") || "").toLowerCase() === "cross-site") {
+      return res.status(403).json({ error: "Cross-site browser requests cannot reach the KForge API.", code: "KFORGE_CROSS_SITE_REJECTED" });
+    }
+
+    const origin = req.get("origin");
+    if (origin) {
+      let originHost: string | null = null;
+      try {
+        originHost = new URL(origin).host.toLowerCase();
+      } catch {
+        originHost = null;
+      }
+      if (!originHost || !host || originHost !== host.toLowerCase()) {
+        return res.status(403).json({ error: "Cross-origin browser requests cannot reach the KForge API.", code: "KFORGE_CROSS_ORIGIN_REJECTED" });
+      }
+    }
+
+    return next();
+  };
+}
 
 function rejectUnsafeProviderStorageIdentifiers(req: express.Request, res: express.Response, next: express.NextFunction) {
   const rawPath = req.originalUrl.split("?", 1)[0] || "";
@@ -31,7 +101,7 @@ function rejectUnsafeProviderStorageIdentifiers(req: express.Request, res: expre
   return next();
 }
 
-export function createServer() {
+export function createServer(options: CreateServerOptions = {}) {
   const app = express();
 
   // Loopback-first desktop runtime: disable fingerprinting, bound body sizes,
@@ -48,6 +118,16 @@ export function createServer() {
     }
     return next(error);
   });
+
+  // Volume first, trust second: an untrusted or hostile local caller must not
+  // be able to make this process perform unbounded per-request work before the
+  // caller boundary below decides whether it is allowed to be answered at all.
+  app.use(localRequestAllowance(options.requestAllowancePerMinute ?? 5_000));
+
+  // Local-caller boundary: the packaged runtime only ever serves its own
+  // workbench origin, so browser cross-site and rebound-host callers are
+  // refused before any route can observe or mutate workspace truth.
+  app.use(rejectUntrustedLocalCaller(options));
 
   app.get("/api/ping", (_req, res) => {
     res.json({ message: "KForge server is online." });

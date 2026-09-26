@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { createSnapshot, restoreSnapshot } from "../services/snapshots";
 import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localPlatform";
@@ -328,7 +329,7 @@ describe("KForge Workspace engines", () => {
   }, 30_000);
 
   it("runs Preview Fix & Verify through a snapshot, deterministic patch, commands, restart, and healthy probe", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-preview-loop-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-preview-loop-"));
     const projectPath = path.join(workspaceRoot, "project");
     const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
     let projectId = "";

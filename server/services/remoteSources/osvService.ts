@@ -1,7 +1,7 @@
 import type { RemoteRequestEvidence } from "./contracts";
 import { createOperationTransparency, recordRemoteContact } from "../onlineControlCenter";
 import type { OperationTransparency } from "../../../shared/workspace";
-import { isCacheFresh, readRemoteCache, remoteCacheKey, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
+import { isCacheFresh, readRemoteCache, remoteCacheKey, revalidateRemoteCache, writeRemoteCache, DEFAULT_CACHE_TTL_MS } from "./cacheStore";
 import { RemoteFetchError, safeFetchRemote, type FetchImpl, type SafeFetchPolicy } from "./fetchPolicy";
 import { getRemoteSource } from "./registry";
 import {
@@ -237,7 +237,7 @@ export async function queryOsvAdvisories(input: ServiceInput & { package: OsvPac
         { sourceId: OSV_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.etag, lastModified: fetched.lastModified, cacheControl: fetched.cacheControl, data: JSON.parse(fetched.text) as unknown },
       ).catch(() => undefined);
     } else if (cached) {
-      await writeRemoteCache(input.workspaceRoot, { ...cached, fetchedAt: completedAt, etag: fetched.etag ?? cached.etag }).catch(() => undefined);
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, { etag: fetched.etag, lastModified: fetched.lastModified, cacheControl: fetched.cacheControl }).catch(() => undefined);
     }
     return {
       query,
@@ -337,7 +337,9 @@ export async function queryOsvBatch(input: ServiceInput & { queries: OsvPackageQ
     await recordContact(input.workspaceRoot, startedAt, true, null);
     const rawText = fetched.notModified && cached ? JSON.stringify(cached.data) : fetched.text;
     const groups = parseOsvBatchResponse(rawText);
-    if (!fetched.notModified) {
+    if (fetched.notModified && cached) {
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, { etag: fetched.etag, lastModified: fetched.lastModified, cacheControl: fetched.cacheControl }).catch(() => undefined);
+    } else if (!fetched.notModified) {
       await writeRemoteCache(
         input.workspaceRoot,
         { sourceId: OSV_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.etag, lastModified: fetched.lastModified, cacheControl: fetched.cacheControl, data: JSON.parse(fetched.text) as unknown },
@@ -473,7 +475,9 @@ export async function getOsvVuln(input: ServiceInput & { id: string }): Promise<
       fetched.notModified ? "CACHE" : "LIVE",
       "CURRENT",
     );
-    if (!fetched.notModified) {
+    if (fetched.notModified && cached) {
+      await revalidateRemoteCache(input.workspaceRoot, cached, completedAt, fetched.headers).catch(() => undefined);
+    } else if (!fetched.notModified) {
       await writeRemoteCache(
         input.workspaceRoot,
         { sourceId: OSV_SOURCE_ID, key: cacheKey, url, fetchedAt: completedAt, etag: fetched.headers.etag, lastModified: fetched.headers.lastModified, cacheControl: fetched.headers.cacheControl, data: JSON.parse(fetched.text) as unknown },

@@ -80,7 +80,7 @@ const mcpServerSchema = z
 
 const mcpListResponseSchema = z
   .object({
-    servers: z.array(mcpServerSchema),
+    servers: z.array(mcpServerSchema).max(500),
     metadata: z.object({ nextCursor: z.string().optional(), next_cursor: z.string().optional() }).passthrough().optional(),
   })
   .passthrough();
