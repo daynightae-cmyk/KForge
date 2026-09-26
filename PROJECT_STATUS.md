@@ -1,10 +1,37 @@
 # Project Status
 
+## Current verified state (2026-09-26)
+
+- Product: KNOuX Forge
+- Verified implementation SHA: `dac3a8fe684b82c4d9612076cd7ee175c38e43f0` (audit hardening, session-identifier validation, documentation realpath containment)
+- Later commits on `main` are the project-first UX correction and its end-to-end adaptation; the exact verification run for the final head is recorded below once it settles.
+- Remote branch topology: `main` only. The previously recorded four obsolete remote refs no longer exist, so that PARTIAL item is now resolved.
+- Open CodeQL findings: 21, down from 45 on the 2026-09-08 baseline. Classified rather than chased to zero: 15 `js/path-injection` in `routes/workspace.ts` and `services/agentTools.ts` guarded by realpath containment, 2 `js/request-forgery` now fronted by the API caller boundary, 1 `js/reflected-xss` in a non-shipped fixture (escaping since corrected), 2 URL-substring warnings in test sources, and `js/shell-command-injection-from-environment` where the service spawns with `shell: false` and an argument array.
+- Installer signing: **UNSIGNED**. Release mode DEVELOPMENT, observed Authenticode signature UNAVAILABLE, build signing not configured. No Trusted Publisher, SmartScreen, or clean-machine claim is made.
+
+### What changed in this pass, and why
+
+- **Project-first recovery.** Thirteen project-scoped surfaces previously opened on an inert "No project selected" panel. They now offer the two real ways a project enters KForge — open a local directory, or clone a supported repository — against the existing `/projects/open` and `/projects/clone` services with their genuine policy gates, plus quick jumps to project commands, providers, marketplace, and settings. A successful open becomes the global active project.
+- **The idle Preview no longer eats the workspace.** Measured at 1440x900: the Persistent Preview was expanded by default, so the workbench was 496px instead of 856px and the grid carried a third implicit track. It is now collapsed by default, restoring the full 856px, and reveals itself when a Preview or topology is actually running. Operator intent always wins over the automatic behaviour.
+- **Real containment fixes.** Provider session identifiers are now asserted before they become `.kforge` filenames, and documentation fixes are held inside the project with realpath containment at both preview and apply, replacing a string-prefix check that a symlinked document could escape.
+- **Local API boundary.** Cross-site, cross-origin, and rebound-`Host` callers are refused before any route observes them, ahead of a per-address request allowance; every real provider request passes a destination policy with bounded JSON, error, and stream bodies.
+
+## Historical evidence (retained, not current)
+
+The sections below record earlier verified states. They are kept as history and must not be read as current HEAD evidence.
+
+- Historical implementation baseline captured on 2026-09-08: GitHub Actions `KForge Verification Gate` Run #271 at SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`.
+- Historical release closure work recorded on 2026-09-09 at Run **34412720862**, implementation SHA `7e36c34a1259f71a0f2c0af9d9cc0a1791afca21`.
+
+### 2026-09-08 baseline, as recorded at the time
+
+Counts and package versions below are the values measured on that date and are
+not current. Dependency versions, including the exact install-script allowlist,
+have moved since.
+
 - Product: KNOuX Forge
 - Delivery branch: `main`
-- Branch topology gate: PARTIAL — `main` is canonical and all remaining non-main refs are stale/non-delivery refs, but four obsolete branch refs (`closure/provider-phase-2`, `daynightae-cmyk-patch-1`, `daynightae-cmyk-patch-2`, `daynightae-cmyk-patch-3`) still exist remotely because the currently connected GitHub write surface does not expose branch-ref deletion. Do not claim branch cleanup is complete until those refs are actually deleted.
-- Readiness: Evidence-scoped product completion. No external provider, CI, package, signing, or release state is promoted beyond the source that actually measured it.
-- Authoritative implementation baseline captured on 2026-09-08: GitHub Actions `KForge Verification Gate` Run #271 at SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`.
+- Branch-protection and required-status enforcement remain a separate repository-administration policy domain. The current integration receives HTTP 403 from the branch-protection endpoint, so a green workflow proves the tested SHA rather than administrative enforcement.
 - Workflow supply-chain gate: PASS — external action references in the authoritative verification workflow are immutable SHA pins.
 - Dependency gate: PASS — `npm ci` installed 691 packages, npm audited 692 packages, and `npm audit --audit-level=moderate` reported `0 vulnerabilities`.
 - Install-script supply-chain gate: PASS — `.npmrc` enforces `strict-allow-scripts=true`, and `package.json` permits lifecycle scripts only for the exact reviewed versions `@swc/core@1.16.1`, `esbuild@0.25.4`, and `fsevents@2.3.2`. Run #271 proves locked installation succeeds under that policy on Linux and Windows; an unreviewed/new script version remains fail-closed.
