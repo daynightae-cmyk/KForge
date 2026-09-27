@@ -12,7 +12,10 @@ type EvidenceTab = "console" | "problems" | "health" | "timeline" | "network";
 
 function serviceUrl(service?: RuntimeService, route?: string) {
   if (!service?.port.allocated || !service.browserEntrypoint) return "";
-  return new URL(route || service.browserEntrypoint, `http://127.0.0.1:${service.port.allocated}`).toString();
+  // Browsers resolve `localhost` to the IPv4 loopback that KForge services bind.
+  // A literal `127.0.0.1` service URL is unreachable from Chromium/Edge frames
+  // in several runtimes even though Node reaches it; `localhost` loads reliably.
+  return new URL(route || service.browserEntrypoint, `http://localhost:${service.port.allocated}`).toString();
 }
 
 function readEntryRoutes(projectId: string): Record<string, { history: string[]; index: number }> {
