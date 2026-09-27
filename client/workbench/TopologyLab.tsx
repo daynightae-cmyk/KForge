@@ -12,7 +12,12 @@ type EvidenceTab = "console" | "problems" | "health" | "timeline" | "network";
 
 function serviceUrl(service?: RuntimeService, route?: string) {
   if (!service?.port.allocated || !service.browserEntrypoint) return "";
-  return new URL(route || service.browserEntrypoint, `http://127.0.0.1:${service.port.allocated}`).toString();
+  // Use the same loopback hostname the browser already reached KForge on.
+  // A hardcoded 127.0.0.1 literal is unreachable from Chromium/Edge frames in
+  // several runtimes even though Node reaches it; window.location.hostname
+  // carries the resolution that demonstrably works for this browser session.
+  const host = typeof window !== "undefined" && window.location?.hostname ? window.location.hostname : "localhost";
+  return new URL(route || service.browserEntrypoint, `http://${host}:${service.port.allocated}`).toString();
 }
 
 function readEntryRoutes(projectId: string): Record<string, { history: string[]; index: number }> {
@@ -125,7 +130,7 @@ export default function TopologyLab({ project, onExecution, onInspectorContext }
     </header>
 
     {!services.length ? <div className="p-5"><StatusBadge value="UNAVAILABLE" /><h3 className="mt-3 text-sm font-semibold">No runnable topology was proven</h3><p className="mt-1 text-xs text-muted-foreground">KForge did not invent services. Add a runnable package/native entrypoint, canonical Compose/Procfile definition, or an explicit <code>.kforge/topology.json</code>.</p>{discovery?.limitations.map((item) => <p key={item} className="mt-1 text-[11px] text-muted-foreground">{item}</p>)}</div> : <>
-      <div className="grid min-h-[440px] xl:grid-cols-[245px_minmax(0,1fr)_330px]">
+      <div className="grid min-h-[440px] grid-cols-1 gap-2 2xl:grid-cols-[245px_minmax(0,1fr)_330px]">
         <section className="border-r" aria-label="Topology services">
           <div className="border-b px-3 py-2 text-xs font-semibold">Services <span className="ml-1 text-muted-foreground">{services.length}</span></div>
           <div className="max-h-[560px] overflow-auto p-1.5">

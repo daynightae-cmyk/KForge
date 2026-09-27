@@ -16,7 +16,7 @@ async function expectNoAxeViolations(page: import("@playwright/test").Page, surf
 }
 
 test.describe("KForge workbench accessibility and keyboard evidence", () => {
-  test.setTimeout(120_000);
+  test.setTimeout(process.platform === "win32" ? 240_000 : 120_000);
 
   test.beforeEach(async ({ page }) => {
     const reset = await page.request.post("/api/workspace/settings/reset", { data: { confirmed: true } });

@@ -2639,6 +2639,18 @@ router.get("/projects/:id/profile", async (req, res) => {
   res.json({ profile: await detectProjectProfile(project) });
 });
 
+router.get("/projects/:id/files", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const index = await findFilesWithEvidence(
+    project.path,
+    (_relative, entry) => entry.isFile(),
+    1_000,
+    "Bounded local project file index",
+  );
+  return res.json({ projectId: project.id, root: project.path, files: index.files, coverage: index.coverage });
+});
+
 router.get("/projects/:id/health", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });

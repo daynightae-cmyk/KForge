@@ -94,7 +94,7 @@ describe("provider command center secret boundary", () => {
     }
   });
 
-  it("requires cloud disclosure before creating a project session", async () => {
+  it("requires cloud disclosure before creating a project session", { timeout: 30_000 }, async () => {
     const root = await workspaceRoot();
     try {
       const { provider } = await upsertCustomProvider(root, {

@@ -20,7 +20,7 @@
 
 The sections below record earlier verified states. They are kept as history and must not be read as current HEAD evidence.
 
-- Historical implementation baseline captured on 2026-09-08: GitHub Actions `KForge Verification Gate` Run #271 at SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`.
+- Authoritative implementation baseline captured on 2026-09-08 (historical evidence, not current HEAD): GitHub Actions `KForge Verification Gate` Run #271 at SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`.
 - Historical release closure work recorded on 2026-09-09 at Run **34412720862**, implementation SHA `7e36c34a1259f71a0f2c0af9d9cc0a1791afca21`.
 
 ### 2026-09-08 baseline, as recorded at the time
