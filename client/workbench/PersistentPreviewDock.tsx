@@ -146,8 +146,9 @@ export default function PersistentPreviewDock({ project, fullWorkbenchActive, in
   const activeRoute = routeHistory[routeIndex] || topologyService?.browserEntrypoint || "/";
   const topologyUrl = useMemo(() => {
     if (!topologyService?.port.allocated || !topologyService.browserEntrypoint) return "";
-    // Match TopologyLab: browsers resolve `localhost` to the bound IPv4 loopback.
-    return new URL(topologyService.browserEntrypoint, `http://localhost:${topologyService.port.allocated}`).toString();
+    // Match TopologyLab: reuse the loopback hostname the browser reached KForge on.
+    const host = typeof window !== "undefined" && window.location?.hostname ? window.location.hostname : "localhost";
+    return new URL(topologyService.browserEntrypoint, `http://${host}:${topologyService.port.allocated}`).toString();
   }, [topologyService?.browserEntrypoint, topologyService?.port.allocated]);
 
   const currentUrl = useMemo(() => {
