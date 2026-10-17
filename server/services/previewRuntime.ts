@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, execFileSync, type ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
 import { existsSync } from "fs";
 import net from "net";
@@ -128,8 +128,15 @@ function redactBrowserConsole(value: string) {
 function resolvePreviewCommand(command: string, args: string[]) {
   if (process.platform !== "win32" || command.toLowerCase() !== "npm.cmd") return { command, args, runAsNode: false };
   const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
-  if (!existsSync(npmCli)) return { command, args, runAsNode: false };
-  return { command: process.execPath, args: [npmCli, ...args], runAsNode: Boolean(process.versions.electron) };
+  if (existsSync(npmCli)) return { command: process.execPath, args: [npmCli, ...args], runAsNode: Boolean(process.versions.electron) };
+  try {
+    const nodePath = execFileSync("where.exe", ["node.exe"], { encoding: "utf8", windowsHide: true }).trim().split(/\r?\n/)[0];
+    if (nodePath) {
+      const npmCliFromNode = path.join(path.dirname(nodePath), "node_modules", "npm", "bin", "npm-cli.js");
+      if (existsSync(npmCliFromNode)) return { command: nodePath, args: [npmCliFromNode, ...args], runAsNode: false };
+    }
+  } catch { /* node.exe not on PATH */ }
+  return { command, args, runAsNode: false };
 }
 
 function reserveLocalPort() {

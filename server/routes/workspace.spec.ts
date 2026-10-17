@@ -336,7 +336,7 @@ describe("KForge Workspace engines", () => {
     try {
       await fs.mkdir(path.join(projectPath, "src"), { recursive: true });
       const typescriptCli = path.relative(projectPath, path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc")).replace(/\\/g, "/");
-      await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "preview-fix-verify", private: true, scripts: { typecheck: `node ${typescriptCli} --noEmit`, build: "node build.cjs", dev: "node server.cjs" } }), "utf8");
+      await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "preview-fix-verify", private: true, scripts: { typecheck: `node "${typescriptCli}" --noEmit`, build: "node build.cjs", dev: "node server.cjs" } }), "utf8");
       await fs.writeFile(path.join(projectPath, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2020", module: "ESNext", moduleResolution: "bundler", strict: true, noEmit: true }, include: ["src"] }), "utf8");
       await fs.writeFile(path.join(projectPath, "src", "index.ts"), 'export const status: number = "ready";\n', "utf8");
       await fs.writeFile(path.join(projectPath, "build.cjs"), "process.exit(0);\n", "utf8");
