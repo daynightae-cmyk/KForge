@@ -20,6 +20,10 @@ export default defineConfig(({ mode }) => ({
           react: ["react", "react-dom", "react-router-dom"],
           query: ["@tanstack/react-query"],
           ui: ["lucide-react"],
+          // The Living Mark scene is never reachable from the initial graph; these chunks are
+          // fetched only after the idle gate in LivingMarkGate arms the dynamic import.
+          three: ["three"],
+          "three-text": ["three/examples/jsm/loaders/FontLoader.js", "three/examples/jsm/geometries/TextGeometry.js"],
         },
       },
     },

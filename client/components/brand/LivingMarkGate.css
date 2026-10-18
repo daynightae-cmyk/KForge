@@ -1,0 +1,66 @@
+/*
+ * Living Mark gate styling.
+ *
+ * These rules are intentionally loaded eagerly (this file is imported by the always-present
+ * gate), while the heavy scene stylesheet arrives later with the lazy chunk. The stacking
+ * rules below therefore use deliberately higher specificity than the scene stylesheet's
+ * `.kw-workbench > :not(.knoux-living-mark)` elevation rule, so the static wordmark can never
+ * inherit content elevation and paint over the workbench.
+ */
+
+.knoux-living-mark-fallback {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 45%, #0d1112 0%, #050607 62%, #030404 100%);
+}
+
+.knoux-living-mark-fallback[data-mode="idle"],
+.knoux-living-mark-fallback[data-mode="splash"] {
+  position: fixed;
+  z-index: 100;
+}
+
+.knoux-living-mark-fallback[data-mode="workspace"] {
+  opacity: 0.34;
+  filter: saturate(0.82) contrast(0.96);
+}
+
+.knoux-living-mark-fallback svg {
+  width: min(58vw, 720px);
+  height: auto;
+  will-change: opacity;
+}
+
+/* `.kw-workbench` is already `position: relative; z-index: 1` in workbench.css, so it is the
+ * positioning context for whichever brand layer is mounted. */
+.kw-shell .kw-workbench > .knoux-living-mark-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* Everything except the brand layers sits above them. */
+.kw-shell .kw-workbench > :not(.knoux-living-mark):not(.knoux-living-mark-fallback) {
+  position: relative;
+  z-index: 1;
+}
+
+.kw-shell[data-living-mark="workspace"] .kw-workbench {
+  background: color-mix(in srgb, var(--kw-surface) 78%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .knoux-living-mark-fallback {
+    transition: none;
+  }
+}
+
+html[data-kf-reduced-motion="true"] .knoux-living-mark-fallback {
+  opacity: 0.2;
+}
