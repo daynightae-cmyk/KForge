@@ -2916,6 +2916,15 @@ router.post("/projects/:id/tasks", async (req, res) => {
   return res.status(202).json({ task, transparency: projectActionTransparency(project, action, task.startedAt, null, "PENDING", undefined, confirmedRemoteWrite) });
 });
 
+router.get("/projects/:id/tasks/:taskId", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  const task = getTask(req.params.taskId);
+  if (!task) return res.status(404).json({ error: "Task not found." });
+  if (task.projectId !== project.id) return res.status(404).json({ error: "Task not found for this project." });
+  return res.json({ task });
+});
+
 router.post("/projects/:id/actions", async (req, res) => {
   const project = await resolveProject(req.params.id);
   const action = req.body?.action;
