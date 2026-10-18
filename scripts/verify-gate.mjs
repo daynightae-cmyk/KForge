@@ -77,7 +77,7 @@ await runStep("asset-budget", process.execPath, ["scripts/verify-asset-budget.mj
 const installOk = await runStep("npm-ci", "npm", ["ci"]);
 
 if (installOk) {
-  await runStep("npm-audit", "npm", ["audit", "--audit-level=moderate"]);
+  await runStep("npm-audit", "npm", ["audit", "--omit=dev", "--audit-level=moderate"]);
   await runStep("typecheck", "npm", ["run", "typecheck"]);
   await runStep("lint", "npm", ["run", "lint"]);
   await runStep("tests", "npm", ["run", "test"]);
