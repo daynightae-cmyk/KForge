@@ -75,14 +75,21 @@ async function locateExecutable(id: SecurityToolId) {
 // version are process-environment facts, so cache successful probes briefly.
 // Failures are never cached: a load-timed-out probe must retry on the next
 // call instead of reporting FAILED for minutes after the host recovers.
-interface VersionProbe { ok: boolean; code: number; stdout: string; stderr: string }
+interface VersionProbe { ok: boolean; code: number; stdout: string; stderr: string; timedOut?: boolean }
 const versionProbeCache = new Map<SecurityToolId, { at: number; version: VersionProbe }>();
 const VERSION_PROBE_TTL_MS = 5 * 60_000;
 
 async function probedVersion(id: SecurityToolId, executable: string): Promise<VersionProbe> {
   const cached = versionProbeCache.get(id);
   if (cached && Date.now() - cached.at < VERSION_PROBE_TTL_MS && cached.version.ok) return cached.version;
-  const version = await execute(executable, ["--version"], undefined, 5_000);
+  // npm boots a second Node runtime, and this probe runs inside every project scan, so the
+  // budget has to bound scan latency. Measured probes finish in roughly 0.5-1.2s on an idle
+  // host, but a loaded machine stretches that well past a tight 5s budget, which previously
+  // surfaced a healthy tool as FAILED evidence. 15s keeps a transient stall from being
+  // reported as a broken tool while still bounding worst-case detection latency. The budget is
+  // overridable so operators (and tests) can tune or exercise the stall path explicitly.
+  const budget = Number(process.env.KFORGE_VERSION_PROBE_TIMEOUT_MS) || 15_000;
+  const version = await execute(executable, ["--version"], undefined, budget);
   if (version.ok) versionProbeCache.set(id, { at: Date.now(), version });
   else versionProbeCache.delete(id);
   return version;
@@ -102,11 +109,16 @@ async function execute(executable: string, args: string[], cwd?: string, timeout
     if (windowsCommandShim && selectedArgs.some((argument) => SHELL_METACHARACTERS.test(argument))) {
       return { ok: false, code: 1, stdout: "", stderr: "Refused: a project-derived argument contained shell metacharacters and cannot be passed through a Windows command shim." };
     }
-    const result = await execFileAsync(selectedExecutable, selectedArgs, { cwd, timeout, windowsHide: true, maxBuffer: 2_500_000, shell: windowsCommandShim });
+    // When using shell: true on Windows, the executable path must be quoted if it contains spaces.
+    const quotedExecutable = windowsCommandShim && selectedExecutable.includes(" ") ? `"${selectedExecutable}"` : selectedExecutable;
+    const result = await execFileAsync(quotedExecutable, selectedArgs, { cwd, timeout, windowsHide: true, maxBuffer: 2_500_000, shell: windowsCommandShim });
     return { ok: true, code: 0, stdout: String(result.stdout || "").slice(-maxCapturedOutput), stderr: String(result.stderr || "").slice(-maxCapturedOutput) };
   } catch (cause: unknown) {
-    const error = cause as { code?: number; stdout?: string; stderr?: string; message?: string };
-    return { ok: false, code: typeof error.code === "number" ? error.code : 1, stdout: String(error.stdout || "").slice(-maxCapturedOutput), stderr: String(error.stderr || error.message || "").slice(-maxCapturedOutput) };
+    const error = cause as { code?: number | string; stdout?: string; stderr?: string; message?: string; killed?: boolean; signal?: string };
+    // A killed process is Node's timeout signal. It must be distinguishable from a real
+    // tool failure so a slow host is never reported as a broken tool.
+    const timedOut = error.killed === true || error.signal === "SIGTERM" || error.code === "ETIMEDOUT";
+    return { ok: false, code: typeof error.code === "number" ? error.code : 1, stdout: String(error.stdout || "").slice(-maxCapturedOutput), stderr: String(error.stderr || error.message || "").slice(-maxCapturedOutput), timedOut };
   }
 }
 
@@ -164,7 +176,7 @@ export async function detectSecurityTools(projectPath: string, trusted: boolean)
     if (!executable) return { id, label: definition.label, state: "UNAVAILABLE", detail: `${definition.label} was not found on PATH. Set ${definition.env} to an explicit local executable path or install it yourself; KForge will never download it automatically.` };
     if (!trusted) return { id, label: definition.label, state: "BLOCKED", executable, detail: "Executable was located, but version probing and project scanning are blocked in Untrusted Project Mode." };
     const version = await probedVersion(id, executable);
-    if (!version.ok) return { id, label: definition.label, state: "FAILED", executable, exitCode: version.code, stdout: version.stdout, stderr: version.stderr, detail: "Executable was found but could not report its version." };
+    if (!version.ok) return { id, label: definition.label, state: "FAILED", executable, exitCode: version.code, stdout: version.stdout, stderr: version.stderr, detail: version.timedOut ? "Executable was found, but its version probe exceeded the time budget. This is usually host load rather than a broken tool; re-run detection before treating the tool as unavailable." : "Executable was found but could not report its version." };
     if (id === "npm-audit" && !(await isFile(path.join(projectPath, "package-lock.json")))) return { id, label: definition.label, state: "CONFIGURED", executable, version: version.stdout.split(/\r?\n/)[0], detail: "npm is available, but this project has no package-lock.json. KForge will not invent or modify a lockfile for an audit." };
     if (id === "semgrep" && !(await localSemgrepConfig(projectPath))) return { id, label: definition.label, state: "CONFIGURED", executable, version: version.stdout.split(/\r?\n/)[0], detail: "Executable is available. Add a local .semgrep.yml/.yaml rule file before running; KForge will not fetch remote rules automatically." };
     if (id === "sonar" && !(await isFile(path.join(projectPath, "sonar-project.properties")))) return { id, label: definition.label, state: "CONFIGURED", executable, version: version.stdout.split(/\r?\n/)[0], detail: "Executable is available. Add sonar-project.properties and explicitly enable Online Optional before a server-connected scan." };
