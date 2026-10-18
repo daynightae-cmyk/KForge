@@ -25,6 +25,17 @@ export interface AgentContext {
   diagnostics: Array<Pick<ScanIssue, "id" | "title" | "severity" | "category" | "file" | "line" | "source">>;
   files: AgentContextFile[];
   totalCharacters: number;
+  contextScan?: {
+    complete: boolean;
+    truncated: boolean;
+    filesScanned: number;
+    filesMatched: number;
+    maxDepth: number;
+    maxFiles: number;
+    timeBudgetMs: number;
+    elapsedMs: number;
+    excludedDirectories: string[];
+  };
 }
 
 export interface AgentPatch {
@@ -38,19 +49,53 @@ export interface AgentPatch {
   verification: string[];
 }
 
-function safeFile(projectPath: string, relative: string) {
+async function realPathContained(projectPath: string, resolved: string) {
+  const realRoot = await fs.realpath(projectPath);
+  let realTarget = resolved;
+  try {
+    realTarget = await fs.realpath(resolved);
+  } catch {
+    let directory = path.dirname(resolved);
+    for (;;) {
+      try {
+        const realDirectory = await fs.realpath(directory);
+        realTarget = path.join(realDirectory, path.relative(directory, resolved));
+        break;
+      } catch {
+        const parent = path.dirname(directory);
+        if (parent === directory) return true;
+        directory = parent;
+      }
+    }
+  }
+  const relative = path.relative(realRoot, realTarget);
+  if (relative === "") return true;
+  if (path.isAbsolute(relative)) return false;
+  if (relative.split(path.sep)[0] === ".." || relative.startsWith(`..${path.sep}`)) return false;
+  return true;
+}
+
+export async function safeFile(projectPath: string, relative: string) {
+  if (!relative) throw new Error("Agent file selection escaped the project root.");
   const resolved = path.resolve(projectPath, relative);
   const relativeCheck = path.relative(projectPath, resolved);
-  if (!relative || relativeCheck.startsWith("..") || path.isAbsolute(relativeCheck)) throw new Error("Agent file selection escaped the project root.");
+  if (!relativeCheck || relativeCheck.startsWith("..") || path.isAbsolute(relativeCheck)) throw new Error("Agent file selection escaped the project root.");
+  const contained = await realPathContained(projectPath, resolved);
+  if (!contained) throw new Error("Agent file selection resolved outside the project root.");
   return { resolved, relative: relativeCheck.split(path.sep).join("/") };
 }
 
-async function readContextFile(projectPath: string, relative: string, reason: AgentContextFile["reason"], limit: number) {
-  const safe = safeFile(projectPath, relative);
+export async function readContextFile(projectPath: string, relative: string, reason: AgentContextFile["reason"], limit: number) {
+  let safe;
+  try {
+    safe = await safeFile(projectPath, relative);
+  } catch {
+    return null;
+  }
   if (!textExtensions.has(path.extname(safe.relative).toLowerCase()) && path.basename(safe.relative) !== "package.json") return null;
   const raw = await fs.readFile(safe.resolved, "utf8").catch(() => "");
   if (!raw) return null;
-  const normalized = raw.length > limit ? `${raw.slice(0, limit)}\n/* KForge context truncated */` : raw;
+  const normalized = raw.length > limit ? `${raw.slice(0, limit)}\\n/* KForge context truncated */` : raw;
   const redacted = redactProjectText(safe.relative, normalized);
   return { path: safe.relative, reason, ...redacted } as AgentContextFile;
 }
@@ -74,9 +119,75 @@ async function gitStatus(projectPath: string) {
   } catch { return "Git status unavailable."; }
 }
 
+const CONTEXT_SCAN_EXCLUDED = new Set([
+  "node_modules", ".git", "dist", "build", "out", ".next", ".nuxt", "coverage",
+  ".cache", ".turbo", ".vite", "target", "vendor", ".pnpm-store", "release",
+]);
+
+export async function collectProjectFiles(projectPath: string, options: { maxFiles: number; maxDepth: number; timeBudgetMs: number }) {
+  const start = Date.now();
+  const results: string[] = [];
+  let filesScanned = 0;
+  let complete = true;
+  let truncated = false;
+  const excluded: string[] = [];
+
+  async function walk(directory: string, depth: number, relativePrefix: string) {
+    if (depth > options.maxDepth) { truncated = true; complete = false; return; }
+    if (Date.now() - start > options.timeBudgetMs) { truncated = true; complete = false; return; }
+    if (results.length >= options.maxFiles) { truncated = true; complete = false; return; }
+    let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean; isSymbolicLink: () => boolean }>;
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (Date.now() - start > options.timeBudgetMs) { truncated = true; complete = false; return; }
+      if (results.length >= options.maxFiles) { truncated = true; complete = false; return; }
+      const name = entry.name;
+      const childRelative = relativePrefix ? `${relativePrefix}/${name}` : name;
+      if (entry.isSymbolicLink()) {
+        // Do not follow links during context enumeration.
+        continue;
+      }
+      if (entry.isDirectory()) {
+        if (CONTEXT_SCAN_EXCLUDED.has(name)) {
+          if (!excluded.includes(name)) excluded.push(name);
+          continue;
+        }
+        await walk(path.join(directory, name), depth + 1, childRelative);
+      } else if (entry.isFile()) {
+        filesScanned += 1;
+        results.push(childRelative.split(path.sep).join("/"));
+      }
+    }
+  }
+
+  try {
+    await walk(projectPath, 0, "");
+  } catch {
+    complete = false;
+    truncated = true;
+  }
+  if (filesScanned >= options.maxFiles || Date.now() - start > options.timeBudgetMs) {
+    truncated = true;
+    complete = false;
+  }
+  return {
+    files: results,
+    filesScanned,
+    complete,
+    truncated,
+    elapsedMs: Date.now() - start,
+    excluded,
+  };
+}
+
 export async function buildAgentContext(project: ProjectSummary, scan: ProjectScan, issueId?: string): Promise<AgentContext> {
   const issue = issueId ? scan.issues.find((entry) => entry.id === issueId) : undefined;
   const files: AgentContextFile[] = [];
+  let scanResult: { files: string[]; filesScanned: number; complete: boolean; truncated: boolean; elapsedMs: number; excluded: string[] } | null = null;
   const seen = new Set<string>();
   const add = async (relative: string, reason: AgentContextFile["reason"]) => {
     if (seen.has(relative) || files.length >= 10) return;
@@ -87,9 +198,10 @@ export async function buildAgentContext(project: ProjectSummary, scan: ProjectSc
     await add(issue.file, "active-problem");
     const active = files.find((entry) => entry.reason === "active-problem");
     if (active) for (const candidate of importCandidates(active.path, active.content).slice(0, 4)) await add(candidate, "import");
-    const basename = path.posix.basename(issue.file).replace(/\.[^.]+$/, "");
-    const rootEntries = await fs.readdir(project.path, { recursive: true }).catch(() => [] as string[]);
-    for (const entry of rootEntries.filter((value) => /(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(value) && value.toLowerCase().includes(basename.toLowerCase())).slice(0, 2)) await add(entry.split(path.sep).join("/"), "related-test");
+    const basename = path.posix.basename(issue.file).replace(/\\.[^.]+$/, "");
+    scanResult = await collectProjectFiles(project.path, { maxFiles: 5000, maxDepth: 8, timeBudgetMs: 2000 });
+    const rootEntries = scanResult.files;
+    for (const entry of rootEntries.filter((value) => /(?:\\.test|\\.spec)\\.[cm]?[jt]sx?$/.test(value) && value.toLowerCase().includes(basename.toLowerCase())).slice(0, 2)) await add(entry.split(path.sep).join("/"), "related-test");
   }
   for (const config of ["package.json", "tsconfig.json", "vite.config.ts", "README.md"]) await add(config, "configuration");
   const status = await gitStatus(project.path);
@@ -103,6 +215,17 @@ export async function buildAgentContext(project: ProjectSummary, scan: ProjectSc
     diagnostics: scan.issues.slice(0, 30).map((entry) => ({ id: entry.id, title: entry.title, severity: entry.severity, category: entry.category, file: entry.file, line: entry.line, source: entry.source })),
     files,
     totalCharacters,
+    contextScan: {
+      complete: scanResult ? scanResult.complete : true,
+      truncated: scanResult ? scanResult.truncated : false,
+      filesScanned: scanResult ? scanResult.filesScanned : 0,
+      filesMatched: scanResult ? scanResult.files.length : 0,
+      maxDepth: 8,
+      maxFiles: 5000,
+      timeBudgetMs: 2000,
+      elapsedMs: scanResult ? scanResult.elapsedMs : 0,
+      excludedDirectories: scanResult ? scanResult.excluded : [],
+    },
   };
 }
 
@@ -151,7 +274,7 @@ export async function buildCloudAIPlan(provider: CloudAIProviderId, context: Age
 
 export async function generateVerifiedPatch(project: ProjectSummary, issue: ScanIssue): Promise<AgentPatch | null> {
   if (issue.category !== "typecheck" || !issue.file || !issue.line || !/TS2322|not assignable/i.test(`${issue.title} ${issue.message}`)) return null;
-  const safe = safeFile(project.path, issue.file);
+  const safe = await safeFile(project.path, issue.file);
   const source = await fs.readFile(safe.resolved, "utf8");
   const lines = source.split(/\r?\n/);
   const line = lines[issue.line - 1] || "";
@@ -172,7 +295,7 @@ export interface PatchQualityGate {
 }
 
 export async function evaluatePatchQuality(projectPath: string, patch: AgentPatch): Promise<PatchQualityGate> {
-  const safe = safeFile(projectPath, patch.file);
+  const safe = await safeFile(projectPath, patch.file);
   const source = await fs.readFile(safe.resolved, "utf8");
   const occurrences = source.split(patch.oldText).length - 1;
   const secretPattern = /(?:api[_-]?key|token|secret|password|private[_-]?key)\s*[:=]\s*(?!\[REDACTED\]|process\.env\.)[^\s,;]+/i;
@@ -212,7 +335,7 @@ async function assertRealPathContained(projectPath: string, resolved: string) {
         break;
       } catch {
         const parent = path.dirname(directory);
-        if (parent === directory) return;
+        if (parent === directory) throw new Error("Agent file selection resolved outside the project root.");
         directory = parent;
       }
     }
@@ -224,7 +347,7 @@ export async function validateAndApplyPatch(projectPath: string, patch: AgentPat
   if (patch.risk === "blocked") throw new Error("Blocked patches cannot be applied.");
   const gate = await evaluatePatchQuality(projectPath, patch);
   if (!gate.ok) throw new Error(`Patch Quality Gate rejected the patch: ${gate.checks.filter((entry) => !entry.ok).map((entry) => entry.name).join(", ")}.`);
-  const safe = safeFile(projectPath, patch.file);
+  const safe = await safeFile(projectPath, patch.file);
   await assertRealPathContained(projectPath, safe.resolved);
   const source = await fs.readFile(safe.resolved, "utf8");
   await fs.writeFile(safe.resolved, source.replace(patch.oldText, patch.newText), "utf8");
