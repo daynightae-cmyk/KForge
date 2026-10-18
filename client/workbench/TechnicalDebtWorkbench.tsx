@@ -145,7 +145,7 @@ export default function TechnicalDebtWorkbench({ project }: { project: ProjectSu
       </div>
 
       {message && <p className="kw-message" role="status">{message}</p>}
-      {loading && <p className="kw-message">Loading normalized scanner and documentation evidence…</p>}
+      {loading && <p className="kw-message" role="status">Loading normalized scanner and documentation evidence…</p>}
 
       <section className="kw-operation-result" role="region" aria-label="Technical debt evidence summary">
         <div className="kw-row-badges">

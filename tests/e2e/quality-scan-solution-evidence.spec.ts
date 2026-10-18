@@ -32,25 +32,39 @@ test.describe("KForge quality scan and deterministic solution evidence", () => {
     const project = (await opened.json() as { project: { id: string } }).project;
     expect((await page.request.post(`/api/workspace/projects/${project.id}/trust`, { data: { confirmed: true } })).ok()).toBeTruthy();
 
-    await openWorkbench(page);
+await openWorkbench(page);
     await selectProjectByPath(page, projectRoot);
     await selectExplorerView(page, "Quality", "KForge Sonar");
     const sonar = page.locator(".kw-workbench-scroll");
+    const problemsEvidence = () => page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/problems`) && response.request().method() === "GET");
     const scanStarted = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/tasks`) && response.request().method() === "POST");
     await sonar.getByRole("button", { name: "Run current scan", exact: true }).click();
     expect((await scanStarted).status()).toBe(202);
-    await expect(sonar).toContainText("Environment example is missing", { timeout: 90_000 });
+    // The surface publishes its own completion state once the scan evidence has been reloaded.
+    const scanEvidence = problemsEvidence();
+    await expect(sonar.getByRole("status")).toContainText("Current scan evidence loaded.");
+    await scanEvidence;
+    await expect(sonar).toContainText("Environment example is missing");
     await expect(sonar).toContainText("Hardcoded credential pattern detected");
     await expect(sonar).toContainText("No tool is downloaded or run silently.");
 
+    const securityEvidence = problemsEvidence();
     await selectExplorerView(page, "Quality", "Security");
-    await expect(page.locator(".kw-workbench-scroll")).toContainText(/Hardcoded credential pattern detected|UNAVAILABLE|BLOCKED/i);
+    await securityEvidence;
+    const securityWorkbench = page.getByRole("region", { name: "KForge Quality Security", exact: true });
+    await expect(securityWorkbench).toBeVisible();
+    await expect(securityWorkbench.getByRole("status").filter({ hasText: "Loading current local security evidence" })).toHaveCount(0);
+    await expect(securityWorkbench).toContainText(/Hardcoded credential pattern detected|UNAVAILABLE|BLOCKED/i);
 
+    const triageEvidence = problemsEvidence();
     await selectExplorerView(page, "Quality", "Problems");
+    await triageEvidence;
     const problemsWorkbench = page.getByRole("region", { name: "KForge Quality Problems", exact: true });
     await expect(problemsWorkbench).toBeVisible();
     await expect(problemsWorkbench.getByRole("heading", { name: "Problems Triage Workbench", exact: true })).toBeVisible();
     await expect(problemsWorkbench.getByRole("region", { name: "Quality triage summary", exact: true })).toContainText("Total findings");
+    // The triage surface must report a completed scan before it asserts any finding verdict.
+    await expect(problemsWorkbench.locator('[aria-label="Quality findings"]')).toHaveAttribute("data-findings-state", "LOADED");
     const problemFinding = problemsWorkbench.locator(".kw-quality-card").filter({ hasText: "Environment example is missing" });
     await expect(problemFinding).toBeVisible();
     await problemFinding.getByRole("button", { name: "Select finding", exact: true }).click();
@@ -124,7 +138,11 @@ test.describe("KForge quality scan and deterministic solution evidence", () => {
     await expect(docOperation).toHaveAttribute("data-apply-state", "SUCCEEDED");
 
     await selectExplorerView(page, "Quality", "Technical Debt");
-    await expect(page.locator(".kw-workbench-scroll")).toContainText(/placeholder|Implementation marker|mock/i);
+    const technicalDebtWorkbench = page.getByRole("region", { name: "KForge Quality Technical Debt", exact: true });
+    await expect(technicalDebtWorkbench).toBeVisible();
+    await expect(technicalDebtWorkbench.getByRole("heading", { name: "Technical Debt Evidence Workbench", exact: true })).toBeVisible();
+    await expect(technicalDebtWorkbench.getByRole("status").filter({ hasText: "Loading normalized scanner and documentation evidence" })).toHaveCount(0);
+    await expect(technicalDebtWorkbench).toContainText(/placeholder|Implementation marker|mock/i);
     expect(externalRequests).toEqual([]);
   });
 });
