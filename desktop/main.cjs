@@ -148,7 +148,9 @@ async function startApplication() {
   try {
     await startLocalRuntime();
     const window = createWindow();
-    await window.loadURL(`${productionServer.url}/workspace`);
+    // Load the canonical "/" entry so the approved installation reveal journey
+    // runs inside the installed app; the splash routes itself into /workspace.
+    await window.loadURL(productionServer.url);
     writeLog("INFO", "KNOuX Forge window loaded.");
     if (process.env.KFORGE_DESKTOP_SMOKE === "1") {
       const requestedDelay = Number(process.env.KFORGE_DESKTOP_SMOKE_DELAY_MS || 1_500);

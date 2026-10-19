@@ -41,7 +41,7 @@ try {
   const loopback = log.match(/Loopback engine is ready at (http:\/\/127\.0\.0\.1:\d+)\./);
   if (!log.includes("Starting KNOuX Forge")) fail("Runtime startup metadata was not logged.");
   if (!loopback) fail("Runtime did not bind an allocated 127.0.0.1 loopback URL.");
-  if (!log.includes("KNOuX Forge window loaded.")) fail("Electron window did not load the production workspace.");
+  if (!log.includes("KNOuX Forge window loaded.")) fail("Electron window did not load the production entry point.");
   if (!log.includes("KNOuX Forge shutdown requested.")) fail("Controlled shutdown was not requested.");
   if (!log.includes("Loopback engine and managed Preview and topology processes stopped.")) fail("Managed loopback, Preview, and topology cleanup was not logged.");
 
