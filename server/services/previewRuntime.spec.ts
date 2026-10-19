@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import type { ProjectProfile } from "../../shared/workspace";
-import { evaluatePreviewEmbedding, getPreviewStatus, inspectPreviewCapability, inspectPreviewDocument, readBoundedPreviewBody, recordPreviewBrowserConsole, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "./previewRuntime";
+import { evaluatePreviewEmbedding, getPreviewStatus, inspectPreviewCapability, inspectPreviewDocument, readBoundedPreviewBody, recordPreviewBrowserConsole, restartPreview, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "./previewRuntime";
 
 const profileWithoutPreview = { packageManager: "npm", scripts: {} } as ProjectProfile;
 
@@ -57,6 +57,52 @@ describe("local Preview runtime", () => {
     const bounded = new Response("<html lang=\"en\"></html>", { headers: { "content-type": "text/html" } });
     await expect(readBoundedPreviewBody(bounded)).resolves.toContain("<html");
   });
+
+  it("restarts a Preview reliably and leaves no orphaned process behind", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-preview-restart-"));
+    const projectId = `preview-restart-${Date.now()}-${Math.random()}`;
+    const profile = { packageManager: "npm", scripts: { dev: "node server.cjs" } } as unknown as ProjectProfile;
+    try {
+      await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ private: true, scripts: { dev: "node server.cjs" } }), "utf8");
+      await fs.writeFile(path.join(root, "server.cjs"), "require('node:http').createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/html'});res.end('<!doctype html><html lang=\"en\"></html>')}).listen(Number(process.env.PORT),'127.0.0.1'); setInterval(()=>{},1000);", "utf8");
+
+      const started = await startPreview(projectId, root, profile);
+      expect(started.state).not.toBe("unavailable");
+      const firstPid = started.pid;
+      const firstSession = started.sessionId;
+      const healthy = await waitForPreviewHealth(projectId, 15_000, 200);
+      expect(healthy.health?.ok).toBe(true);
+
+      const restarted = await restartPreview(projectId, root, profile);
+      expect(restarted.state).not.toBe("unavailable");
+      expect(restarted.sessionId).not.toBe(firstSession);
+
+      const healthyAfterRestart = await waitForPreviewHealth(projectId, 15_000, 200);
+      expect(healthyAfterRestart.health?.ok).toBe(true);
+      expect(healthyAfterRestart.url).toBeTruthy();
+
+      // The superseded Preview process must be gone, not orphaned. A recycled
+      // process id would belong to the new Preview, so that case is excluded.
+      if (firstPid && restarted.pid !== firstPid) {
+        const survivors = await new Promise<number>((resolve) => {
+          const check = (remaining: number) => {
+            try {
+              process.kill(firstPid, 0);
+              if (remaining <= 0) { resolve(1); return; }
+              setTimeout(() => check(remaining - 1), 200);
+            } catch {
+              resolve(0);
+            }
+          };
+          check(25);
+        });
+        expect(survivors).toBe(0);
+      }
+    } finally {
+      await stopPreviewAndWait(projectId).catch(() => undefined);
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("records only attributed packaged-Electron browser console evidence with sensitive values redacted", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-preview-console-"));

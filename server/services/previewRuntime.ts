@@ -62,8 +62,21 @@ interface ActivePreview {
   status: PreviewStatus;
 }
 
+interface PendingPreviewStop {
+  child: ChildProcess;
+  killer?: Promise<void>;
+}
+
 const activePreviews = new Map<string, ActivePreview>();
+const pendingPreviewStops = new Map<string, PendingPreviewStop>();
 const previewRecords = new Map<string, PreviewStatus>();
+// Windows teardown kills an npm wrapper tree (cmd.exe -> node child), so the
+// measured successful teardown is ~2s. The observed failure mode was a kill that
+// still had not completed after 5s under host load, which surfaced to the user
+// as an intermittent 500 on Preview restart. The budget stays bounded but
+// covers the measured teardown plus real host load.
+const PREVIEW_STOP_TIMEOUT_MS = 10_000;
+const PREVIEW_STOP_ESCALATION_MS = 2_000;
 const MAX_LOG_LINES = 300;
 const MAX_LOG_LINE_LENGTH = 1_500;
 const MAX_HISTORY_ITEMS = 100;
@@ -372,13 +385,26 @@ export function stopPreview(projectId: string): PreviewStatus {
   appendLog(active.status, "Preview stop requested by KForge.");
   recordStartup(active.status, "stopped", "Preview stop requested by KForge.");
   recordEvent(active.status, "stop", "Preview stop requested by KForge.");
+  let killer: Promise<void> | undefined;
   if (!active.child.killed) {
-    if (process.platform === "win32" && active.child.pid) spawn("taskkill", ["/pid", String(active.child.pid), "/t", "/f"], { windowsHide: true });
-    else if (active.child.pid) {
+    if (process.platform === "win32" && active.child.pid) {
+      // taskkill terminates the whole npm wrapper tree; the completion of that
+      // kill is tracked so a restart never races a still-running process.
+      const killerProcess = spawn("taskkill", ["/pid", String(active.child.pid), "/t", "/f"], { windowsHide: true });
+      killer = new Promise<void>((resolve) => {
+        killerProcess.once("error", () => resolve());
+        killerProcess.once("exit", () => resolve());
+      });
+    } else if (active.child.pid) {
       try { process.kill(-active.child.pid, "SIGTERM"); }
       catch { active.child.kill(); }
     } else active.child.kill();
   }
+  pendingPreviewStops.set(projectId, { child: active.child, killer });
+  active.child.once("exit", () => {
+    const pending = pendingPreviewStops.get(projectId);
+    if (pending?.child === active.child) pendingPreviewStops.delete(projectId);
+  });
   activePreviews.delete(projectId);
   previewRecords.set(projectId, active.status);
   return cloneStatus(active.status);
@@ -424,17 +450,30 @@ export async function inspectPreviewDocument(projectId: string, route = "/"): Pr
   }
 }
 
-export async function stopPreviewAndWait(projectId: string, timeoutMs = 5_000): Promise<PreviewStatus> {
-  const child = activePreviews.get(projectId)?.child;
+export async function stopPreviewAndWait(projectId: string, timeoutMs = PREVIEW_STOP_TIMEOUT_MS): Promise<PreviewStatus> {
+  const pending = pendingPreviewStops.get(projectId);
+  const child = pending?.child ?? activePreviews.get(projectId)?.child;
   if (!child) return stopPreview(projectId);
   const exitPromise = new Promise<boolean>((resolve) => {
     if (child.exitCode !== null) { resolve(true); return; }
     const timer = setTimeout(() => resolve(false), timeoutMs);
     child.once("exit", () => { clearTimeout(timer); resolve(true); });
   });
-  stopPreview(projectId);
-  const exited = await exitPromise;
-  if (!exited) throw new Error(`Preview process ${child.pid || "unknown"} did not exit within ${timeoutMs}ms.`);
+  if (!pending) stopPreview(projectId);
+  else if (pending.killer) await pending.killer;
+  let exited = await exitPromise;
+  if (!exited) {
+    // The tree kill did not finish inside the budget. Escalate with a direct
+    // termination before reporting the failure, so a restart never leaves an
+    // orphaned Preview process behind.
+    try { child.kill(); } catch { /* The process may already be gone. */ }
+    exited = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), PREVIEW_STOP_ESCALATION_MS);
+      child.once("exit", () => { clearTimeout(timer); resolve(true); });
+    });
+  }
+  pendingPreviewStops.delete(projectId);
+  if (!exited) throw new Error(`Preview process ${child.pid || "unknown"} did not exit within ${timeoutMs}ms and did not respond to a direct termination request.`);
   return getPreviewStatus(projectId);
 }
 
@@ -448,7 +487,7 @@ export async function restartPreview(projectId: string, projectPath: string, pro
  * used by the desktop runtime before its loopback server exits so no project
  * child process is left behind after the application window closes.
  */
-export async function stopAllPreviews(timeoutMs = 5_000): Promise<void> {
+export async function stopAllPreviews(timeoutMs = PREVIEW_STOP_TIMEOUT_MS): Promise<void> {
   const projectIds = [...activePreviews.keys()];
   const results = await Promise.allSettled(projectIds.map((projectId) => stopPreviewAndWait(projectId, timeoutMs)));
   const failures = results
