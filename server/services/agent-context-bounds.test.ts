@@ -113,7 +113,10 @@ describe("KForge agent context scan bounds", () => {
     }
   });
 
-  it("handles cancellation/time budget gracefully", async () => {
+  // Creating and removing 500 temporary files is disk-bound and routinely
+  // exceeds the 5s default under parallel suite load on Windows; the
+  // assertions themselves remain instant.
+  it("handles cancellation/time budget gracefully", { timeout: 30_000 }, async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-ctx-"));
     try {
       const dir = path.join(root, "many");
