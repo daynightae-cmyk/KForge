@@ -36,7 +36,10 @@
 .kw-bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; padding: 7px 9px; border: 1px solid var(--kw-border); border-radius: 5px; background: var(--kw-panel-2); }
 .kw-bulk-bar button, .kw-toolbar button, .kw-operation-actions button, .kw-quality-actions button, .kw-agent-actions button, .kw-quality-card button, .kw-snapshot-form button, .kw-self-audit button { min-height: 30px; padding: 5px 10px; border-radius: 5px; }
 .kw-table-toolbar .kw-select-all { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.kw-table-toolbar .kw-select-all input { width: auto; }
+/* The native control kept the platform's light checkbox face in the dark workbench, which
+ * broke the approved identity. The accent colour keeps the native control, its keyboard
+ * behaviour and its focus ring, and renders it in the product violet. */
+.kw-table-toolbar .kw-select-all input[type="checkbox"] { width: 13px; height: 13px; accent-color: var(--kw-primary); cursor: pointer; }
 .kw-surface-section, .kw-operation-panel, .kw-quality-card, .kw-system-grid article, .kw-agent-panel { border: 1px solid var(--kw-border); border-radius: 6px; background: var(--kw-panel); padding: 12px; }
 .kw-surface-section h2, .kw-operation-panel h2, .kw-quality-card h2, .kw-agent-panel h2, .kw-inspector h2 { margin: 0 0 8px; font-size: 14px; }
 .kw-surface-section h3, .kw-quality-card h3, .kw-agent-panel h3 { margin: 12px 0 6px; font-size: 12px; }

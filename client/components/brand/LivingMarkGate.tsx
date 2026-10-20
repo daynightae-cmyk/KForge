@@ -7,7 +7,7 @@ import "./LivingMarkGate.css";
 const KnouxLivingMark = lazy(() => import("./KnouxLivingMark"));
 
 export type LivingMarkMode = "splash" | "workspace" | "idle";
-export type LivingMarkDecision = "PENDING" | "WEBGL" | "STATIC_REDUCED_MOTION" | "STATIC_NO_WEBGL" | "STATIC_SUSPENDED";
+export type LivingMarkDecision = "PENDING" | "WEBGL" | "STATIC_REDUCED_MOTION" | "STATIC_NO_WEBGL" | "STATIC_SUSPENDED" | "STATIC_LIGHT_THEME";
 
 type Props = {
   mode: LivingMarkMode;
@@ -42,6 +42,23 @@ function afterIdle(callback: () => void) {
 }
 
 /**
+ * Tracks the active product theme. The workspace brand layer is an ambient backdrop behind
+ * real workbench content, so a light theme must not be covered by the scene's own dark
+ * canvas. The splash and idle screens stay dark brand screens in every theme.
+ */
+function useProductTheme() {
+  const [light, setLight] = useState(() => typeof document !== "undefined" && document.documentElement.classList.contains("light"));
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => setLight(root.classList.contains("light")));
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    setLight(root.classList.contains("light"));
+    return () => observer.disconnect();
+  }, []);
+  return light;
+}
+
+/**
  * Static, dependency-free KNOuX wordmark. This is what the user sees on first paint:
  * no WebGL, no Three.js, no layout shift, and it remains the permanent presentation
  * whenever the 3D scene is suspended, reduced-motion is requested, or WebGL is absent.
@@ -52,18 +69,18 @@ function StaticWordmark({ mode, decision }: { mode: LivingMarkMode; decision: Li
       <svg viewBox="0 0 520 120" role="presentation" focusable="false">
         <defs>
           <linearGradient id="knouxStaticFace" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#2b3134" />
-            <stop offset="0.55" stopColor="#161b1d" />
-            <stop offset="1" stopColor="#0d1112" />
+            <stop offset="0" stopColor="var(--kw-living-mark-face-1)" />
+            <stop offset="0.55" stopColor="var(--kw-living-mark-face-2)" />
+            <stop offset="1" stopColor="var(--kw-living-mark-face-3)" />
           </linearGradient>
           <linearGradient id="knouxStaticRim" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#2ad9c8" stopOpacity="0.55" />
-            <stop offset="0.5" stopColor="#1fb8ac" stopOpacity="0.12" />
-            <stop offset="1" stopColor="#e6e1d2" stopOpacity="0.35" />
+            <stop offset="0" stopColor="var(--kw-living-mark-rim-1)" stopOpacity="0.55" />
+            <stop offset="0.5" stopColor="var(--kw-living-mark-rim-2)" stopOpacity="0.12" />
+            <stop offset="1" stopColor="var(--kw-living-mark-rim-3)" stopOpacity="0.35" />
           </linearGradient>
         </defs>
-        <rect x="6" y="16" width="508" height="88" rx="10" fill="#050708" />
-        <ellipse cx="260" cy="104" rx="190" ry="10" fill="#000" opacity="0.55" />
+        <rect x="6" y="16" width="508" height="88" rx="10" fill="var(--kw-living-mark-plate)" />
+        <ellipse cx="260" cy="104" rx="190" ry="10" fill="var(--kw-living-mark-shadow)" opacity="0.55" />
         <text
           x="260"
           y="78"
@@ -87,6 +104,7 @@ export default function LivingMarkGate({ mode, reducedMotion = false, visible = 
   const [decision, setDecision] = useState<LivingMarkDecision>("PENDING");
   const [armed, setArmed] = useState(false);
   const cancelled = useRef(false);
+  const lightTheme = useProductTheme();
 
   useEffect(() => {
     cancelled.current = false;
@@ -98,6 +116,13 @@ export default function LivingMarkGate({ mode, reducedMotion = false, visible = 
     if (reducedMotion || prefersReducedMotion()) {
       setArmed(false);
       setDecision("STATIC_REDUCED_MOTION");
+      return;
+    }
+    // The 3D scene paints its own dark canvas. Behind the light workbench surface that
+    // reads as a grey wash, so the light theme keeps the static, theme-aware wordmark.
+    if (mode === "workspace" && lightTheme) {
+      setArmed(false);
+      setDecision("STATIC_LIGHT_THEME");
       return;
     }
     // Defer every capability probe and the scene download until the browser is idle so
@@ -115,7 +140,7 @@ export default function LivingMarkGate({ mode, reducedMotion = false, visible = 
       cancelled.current = true;
       if (typeof cancel === "function") cancel();
     };
-  }, [visible, reducedMotion, mode]);
+  }, [visible, reducedMotion, mode, lightTheme]);
 
   // `visible: false` must render nothing at all: an unmounted brand layer must never leave a
   // wordmark behind on unrelated capability surfaces. Hooks stay above this return.

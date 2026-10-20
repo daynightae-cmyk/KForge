@@ -54,6 +54,11 @@
   }
   * { @apply border-border; }
   html { direction: ltr; color-scheme: light dark; }
+  /* The product theme is authoritative, not the operating system. Without this the native
+   * controls (checkboxes, selects, scrollbars) kept the host colour scheme and rendered a
+   * light checkbox inside the dark workbench. */
+  html.light { color-scheme: light; }
+  html.dark { color-scheme: dark; }
   html[dir="rtl"] { direction: rtl; }
   body {
     @apply bg-background text-foreground font-sans;

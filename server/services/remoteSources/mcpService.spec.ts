@@ -147,6 +147,30 @@ describe("MCP Registry service", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("accepts the canonical namespaced server name shape", async () => {
+    const history = vi.fn(async (_url: string) => jsonResponse(MCP_VERSIONS_FIXTURE));
+    const versions = await getMcpServerVersions({
+      workspaceRoot,
+      networkAllowed: true,
+      serverName: "@modelcontextprotocol/server-filesystem",
+      fetchImpl: history,
+      hostResolver: PUBLIC_RESOLVER,
+    });
+    expect(versions.versions.map((entry) => entry.version)).toEqual(["1.2.0", "1.1.0"]);
+    const requested = String(history.mock.calls[0]?.[0] ?? "");
+    expect(requested).toContain("%40modelcontextprotocol%2Fserver-filesystem");
+  });
+
+  it("keeps rejecting malformed or traversing server names", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(MCP_VERSIONS_FIXTURE));
+    for (const serverName of ["@/server", "scope/", "a/b/c", "a//b", "name with space", "..", "../name"]) {
+      await expect(
+        getMcpServerVersions({ workspaceRoot, networkAllowed: true, serverName, fetchImpl, hostResolver: PUBLIC_RESOLVER }),
+      ).rejects.toThrow(/unsupported characters/);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("reads version history and version detail explicitly", async () => {
     const history = vi.fn(async () => jsonResponse(MCP_VERSIONS_FIXTURE));
     const versions = await getMcpServerVersions({
