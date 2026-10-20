@@ -44,9 +44,9 @@
     "verify:installer": "powershell -ExecutionPolicy Bypass -File installer/verify-installer.ps1"
   },
   "dependencies": {
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.7.0",
-    "three": "0.183.2",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.1",
+    "three": "0.186.1",
     "typescript": "^5.9.3",
     "zod": "^3.25.76"
   },
