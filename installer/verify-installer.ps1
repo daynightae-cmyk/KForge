@@ -339,14 +339,20 @@ http.createServer((_request, response) => { response.writeHead(200, { "content-t
     $record.installedRuntime = 'PASS'
     $record.sourceIndependence = 'PASS_LOG_AND_RESOURCE_CHECK'
 
-    $env:KFORGE_DESKTOP_SMOKE_DELAY_MS = '6000'
+    # The restarted desktop needs a real window for its two sequential evidence reads. A
+    # 6 second smoke window was a race: on a loaded machine the application reached its own
+    # controlled shutdown between the settings read and the platform read, and the
+    # verification failed with a connection error instead of a product verdict. The
+    # assertions below are unchanged; only the lifetime of the restarted process is bounded
+    # generously and the shutdown wait matches it.
+    $env:KFORGE_DESKTOP_SMOKE_DELAY_MS = '30000'
     $restart = Start-Process -FilePath $app.FullName -PassThru
     $restartBaseUrl = Wait-ForLoopback $logPath 30 $baseUrl
     $reloadedSettings = (Invoke-KForgeJson $restartBaseUrl '/api/workspace/settings').settings
     $reloadedPlatform = Invoke-KForgeJson $restartBaseUrl '/api/workspace/platform'
     Assert-True ($reloadedSettings.general.startupCapability -eq 'Agents' -and $reloadedSettings.appearance.density -eq 'compact' -and $reloadedSettings.appearance.reducedMotion) 'Installed settings did not survive a full desktop restart.'
     Assert-True ($reloadedPlatform.mode -eq 'local-first') 'Installed platform mode did not survive a full desktop restart.'
-    Assert-True ($restart.WaitForExit(30000) -and $restart.ExitCode -eq 0) 'Restarted desktop did not shut down cleanly.'
+    Assert-True ($restart.WaitForExit(60000) -and $restart.ExitCode -eq 0) 'Restarted desktop did not shut down cleanly.'
     Assert-True ((Get-Process -Id $restart.Id -ErrorAction SilentlyContinue) -eq $null) 'Restarted desktop process remains after controlled shutdown.'
     $record.settingsPersistence = 'PASS'
 
