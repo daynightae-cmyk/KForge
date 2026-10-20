@@ -9,6 +9,20 @@
  */
 
 .knoux-living-mark-fallback {
+  /*
+   * Brand palette. The splash and idle screens are dark brand screens, so they keep the
+   * original ink/teal Living Mark art. The workspace layer is an ambient backdrop behind
+   * real workbench content, so it follows the active theme instead of painting a dark disc
+   * through the surface.
+   */
+  --kw-living-mark-face-1: #2b3134;
+  --kw-living-mark-face-2: #161b1d;
+  --kw-living-mark-face-3: #0d1112;
+  --kw-living-mark-plate: #050708;
+  --kw-living-mark-shadow: #000;
+  --kw-living-mark-rim-1: #2ad9c8;
+  --kw-living-mark-rim-2: #1fb8ac;
+  --kw-living-mark-rim-3: #e6e1d2;
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -29,12 +43,36 @@
 .knoux-living-mark-fallback[data-mode="workspace"] {
   opacity: 0.34;
   filter: saturate(0.82) contrast(0.96);
+  /* The workspace layer must never paint its own canvas: the workbench surface owns the
+   * background, and a second dark disc washed the light theme into flat grey. */
+  background: transparent;
+  /* Anchor the ambient mark to the lower band of the workbench so it never collides with
+   * the Project Center hero on compact viewports. */
+  align-items: flex-end;
+  padding-bottom: 9%;
+}
+
+.light .knoux-living-mark-fallback[data-mode="workspace"] {
+  --kw-living-mark-face-1: #4a4166;
+  --kw-living-mark-face-2: #342c4d;
+  --kw-living-mark-face-3: #241d3a;
+  --kw-living-mark-plate: #f3f0fb;
+  --kw-living-mark-shadow: #8f5cff;
+  --kw-living-mark-rim-1: #8f5cff;
+  --kw-living-mark-rim-2: #6f31ee;
+  --kw-living-mark-rim-3: #cbbbff;
+  opacity: 0.26;
+  filter: saturate(0.9) contrast(0.98);
 }
 
 .knoux-living-mark-fallback svg {
   width: min(58vw, 720px);
   height: auto;
   will-change: opacity;
+}
+
+.knoux-living-mark-fallback[data-mode="workspace"] svg {
+  width: min(46vw, 560px);
 }
 
 /* `.kw-workbench` is already `position: relative; z-index: 1` in workbench.css, so it is the
