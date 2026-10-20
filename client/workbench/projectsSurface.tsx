@@ -22,10 +22,10 @@ function ProjectCenterCards({ projects, activeProjectId, onProjectSelect, onNavi
     if (target) onNavigate(target);
   };
   return <section className="kw-project-center" aria-label="Project Center">
-    <header className="kw-project-center__hero">
+    {!activeProjectId ? <header className="kw-project-center__hero">
       <div><small>PROJECT CENTER</small><h2>Open a project and KForge surrounds it.</h2><p>Every status below comes from local project evidence. Actions open the real KForge workbench that owns the capability.</p></div>
       <ProjectStartActions compact />
-    </header>
+    </header> : null}
     <div className="kw-project-card-grid">
       {ordered.slice(0, 8).map((entry) => {
         const changed = entry.modifiedFiles + entry.untrackedFiles;
