@@ -6,6 +6,8 @@ import { EmptyState, StatusBadge } from "./ui";
 
 const ALL = "ALL";
 
+type FindingsState = "PENDING" | "LOADED" | "UNAVAILABLE";
+
 function record(value: unknown): RecordRow {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as RecordRow : {};
 }
@@ -43,6 +45,7 @@ export default function QualityTriageWorkbench({
   onNavigate: (activity: "quality", view: string) => void;
 }) {
   const [findings, setFindings] = useState<RecordRow[]>([]);
+  const [findingsState, setFindingsState] = useState<FindingsState>("PENDING");
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState(ALL);
   const [category, setCategory] = useState(ALL);
@@ -58,13 +61,16 @@ export default function QualityTriageWorkbench({
       setFindings(next);
       setSelectedId((current) => current && next.some((item) => String(item.id || "") === current) ? current : String(next[0]?.id || ""));
       setPreview({ state: "NOT_EVALUATED" });
+      setFindingsState("LOADED");
       setMessage("");
     } catch (error) {
+      setFindingsState("UNAVAILABLE");
       setMessage(error instanceof Error ? error.message : "Quality findings are unavailable.");
     }
   };
 
   useEffect(() => {
+    setFindingsState("PENDING");
     setPreview({ state: "NOT_EVALUATED" });
     setApplyEvidence({ state: "IDLE" });
     void refresh();
@@ -94,6 +100,9 @@ export default function QualityTriageWorkbench({
     high: findings.filter((issue) => String(issue.severity || "").toLowerCase() === "high").length,
     security: findings.filter((issue) => String(issue.category || "").toLowerCase() === "security").length,
   }), [findings]);
+
+  const evaluated = findingsState !== "PENDING";
+  const reported = (value: number) => evaluated ? String(value) : "NOT_EVALUATED";
 
   const selectFinding = (issue: RecordRow) => {
     setSelectedId(String(issue.id || ""));
@@ -158,10 +167,10 @@ export default function QualityTriageWorkbench({
 
     <section aria-label="Quality triage summary">
       <dl className="kw-preview-evidence-list">
-        <div><dt>Total findings</dt><dd>{counts.total}</dd></div>
-        <div><dt>Critical</dt><dd>{counts.critical}</dd></div>
-        <div><dt>High</dt><dd>{counts.high}</dd></div>
-        <div><dt>Security</dt><dd>{counts.security}</dd></div>
+        <div><dt>Total findings</dt><dd>{reported(counts.total)}</dd></div>
+        <div><dt>Critical</dt><dd>{reported(counts.critical)}</dd></div>
+        <div><dt>High</dt><dd>{reported(counts.high)}</dd></div>
+        <div><dt>Security</dt><dd>{reported(counts.security)}</dd></div>
       </dl>
     </section>
 
@@ -171,8 +180,9 @@ export default function QualityTriageWorkbench({
       <label>Category<select aria-label="Filter quality category" value={category} onChange={(event) => setCategory(event.target.value)}><option value={ALL}>All categories</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
     </div>
 
-    <div className="kw-quality-list" aria-label="Quality findings">
-      {filtered.map((issue, index) => {
+    <div className="kw-quality-list" aria-label="Quality findings" data-findings-state={findingsState}>
+      {!evaluated && <EmptyState title="Loading normalized scan evidence" detail="KForge is running the bounded local scan. No finding count or verdict is asserted until the scan completes." />}
+      {evaluated && filtered.map((issue, index) => {
         const id = String(issue.id || `finding-${index}`);
         const selectedState = selectedId === String(issue.id || "");
         return <article className="kw-quality-card kw-quality-triage-card" key={id} data-quality-finding-id={id} data-selected={String(selectedState)}>
@@ -183,7 +193,8 @@ export default function QualityTriageWorkbench({
           <div className="kw-quality-actions"><button aria-pressed={selectedState} onClick={() => selectFinding(issue)}>Select finding</button></div>
         </article>;
       })}
-      {!filtered.length && <EmptyState title="No matching findings" detail="The current filters match no normalized local scan evidence. KForge does not synthesize findings." />}
+      {findingsState === "LOADED" && !filtered.length && <EmptyState title="No matching findings" detail="The current filters match no normalized local scan evidence. KForge does not synthesize findings." />}
+      {findingsState === "UNAVAILABLE" && !filtered.length && <EmptyState title="Quality findings unavailable" detail="The bounded local scan did not complete. KForge reports the failure instead of presenting an empty scan as a clean result." />}
     </div>
 
     {selected && <section className="kw-operation-result" aria-label="Selected quality finding">

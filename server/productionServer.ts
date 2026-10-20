@@ -21,11 +21,11 @@ export interface KForgeProductionServer {
   close: () => Promise<void>;
 }
 
-function assertBundledResources(applicationRoot: string) {
+function assertBundledResources(applicationRoot: string, distPath: string) {
   const required = [
     path.join(applicationRoot, "fixtures", "marketplace-first-party", "manifest.json"),
     path.join(applicationRoot, "fixtures", "marketplace-first-party-v110", "manifest.json"),
-    path.join(applicationRoot, "dist", "spa", "index.html"),
+    path.join(distPath, "index.html"),
   ];
   const missing = required.filter((target) => !existsSync(target));
   if (missing.length) throw new Error(`KForge bundled resources are missing: ${missing.join(", ")}`);
@@ -48,7 +48,13 @@ export async function startKForgeProductionServer({
   port = 0,
 }: KForgeProductionServerOptions): Promise<KForgeProductionServer> {
   const resolvedRoot = path.resolve(applicationRoot);
-  assertBundledResources(resolvedRoot);
+  // Harnesses that run project builds inside the host repository must serve a
+  // stable shell snapshot so an in-flight build cannot replace the assets that
+  // the renderer is loading. The desktop runtime never sets this override.
+  const distPath = process.env.KFORGE_SPA_DIST
+    ? path.resolve(process.env.KFORGE_SPA_DIST)
+    : path.join(resolvedRoot, "dist", "spa");
+  assertBundledResources(resolvedRoot, distPath);
 
   // Canonical workspace services resolve their state root from this process context.
   // Desktop startup sets KFORGE_WORKSPACE_ROOT before this module is imported.
@@ -60,7 +66,6 @@ export async function startKForgeProductionServer({
   // header that is not a loopback authority. That closes DNS-rebinding access
   // to workspace, provider, marketplace and remote-source truth.
   const app = createServer({ enforceLoopbackHostHeader: true });
-  const distPath = path.join(resolvedRoot, "dist", "spa");
   app.disable("x-powered-by");
   app.use(express.static(distPath));
   app.get("/{*path}", (req, res) => {

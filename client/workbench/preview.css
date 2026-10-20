@@ -335,3 +335,75 @@
 }
 
 [data-kf-reduced-motion="true"] .kw-spin { animation: none; }
+
+/* Forge Identity: the full Preview surface reads as a studio, not a form. */
+.kw-preview { background: linear-gradient(180deg, #0a090f, #07070b); }
+
+.kw-preview-toolbar {
+  min-height: 46px;
+  padding: 7px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--kw-text) 8%, transparent);
+  background: linear-gradient(180deg, rgba(20, 17, 30, .9), rgba(12, 10, 19, .86));
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.kw-preview-nav,
+.kw-preview-toolset,
+.kw-preview-runtime-actions { gap: 6px; }
+
+.kw-preview-toolbar button,
+.kw-preview-toolset button,
+.kw-preview-runtime-actions button {
+  border-color: color-mix(in srgb, var(--kw-text) 9%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--kw-text) 3%, transparent);
+}
+
+.kw-preview-location {
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--kw-text) 8%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, #000 34%, transparent);
+  overflow: hidden;
+}
+
+.kw-preview-location input,
+.kw-preview-location code {
+  background: transparent;
+  border: 0;
+  color: var(--kw-text);
+  font: 10.5px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.kw-preview-frame-stage {
+  background:
+    radial-gradient(120% 90% at 50% 0, color-mix(in srgb, var(--kw-primary) 10%, transparent), transparent 58%),
+    radial-gradient(rgba(255, 255, 255, .4) .5px, transparent .5px) 0 0 / 16px 16px,
+    #08070d;
+}
+
+.kw-preview-canvas { border-radius: 12px; box-shadow: 0 40px 90px -50px rgba(0, 0, 0, 1); }
+.kw-preview-canvas iframe { border-radius: 10px; }
+
+.kw-preview-status {
+  min-height: 34px;
+  border-top: 1px solid color-mix(in srgb, var(--kw-text) 8%, transparent);
+  background: color-mix(in srgb, #000 18%, transparent);
+  color: var(--kw-muted);
+  font-size: 9.5px;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-preview-logs-toolbar { border-block: 1px solid color-mix(in srgb, var(--kw-text) 7%, transparent); }
+.kw-preview-logs { background: #08070d; font-size: 10px; }
+.kw-preview-history { border-color: color-mix(in srgb, var(--kw-text) 7%, transparent); }
+.kw-preview-state svg { color: color-mix(in srgb, var(--kw-primary) 82%, white 18%); }
+.kw-preview-notice { border-color: color-mix(in srgb, #f5b544 42%, transparent); }
+
+.light .kw-preview { background: #f4f2fa; }
+.light .kw-preview-toolbar { background: rgba(255, 255, 255, .88); border-bottom-color: rgba(30, 20, 60, .08); }
+.light .kw-preview-location { background: #fff; border-color: rgba(30, 20, 60, .1); }
+.light .kw-preview-frame-stage { background: radial-gradient(120% 90% at 50% 0, rgba(111, 49, 238, .06), transparent 58%), radial-gradient(rgba(60, 40, 110, .25) .5px, transparent .5px) 0 0 / 16px 16px, #efeaf8; }
+.light .kw-preview-status { background: rgba(30, 20, 60, .02); border-top-color: rgba(30, 20, 60, .08); }
+.light .kw-preview-logs { background: #fbfaff; }

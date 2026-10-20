@@ -17,3 +17,80 @@
 .kw-capability-card .kw-card-actions button.kw-action-primary:hover:not(:disabled) { background: var(--kw-primary-hover, var(--kw-primary)); }
 .kw-online-layout { overflow: hidden; }
 .kw-online-results { overflow: auto; max-height: calc(100vh - 220px); }
+
+/* Forge Identity: capability cards share the workbench ink/violet material. */
+.kw-online-results { gap: 16px; padding: 4px; }
+
+.kw-capability-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--kw-text) 8%, transparent);
+  padding: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--kw-text) 4%, transparent), color-mix(in srgb, var(--kw-text) 1%, transparent)),
+    color-mix(in srgb, var(--kw-panel) 92%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--kw-text) 5%, transparent) inset, 0 26px 54px -44px rgba(0, 0, 0, .95);
+  transition: transform 170ms cubic-bezier(.22, .61, .36, 1), border-color 170ms cubic-bezier(.22, .61, .36, 1), box-shadow 170ms cubic-bezier(.22, .61, .36, 1);
+}
+
+.kw-capability-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--kw-primary) 55%, transparent), transparent);
+  opacity: .35;
+  pointer-events: none;
+}
+
+.kw-capability-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--kw-primary) 32%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--kw-text) 6%, transparent) inset, 0 36px 70px -48px rgba(0, 0, 0, 1);
+}
+
+.kw-capability-card[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--kw-primary) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--kw-primary) 22%, transparent),
+    0 1px 0 color-mix(in srgb, var(--kw-text) 6%, transparent) inset,
+    0 36px 74px -48px rgba(0, 0, 0, 1);
+}
+
+.kw-capability-card[data-selected="true"]::before { opacity: .9; }
+
+.kw-capability-card .kw-card-header h3 { font-size: 15px; font-weight: 620; letter-spacing: -.02em; }
+.kw-capability-card .kw-card-badges span {
+  border: 1px solid color-mix(in srgb, var(--kw-text) 9%, transparent);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--kw-text) 3%, transparent);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+.kw-capability-card .kw-card-desc { color: var(--kw-muted); font-size: 12px; line-height: 1.55; }
+.kw-capability-card .kw-card-evidence { color: var(--kw-muted); font-variant-numeric: tabular-nums; }
+.kw-capability-card .kw-card-actions { border-top-color: color-mix(in srgb, var(--kw-text) 7%, transparent); }
+.kw-capability-card .kw-card-actions button { border-color: color-mix(in srgb, var(--kw-text) 9%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--kw-text) 3%, transparent); }
+.kw-capability-card .kw-card-actions button:hover:not(:disabled) { background: color-mix(in srgb, var(--kw-primary) 12%, transparent); border-color: color-mix(in srgb, var(--kw-primary) 34%, transparent); color: var(--kw-text); }
+.kw-capability-card .kw-card-actions button.kw-action-primary {
+  border-color: rgba(255, 255, 255, .18);
+  background: linear-gradient(180deg, #a274ff, #7f45f2 52%, #682bd8);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 12px 26px -14px rgba(126, 78, 255, .95);
+}
+
+.light .kw-capability-card {
+  border-color: rgba(30, 20, 60, .08);
+  background: #fff;
+  box-shadow: 0 1px 0 #fff inset, 0 24px 50px -40px rgba(30, 20, 60, .5);
+}
+.light .kw-capability-card:hover { border-color: rgba(111, 49, 238, .3); }
+.light .kw-capability-card .kw-card-badges span { background: rgba(30, 20, 60, .04); border-color: rgba(30, 20, 60, .09); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kw-capability-card { transition: none; }
+  .kw-capability-card:hover { transform: none; }
+}

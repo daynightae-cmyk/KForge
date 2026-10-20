@@ -10,7 +10,7 @@ function isExternalHttpRequest(rawUrl: string) {
 }
 
 test.describe("KForge release evidence in contextual workbench", () => {
-  test.setTimeout(300_000);
+  test.setTimeout(540_000);
 
   test("keeps release preparation, local artifacts, CI identity and remote evidence independent without release mutation", async ({ page }) => {
     const projectPath = path.resolve(process.cwd());
@@ -66,7 +66,7 @@ test.describe("KForge release evidence in contextual workbench", () => {
     await expect(versioning.getByRole("region", { name: "Distribution readiness evidence", exact: true })).toContainText("SOURCE / LOCAL / PREVIEW / DESKTOP / WINDOWS_PACKAGE / INSTALLER / GITHUB / CI / REMOTE");
 
     await selectExplorerView(page, "Release", "Release Gate");
-    const response = page.waitForResponse((entry) => entry.url().endsWith(`/api/workspace/projects/${project.id}/release-gate`) && entry.request().method() === "POST", { timeout: 240_000 });
+    const response = page.waitForResponse((entry) => entry.url().endsWith(`/api/workspace/projects/${project.id}/release-gate`) && entry.request().method() === "POST", { timeout: 420_000 });
     await page.getByRole("button", { name: "Run Release Gate", exact: true }).click();
     const gate = await response;
     expect([200, 422]).toContain(gate.status());

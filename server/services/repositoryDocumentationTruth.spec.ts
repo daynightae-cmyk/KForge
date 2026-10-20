@@ -118,12 +118,83 @@ describe("repository documentation truth contract", () => {
     expect(readme).not.toContain("pending install-script review");
     expect(readme).not.toContain("does not claim target-application browser-console");
 
-    for (const name of ["@react-three/drei", "@react-three/fiber", "@types/three", "framer-motion", "three"]) {
+    for (const name of ["@react-three/drei", "@react-three/fiber", "@types/three", "framer-motion"]) {
       expect(manifest.dependencies?.[name]).toBeUndefined();
       expect(manifest.devDependencies?.[name]).toBeUndefined();
       expect(manifest.optionalDependencies?.[name]).toBeUndefined();
       expect(manifest.peerDependencies?.[name]).toBeUndefined();
     }
+  });
+
+  it("keeps the approved Living Mark dependency exact-pinned and free of supply-chain risk", () => {
+    const manifest = JSON.parse(rootFile("package.json")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const lock = JSON.parse(rootFile("package-lock.json")) as {
+      packages?: Record<string, { version?: string; dev?: boolean; hasInstallScript?: boolean; dependencies?: Record<string, string> }>;
+    };
+
+    // Exact pin: an uncontrolled caret range would let a future Three.js release enter the
+    // shipped runtime without a new review of this contract.
+    expect(manifest.dependencies?.three).toBe("0.183.2");
+
+    const entry = lock.packages?.["node_modules/three"];
+    expect(entry).toBeTruthy();
+    expect(entry?.version).toBe("0.183.2");
+    // Three.js must stay a runtime dependency of the brand scene but must never run install
+    // scripts or drag in a transitive graph that could widen the audit surface. npm omits the
+    // `dev` flag entirely for production entries, so assert it is not flagged dev-only.
+    expect(entry?.dev).not.toBe(true);
+    expect(entry?.hasInstallScript).toBeFalsy();
+    expect(entry?.dependencies ?? {}).toEqual({});
+  });
+
+  it("keeps Three.js out of the initial client graph and behind an idle, accessibility-aware gate", () => {
+    const workbench = rootFile("client/workbench/KForgeWorkbench.tsx");
+    const gate = rootFile("client/components/brand/LivingMarkGate.tsx");
+
+    // The workbench shell must not statically import the scene, or Three.js would be pulled
+    // into the startup graph and defeat the entire code-splitting contract.
+    expect(workbench).not.toMatch(/from\s+"three"/);
+    expect(workbench).not.toMatch(/import\s+KnouxLivingMark\b/);
+    expect(workbench).toContain('import LivingMarkGate from "@/components/brand/LivingMarkGate"');
+
+    // The single permitted reference is a dynamic import inside the lazy boundary.
+    expect(gate).toContain('lazy(() => import("./KnouxLivingMark"))');
+    expect(gate).not.toMatch(/^\s*import\s+.*\sfrom\s+"three"/m);
+
+    // Capability probing and the scene download must be deferred until the browser is idle,
+    // so the brand can never compete with the workbench's critical rendering path.
+    expect(gate).toContain("requestIdleCallback");
+    expect(gate).toMatch(/afterIdle\(\(\) => \{/);
+
+    // A zero-JavaScript static wordmark must be what paints first.
+    expect(gate).toContain("StaticWordmark");
+    expect(gate).toContain("<svg");
+
+    // Accessibility and low-end paths must avoid creating a WebGL context at all.
+    expect(gate).toContain("STATIC_REDUCED_MOTION");
+    expect(gate).toContain("STATIC_NO_WEBGL");
+    expect(gate).toContain("prefers-reduced-motion: reduce");
+  });
+
+  it("keeps the Living Mark scene free of idle polling and explicit about GPU cleanup", () => {
+    const scene = rootFile("client/components/brand/KnouxLivingMark.tsx");
+
+    // A permanent polling timer would keep a wake-up alive for the whole session even while
+    // the scene is suspended, so suspension must be driven declaratively from props.
+    expect(scene).not.toContain("setInterval");
+    expect(scene).not.toContain("suspendedPoll");
+
+    expect(scene).toContain("document.addEventListener(\"visibilitychange\"");
+    expect(scene).toContain("renderer.setAnimationLoop(null)");
+    expect(scene).toContain("renderer.dispose()");
+    expect(scene).toContain("renderer.forceContextLoss()");
+    expect(scene).toContain("environmentTarget.dispose()");
+
+    // Deterministic motion only; no Math.random anywhere in the brand animation.
+    expect(scene).not.toContain("Math.random");
   });
 
 });

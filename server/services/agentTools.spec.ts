@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import type { ProjectProfile } from "../../shared/workspace";
 import { listAgentTools, resolveAgentToolStatus, executeAgentTool } from "./agentTools";
@@ -73,7 +74,18 @@ describe("KForge agent tool status semantics", () => {
   });
 
   describe("P1 symlink / junction security boundary", () => {
-    const fixturesDir = path.resolve(process.cwd(), "fixtures");
+    // These boundary fixtures must never be written inside the repository: a failing assertion
+    // would otherwise leave untracked scratch directories behind in the working tree.
+    let fixturesDir = "";
+
+    beforeAll(async () => {
+      fixturesDir = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-agent-tools-"));
+    });
+
+    afterAll(async () => {
+      if (fixturesDir) await fs.rm(fixturesDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+      fixturesDir = "";
+    });
 
     it("lexical boundary rejects absolute external paths", async () => {
       const root = await fs.mkdtemp(path.join(fixturesDir, "security-abs-"));
