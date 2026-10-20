@@ -80,7 +80,16 @@ function policyOverrides(input: ServiceInput): Pick<SafeFetchPolicy, "timeoutMs"
   };
 }
 
-const SERVER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._\-/@]{0,199}$/;
+// MCP Registry server names are published in three canonical shapes: a flat
+// name ("typescript-sdk"), a reverse-DNS scope joined with a single slash
+// ("io.github.owner/filesystem"), and an at-prefixed namespaced name
+// ("@modelcontextprotocol/server-filesystem"). The previous pattern allowed
+// "@" inside a name but never as its first character, so every namespaced
+// server was rejected as "unsupported characters" even though the character
+// class was written to accept it. A name may carry at most one scope
+// separator, and traversal segments stay rejected by the ".." guard.
+const SERVER_NAME_PATTERN = /^(?:@?[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+const MAX_SERVER_NAME_LENGTH = 200;
 const VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._\-+]{0,99}$/;
 const MAX_SEARCH_LENGTH = 200;
 const MAX_CURSOR_LENGTH = 2000;
@@ -107,7 +116,7 @@ function validatedSearch(params: McpSearchParams): Required<Pick<McpSearchParams
 }
 
 function validatedServerName(serverName: string): string {
-  if (!SERVER_NAME_PATTERN.test(serverName) || serverName.includes("..")) {
+  if (serverName.length > MAX_SERVER_NAME_LENGTH || !SERVER_NAME_PATTERN.test(serverName) || serverName.includes("..")) {
     throw new Error("MCP Registry: server name contains unsupported characters.");
   }
   return serverName;
