@@ -57,7 +57,7 @@ test.describe("KForge canonical Preview Workbench", () => {
     await expect(preview).toContainText("npm run dev -- --port <allocated>");
     await page.keyboard.press("Control+K");
     const palette = page.getByRole("dialog", { name: "KForge command palette" });
-    await palette.getByPlaceholder("Projects, files, symbols, problems, tasks, models…").fill("preview");
+    await palette.getByPlaceholder("Search services, projects, files, tasks…").fill("preview");
     await expect(palette.getByRole("button", { name: /Preview: Start/ })).toBeVisible();
     await page.keyboard.press("Escape");
 

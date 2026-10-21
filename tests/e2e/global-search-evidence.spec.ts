@@ -35,7 +35,7 @@ test.describe("KForge global search evidence in contextual workbench", () => {
     const palette = page.getByRole("dialog", { name: "KForge command palette" });
     await expect(palette).toBeVisible();
     const searchRequest = page.waitForResponse((response) => response.url().includes("/api/workspace/search?") && response.request().method() === "GET");
-    await palette.getByPlaceholder("Projects, files, symbols, problems, tasks, models…").fill("KForgeWorkbench");
+    await palette.getByPlaceholder("Search services, projects, files, tasks…").fill("KForgeWorkbench");
     expect((await searchRequest).ok()).toBeTruthy();
     const result = palette.getByRole("button").filter({ hasText: /KForgeWorkbench/i }).first();
     await expect(result).toBeVisible({ timeout: 30_000 });

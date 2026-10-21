@@ -5,10 +5,11 @@ import { fetchJson, jsonRequest } from "./api";
 import { EvidenceCards, TaskTable } from "./ui";
 import { SimpleFetchSurface } from "./surfaceShared";
 import ProviderStudio from "./ProviderStudio";
+import { ProjectRequired } from "./ProjectStartActions";
 
 function AISurface(props: SurfaceProps) {
   const { view, project } = props;
-  if (view === "agents") return project ? <AgentMissionSurface project={project} /> : <SimpleFetchSurface url="/api/workspace/marketplace" title="Global agent catalog" />;
+  if (view === "agents") return project ? <AgentMissionSurface project={project} /> : <ProjectRequired detail="Select a project to inspect agent permissions and start a mission. Discover agent catalog records in Online / Agents." />;
   if (view === "tasks") return <AITasks />;
   return <ProviderStudio view={view} project={project} />;
 }

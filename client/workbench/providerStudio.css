@@ -132,7 +132,7 @@
 .kw-ai-context-pane,
 .kw-ai-inspector-pane { padding: 8px; }
 .kw-ai-conversation-pane { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; padding: 8px; overflow: hidden; }
-.kw-context-files { display: grid; gap: 4px; margin: 8px 0; max-height: 220px; overflow: auto; }
+.kw-context-files { display: grid; gap: 4px; margin: 8px 0; max-height: 220px; overflow: auto; grid-auto-rows: max-content; }
 .kw-context-files button { display: grid; gap: 2px; text-align: left; padding: 6px; min-width: 0; }
 .kw-context-files button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .kw-context-files button small { color: var(--kw-muted); font-size: 9px; }
@@ -156,7 +156,7 @@
 .kw-ai-empty { min-height: 140px; display: grid; align-content: center; justify-items: center; text-align: center; gap: 5px; padding: 16px; color: var(--kw-muted); }
 .kw-ai-empty strong { color: var(--kw-text); }
 .kw-ai-note-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding-top: 7px; border-top: 1px solid var(--kw-border); }
-.kw-ai-diff-studio { display: grid; gap: 6px; max-height: 315px; overflow: auto; border-top: 1px solid var(--kw-border); padding-top: 7px; margin-top: 7px; }
+.kw-ai-diff-studio { display: grid; gap: 6px; max-height: 315px; overflow: auto; grid-auto-rows: max-content; border-top: 1px solid var(--kw-border); padding-top: 7px; margin-top: 7px; }
 .kw-ai-diff-studio details { border: 1px solid var(--kw-border); border-radius: 5px; padding: 6px; }
 .kw-ai-diff-studio summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; cursor: pointer; }
 .kw-ai-diff-studio summary > span:first-child { flex: 1; min-width: 150px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }

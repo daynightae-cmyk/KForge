@@ -120,7 +120,7 @@ test.describe("KForge workbench accessibility and keyboard evidence", () => {
     await commandTrigger.focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog", { name: "KForge command palette" });
-    const input = dialog.getByPlaceholder("Projects, files, symbols, problems, tasks, models…");
+    const input = dialog.getByPlaceholder("Search services, projects, files, tasks…");
     await expect(dialog).toBeVisible();
     await expect(input).toBeFocused();
     await page.keyboard.press("Escape");

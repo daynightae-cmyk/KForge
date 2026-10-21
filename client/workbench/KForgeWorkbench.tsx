@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BrainCircuit, ChevronRight, Cloud, FolderKanban, GitBranch, RefreshCw, Rocket, Search, Settings2, ShieldCheck, SlidersHorizontal, Terminal, X } from "lucide-react";
+import { ArrowLeft, Bot, BrainCircuit, ChevronRight, Cloud, FolderKanban, GitBranch, RefreshCw, Rocket, Search, Settings2, ShieldCheck, SlidersHorizontal, Terminal, X } from "lucide-react";
 import type { KForgeActivity, KForgePlatformSettings, ProjectSummary, WorkspaceResponse } from "@shared/workspace";
 import { ACTIVITIES, KFORGE_ACTIVITY_IDS, ONLINE_EXPLORER_VIEWS, activityDefinition, activityLabel, defaultView, viewLabel } from "./navigation";
+import { ACTIVITY_PURPOSE, browseWorkbenchDomains, resolveWorkbenchTarget, searchWorkbenchServices, serviceDefinition } from "./serviceDirectory";
 import { fetchJson, jsonRequest } from "./api";
 import { StatusBadge } from "./ui";
 import type { ExecutionSnapshot, InspectorContext, RecordRow } from "./surfaceContracts";
@@ -42,12 +43,8 @@ function applyAppearance(settings: KForgePlatformSettings) {
 }
 
 function surfaceDescription(activity: KForgeActivity, view: string, project?: ProjectSummary) {
-  if (activity === "online") return project ? `Global Online evidence with optional compatibility context from ${project.name}.` : "Global Online evidence; compatibility is NOT_EVALUATED because no project is selected.";
-  if (!project && !["system", "ai", "projects"].includes(activity)) return "Select a project context to load project-specific evidence.";
-  if (view === "workspace") return "Dense engineering table with search, sorting, selection, Git, health and trust evidence.";
-  if (view === "release-gate") return "Independent SOURCE, LOCAL, PREVIEW, DESKTOP, WINDOWS_PACKAGE, INSTALLER, GITHUB, CI and REMOTE evidence.";
-  if (view === "terminal") return "Registered project commands only; unrestricted shell execution is not exposed.";
-  return `Evidence-backed ${viewLabel(activity, view)} surface.`;
+  const service = serviceDefinition(activity, view);
+  return `${service?.description || ACTIVITY_PURPOSE[activity]}${service?.context === "project" && !project ? " Select a project to continue." : ""}`;
 }
 
 export default function KForgeWorkbench() {
@@ -65,6 +62,10 @@ export default function KForgeWorkbench() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [searchRows, setSearchRows] = useState<Array<RecordRow & { target?: string; projectId?: string }>>([]);
+  const [navigationHistory, setNavigationHistory] = useState<Array<{ activity: KForgeActivity; view: string }>>([]);
+  const visitedViews = useRef<Partial<Record<KForgeActivity, string>>>({});
+  const paletteServices = useMemo(() => searchWorkbenchServices(paletteQuery), [paletteQuery]);
+  const paletteDomains = useMemo(() => browseWorkbenchDomains(), []);
   const paletteInput = useRef<HTMLInputElement | null>(null);
   const palettePanel = useRef<HTMLDivElement | null>(null);
   const activeProject = workspace?.projects.find((project) => project.id === projectId);
@@ -140,15 +141,28 @@ export default function KForgeWorkbench() {
   });
 
   const navigate = (nextActivity: KForgeActivity, nextView: string) => {
+    if (nextActivity !== activity || nextView !== view) {
+      setNavigationHistory(history => [...history.slice(-49), { activity, view }]);
+    }
+    visitedViews.current[nextActivity] = nextView;
     setActivity(nextActivity);
     setView(nextView);
     setExecution(null);
     if (nextActivity !== activity || nextView !== view) setInspectorContext(null);
   };
-  const changeActivity = (next: KForgeActivity) => navigate(next, next === "online" && settings ? settings.general.startupOnlineView : defaultView(next));
+  const changeActivity = (next: KForgeActivity) => navigate(next, visitedViews.current[next] || (next === "online" && settings ? settings.general.startupOnlineView : defaultView(next)));
+  const goBack = () => {
+    const previous = navigationHistory.at(-1);
+    if (!previous) return;
+    setNavigationHistory(history => history.slice(0, -1));
+    visitedViews.current[previous.activity] = previous.view;
+    setActivity(previous.activity); setView(previous.view);
+    setExecution(null); setInspectorContext(null);
+  };
   const deepNavigate = (target: string) => {
-    const map: Record<string, [KForgeActivity, string]> = { Workspace: ["projects", "workspace"], Agents: ["ai", "agents"], Models: ["ai", "models"], Tasks: ["ai", "tasks"], Providers: ["ai", "providers"], Marketplace: ["online", "marketplace"], Extensions: ["online", "extensions"], "Online Documentation": ["online", "documentation"], "Project graph": ["intelligence", "project-graph"], Dependencies: ["intelligence", "dependencies"], Architecture: ["intelligence", "architecture"], Problems: ["quality", "problems"], Documentation: ["quality", "documentation"], "KForge Sonar": ["quality", "sonar"], Tests: ["developer-tools", "tests"], Build: ["developer-tools", "build"], Runtime: ["developer-tools", "runtime"], "Project commands": ["developer-tools", "terminal"], Preview: ["developer-tools", "preview"], Git: ["remote", "git"], GitHub: ["remote", "github"], "Release Gate": ["release", "release-gate"], Settings: ["system", "settings"], Trust: ["system", "trust"], Permissions: ["system", "permissions"], Storage: ["system", "storage"], "System Diagnostics": ["system", "system-diagnostics"], "Online / Offline": ["system", "online-offline"], Updates: ["online", "updates"] };
-    const destination = map[target] || ["projects", "workspace"]; navigate(destination[0], destination[1]);
+    const destination = resolveWorkbenchTarget(target);
+    if (destination) navigate(destination.activity, destination.id);
+    else setMessage(`No workbench destination is registered for "${target}".`);
   };
   const changeProject = (next: string) => {
     setProjectId(next);
@@ -198,15 +212,26 @@ export default function KForgeWorkbench() {
     {explorerOpen ? <aside className="kw-explorer" aria-label={`${current.label} Explorer`}>
       <div className="kw-explorer-heading"><div><small>Explorer</small><strong>{activeProject ? activeProject.name : current.label}</strong></div><button aria-label="Collapse explorer" onClick={() => setExplorerOpen(false)}><ChevronRight size={15} /></button></div>
       <div className="kw-explorer-scroll">
-        {activeProject ? <ProjectContextExplorer project={activeProject} onNavigate={deepNavigate} /> : null}
+        <p className="kw-explorer-purpose">{ACTIVITY_PURPOSE[activity]}</p>
         <div className={activeProject ? "kw-explorer-capabilities" : ""}>
-          {groupedViews.map(([group, views]) => <section key={group}><h2>{group}</h2>{views.map((item) => <button key={item.id} data-workbench-view={item.id} aria-current={view === item.id ? "page" : undefined} className={view === item.id ? "is-active" : ""} onClick={() => navigate(activity, item.id)}><span>{item.label}</span><ChevronRight size={12} aria-hidden="true" /></button>)}</section>)}
+          {groupedViews.map(([group, views]) => <section key={group}><h2>{group}</h2>{views.map((item) => <button key={item.id} title={serviceDefinition(activity, item.id)?.description} data-workbench-view={item.id} aria-current={view === item.id ? "page" : undefined} className={view === item.id ? "is-active" : ""} onClick={() => navigate(activity, item.id)}><span>{item.label}</span><ChevronRight size={12} aria-hidden="true" /></button>)}</section>)}
         </div>
+        {activeProject ? <details className="kw-explorer-project-details"><summary>Project context · {activeProject.name}</summary><ProjectContextExplorer project={activeProject} onNavigate={deepNavigate} /></details> : null}
       </div>
     </aside> : <button className="kw-explorer-restore" aria-label="Open explorer" onClick={() => setExplorerOpen(true)}><ChevronRight size={15} /></button>}
-    <main className="kw-workbench" aria-label="KForge workbench" data-workbench-surface={`${activity}:${view}`}><LivingMarkGate mode="workspace" visible={livingMarkVisible} reducedMotion={livingMarkReducedMotion} /><nav className="kw-breadcrumb" aria-label="Workbench breadcrumb"><div className="kw-context-orbit"><span className="kw-context-project">{contextLabel}</span><span className="kw-context-dot" aria-hidden="true" /><span>{activityLabel(activity)}</span><ChevronRight size={13} /><strong>{viewLabel(activity, view)}</strong></div><span className="kw-breadcrumb-state">{activeProject?.trust || "NO_PROJECT"}</span></nav><div className="kw-surface-heading"><div><p>KNOuX / {activityLabel(activity)}</p><h1>{viewLabel(activity, view)}</h1><small>{surfaceDescription(activity, view, activeProject)}</small></div><button onClick={() => void refreshWorkspace()}><RefreshCw size={15} />Refresh</button></div>{message && <div className="kw-message" role="status">{message}</div>}<div className="kw-workbench-scroll" tabIndex={0} role="region" aria-label="Workbench surface content"><WorkbenchSurface activity={activity} view={view} workspace={workspace} project={activeProject} settings={settings} onProjectSelect={changeProject} onRefresh={refreshWorkspace} onSettings={(next) => { setSettings(next); applyAppearance(next); }} onNavigate={navigate} onExecution={setExecution} onInspectorContext={setInspectorContext} /></div>{activity === "developer-tools" && view !== "preview" && <div className="kw-bottom-panel" aria-label="Developer execution panel"><div><strong>EXECUTION</strong><span>{execution?.state || "IDLE"}</span></div>{execution ? <><code>{execution.command || "KForge registered operation"}</code><small>{execution.message || execution.source}</small><pre>{execution.output || "No process output captured."}</pre></> : <p>No developer command has run from this workbench session.</p>}</div>}</main>
+    <main className="kw-workbench" aria-label="KForge workbench" data-workbench-surface={`${activity}:${view}`}><LivingMarkGate mode="workspace" visible={livingMarkVisible} reducedMotion={livingMarkReducedMotion} /><nav className="kw-breadcrumb" aria-label="Workbench breadcrumb"><div className="kw-context-orbit"><button className="kw-navigation-back" aria-label="Back to previous view" disabled={!navigationHistory.length} onClick={goBack}><ArrowLeft size={14} /></button><span className="kw-context-project">{contextLabel}</span><span className="kw-context-dot" aria-hidden="true" /><span>{activityLabel(activity)}</span><ChevronRight size={13} /><strong>{viewLabel(activity, view)}</strong></div><span className="kw-breadcrumb-state">{activeProject?.trust || "NO_PROJECT"}</span></nav><div className="kw-surface-heading"><div><p>KNOuX / {activityLabel(activity)}</p><h1>{viewLabel(activity, view)}</h1><small>{surfaceDescription(activity, view, activeProject)}</small></div><button onClick={() => void refreshWorkspace()}><RefreshCw size={15} />Refresh</button></div>{message && <div className="kw-message" role="status">{message}</div>}<div className="kw-workbench-scroll" tabIndex={0} role="region" aria-label="Workbench surface content"><WorkbenchSurface activity={activity} view={view} workspace={workspace} project={activeProject} settings={settings} onProjectSelect={changeProject} onRefresh={refreshWorkspace} onSettings={(next) => { setSettings(next); applyAppearance(next); }} onNavigate={navigate} onExecution={setExecution} onInspectorContext={setInspectorContext} /></div>{activity === "developer-tools" && view !== "preview" && <div className="kw-bottom-panel" aria-label="Developer execution panel"><div><strong>EXECUTION</strong><span>{execution?.state || "IDLE"}</span></div>{execution ? <><code>{execution.command || "KForge registered operation"}</code><small>{execution.message || execution.source}</small><pre>{execution.output || "No process output captured."}</pre></> : <p>No developer command has run from this workbench session.</p>}</div>}</main>
     {inspectorOpen && <Suspense fallback={<aside className="kw-inspector" aria-label="Context inspector loading" aria-busy="true"><div className="kw-inspector-scroll"><p className="kw-muted" role="status">Loading inspector…</p></div></aside>}><CanonicalInspector activity={activity} view={view} project={activeProject} execution={execution} context={inspectorContext} /></Suspense>}
     <PersistentPreviewDock project={activeProject} fullWorkbenchActive={activity === "developer-tools" && view === "preview"} inspectorOpen={inspectorOpen} onOpenWorkbench={() => navigate("developer-tools", "preview")} />
-    {paletteOpen && <div className="kw-palette-backdrop" role="dialog" aria-modal="true" aria-label="KForge command palette"><div className="kw-palette" ref={palettePanel}><div className="kw-palette-input"><Search size={17} /><input ref={paletteInput} value={paletteQuery} onChange={(event) => setPaletteQuery(event.target.value)} aria-label="Search KForge projects, files, symbols, problems, tasks and models" placeholder="Projects, files, symbols, problems, tasks, models…" /><button aria-label="Close command palette" onClick={() => setPaletteOpen(false)}><X size={16} /></button></div><div className="kw-palette-results">{previewPaletteCommands.map((command) => <button key={command.label} onClick={() => void runPreviewPaletteCommand(command)}><strong>{command.label}</strong><span>{command.operation ? "Canonical local Preview operation" : "Developer Tools / Preview"}</span><small>{command.operation && !projectId ? "Requires project context" : "KForge command registry"}</small></button>)}{searchRows.map((row, index) => <button key={`${String(row.entity || "result")}:${String(row.entityId || index)}`} onClick={() => { if (row.projectId) setProjectId(String(row.projectId)); deepNavigate(String(row.target || "Workspace")); setPaletteOpen(false); setPaletteQuery(""); }}><strong>{String(row.title || "Result")}</strong><span>{String(row.entity || "Evidence")} · {String(row.detail || "")}</span><small>{String(row.source || "")}</small></button>)}{paletteQuery.length >= 2 && !searchRows.length && !previewPaletteCommands.length && <p>No bounded local result matched this query.</p>}</div></div></div>}
+    {paletteOpen && <div className="kw-palette-backdrop" role="dialog" aria-modal="true" aria-label="KForge command palette"><div className="kw-palette" ref={palettePanel}><div className="kw-palette-input"><Search size={17} /><input ref={paletteInput} value={paletteQuery} onChange={(event) => setPaletteQuery(event.target.value)} aria-label="Search KForge services, projects, files, symbols, problems and tasks" placeholder="Search services, projects, files, tasks…" /><button aria-label="Close command palette" onClick={() => setPaletteOpen(false)}><X size={16} /></button></div><div className="kw-palette-results">
+      <section aria-label="Services">
+        <h2 className="kw-palette-section-title">{paletteQuery.trim() ? `${paletteServices.length} matching service${paletteServices.length === 1 ? "" : "s"}` : "Go to a domain"}</h2>
+        {paletteQuery.trim()
+          ? paletteServices.map((service) => <button key={service.target} data-service-target={service.target} onClick={() => { navigate(service.activity, service.id); setPaletteOpen(false); setPaletteQuery(""); }}><strong>{service.label}</strong><span>{service.activityLabel} · {service.group || service.activityLabel}</span><small>{service.description}</small><small>{service.context === "project" ? (activeProject ? `Project · ${activeProject.name}` : "Requires a project · open to select one") : service.context === "optional" ? "Global · optional project context" : "Global service"}</small></button>)
+          : paletteDomains.map((domain) => <button key={domain.id} data-service-target={`${domain.id}:${domain.firstView}`} onClick={() => { navigate(domain.id, domain.firstView); setPaletteOpen(false); setPaletteQuery(""); }}><strong>{domain.label}</strong><span>{domain.serviceCount} services</span><small>{domain.purpose}</small><small>{domain.projectScoped ? "Includes project-scoped services" : "Global services"}</small></button>)}
+      </section>
+      {previewPaletteCommands.map((command) => <button key={command.label} onClick={() => void runPreviewPaletteCommand(command)}><strong>{command.label}</strong><span>{command.operation ? "Canonical local Preview operation" : "Developer Tools / Preview"}</span><small>{command.operation && !projectId ? "Requires project context" : "KForge command registry"}</small></button>)}
+      {searchRows.map((row, index) => <button key={`${String(row.entity || "result")}:${String(row.entityId || index)}`} onClick={() => { if (row.projectId) setProjectId(String(row.projectId)); deepNavigate(String(row.target || "Workspace")); setPaletteOpen(false); setPaletteQuery(""); }}><strong>{String(row.title || "Result")}</strong><span>{String(row.entity || "Evidence")} · {String(row.detail || "")}</span><small>{String(row.source || "")}</small></button>)}
+      {paletteQuery.length >= 2 && !searchRows.length && !previewPaletteCommands.length && !paletteServices.length && <p>No bounded local result matched this query.</p>}
+    </div></div></div>}
   </div>;
 }
