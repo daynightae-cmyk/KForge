@@ -1,0 +1,277 @@
+/* KForge service card contract.
+ *
+ * One layout, two skins. The shared classes below define the structure every
+ * KForge capability card uses; the skin only decides the surface treatment.
+ * Colours fall back to the product theme tokens so the card stays readable
+ * outside the workbench shell.
+ */
+
+.kw-service-card {
+  --kw-service-card-panel: var(--kw-panel, hsl(var(--card)));
+  --kw-service-card-muted: var(--kw-muted, hsl(var(--muted-foreground)));
+  --kw-service-card-text: var(--kw-text, hsl(var(--foreground)));
+  --kw-service-card-border: var(--kw-border, hsl(var(--border)));
+  --kw-service-card-primary: var(--kw-primary, hsl(var(--primary)));
+  --kw-service-card-primary-fg: var(--kw-primary-fg, hsl(var(--primary-foreground)));
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  text-align: left;
+}
+
+.kw-service-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.kw-service-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--kw-service-card-primary) 26%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--kw-service-card-primary) 12%, transparent);
+  color: var(--kw-service-card-primary);
+}
+
+.kw-service-card__identity {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.kw-service-card__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  color: var(--kw-service-card-text);
+}
+
+.kw-service-card__category {
+  margin: 2px 0 0;
+  color: var(--kw-service-card-muted);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.kw-service-card__state {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.kw-service-card__badge {
+  font-size: 8.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.kw-service-card__description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  margin: 0;
+  color: var(--kw-service-card-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.kw-service-card__capability {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: 0;
+  color: var(--kw-service-card-text);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.kw-service-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--kw-service-card-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-service-card__facts em {
+  margin-right: 4px;
+  color: color-mix(in srgb, var(--kw-service-card-muted) 72%, transparent);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.kw-service-card__evidence {
+  margin: 0;
+  color: var(--kw-service-card-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.kw-service-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kw-service-card__action {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--kw-service-card-text) 10%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--kw-service-card-text) 4%, transparent);
+  color: var(--kw-service-card-text);
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.kw-service-card__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--kw-service-card-primary) 36%, transparent);
+  background: color-mix(in srgb, var(--kw-service-card-primary) 14%, transparent);
+}
+
+.kw-service-card__action:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.kw-service-card__action.kw-action-primary {
+  border-color: transparent;
+  background: var(--kw-service-card-primary);
+  color: var(--kw-service-card-primary-fg);
+  font-weight: 650;
+}
+
+.kw-service-card__action.kw-action-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--kw-service-card-primary) 86%, #fff);
+  border-color: transparent;
+}
+
+.kw-service-card__result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border: 1px solid var(--kw-service-card-border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--kw-service-card-text) 3%, transparent);
+  font-size: 10.5px;
+  color: var(--kw-service-card-muted);
+}
+
+.kw-service-card__result strong {
+  color: var(--kw-service-card-text);
+  font-size: 10.5px;
+}
+
+.kw-service-card__context {
+  margin: 0;
+  color: color-mix(in srgb, var(--kw-service-card-muted) 88%, transparent);
+  font-size: 10px;
+  letter-spacing: .01em;
+}
+
+/* Service skin: a workbench capability panel. */
+.kw-service-card--service {
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--kw-service-card-text) 8%, transparent);
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--kw-service-card-text) 3%, transparent), transparent),
+    color-mix(in srgb, var(--kw-service-card-panel) 94%, transparent);
+  transition: transform 170ms cubic-bezier(.22, .61, .36, 1), border-color 170ms cubic-bezier(.22, .61, .36, 1);
+}
+
+.kw-service-card--service:hover {
+  border-color: color-mix(in srgb, var(--kw-service-card-primary) 30%, transparent);
+}
+
+.kw-service-card--service.is-selected {
+  border-color: color-mix(in srgb, var(--kw-service-card-primary) 52%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--kw-service-card-primary) 20%, transparent);
+}
+
+/* Catalog skin: an Online catalog item. The surface treatment stays owned by
+ * the Online surface stylesheet; this skin only removes the service padding
+ * so the catalog surface keeps its own rhythm.
+ *
+ * The catalog skin lays its blocks out in normal flow rather than as a flex
+ * column: the Online results grid is a height-bounded scroll area, and a
+ * stretched flex column inside a bounded grid row collapses to the row share
+ * instead of its own content height. */
+.kw-service-card--catalog {
+  display: block;
+}
+
+.kw-service-card--catalog > * + * { margin-top: 8px; }
+
+.kw-service-card--catalog .kw-service-card__title {
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -.02em;
+}
+
+.kw-service-card--catalog .kw-service-card__category {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+
+.kw-service-card--catalog .kw-service-card__description {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* State badge semantics. These selectors are intentionally more specific than
+ * the shared .kw-badge rule so the state colour is never lost to load order. */
+.kw-service-card .kw-service-card__badge--ready,
+.kw-service-card .kw-service-card__badge--completed {
+  border-color: color-mix(in srgb, #43c17a 45%, var(--kw-service-card-border));
+  color: color-mix(in srgb, #43c17a 88%, var(--kw-service-card-text));
+}
+
+.kw-service-card .kw-service-card__badge--running {
+  border-color: color-mix(in srgb, #58a6ff 45%, var(--kw-service-card-border));
+  color: color-mix(in srgb, #58a6ff 88%, var(--kw-service-card-text));
+}
+
+.kw-service-card .kw-service-card__badge--needs-setup,
+.kw-service-card .kw-service-card__badge--requires-project,
+.kw-service-card .kw-service-card__badge--requires-permission {
+  border-color: color-mix(in srgb, #d9a441 48%, var(--kw-service-card-border));
+  color: color-mix(in srgb, #d9a441 90%, var(--kw-service-card-text));
+}
+
+.kw-service-card .kw-service-card__badge--offline {
+  border-color: color-mix(in srgb, var(--kw-service-card-text) 14%, transparent);
+  color: var(--kw-service-card-muted);
+}
+
+.kw-service-card .kw-service-card__badge--unavailable,
+.kw-service-card .kw-service-card__badge--failed {
+  border-color: color-mix(in srgb, hsl(var(--destructive)) 50%, var(--kw-service-card-border));
+  color: hsl(var(--destructive));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kw-service-card,
+  .kw-service-card__action {
+    transition: none;
+  }
+}

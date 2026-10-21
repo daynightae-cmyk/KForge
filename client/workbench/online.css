@@ -17,6 +17,11 @@
 .kw-capability-card .kw-card-actions button.kw-action-primary:hover:not(:disabled) { background: var(--kw-primary-hover, var(--kw-primary)); }
 .kw-online-layout { overflow: hidden; }
 .kw-online-results { overflow: auto; max-height: calc(100vh - 220px); }
+/* The results grid is a height-bounded scroll area. Auto rows inside a bounded
+ * grid collapse to an equal share of the container height, which clipped every
+ * catalog card to its header row. Explicit content-sized rows keep the cards
+ * whole and let the container scroll. */
+.kw-online-results { grid-auto-rows: max-content; }
 
 /* Forge Identity: capability cards share the workbench ink/violet material. */
 .kw-online-results { gap: 16px; padding: 4px; }

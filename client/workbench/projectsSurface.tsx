@@ -4,7 +4,7 @@ import type { ProjectSummary } from "@shared/workspace";
 import { fetchJson, jsonRequest } from "./api";
 import { GitBranch, Hammer, Play, Search, TerminalSquare, TestTube2 } from "lucide-react";
 import { EmptyState, StatusBadge } from "./ui";
-import ProjectToolGrid from "./ProjectToolGrid";
+import ServiceCatalogue from "./ServiceCatalogue";
 import { ProjectStartActions } from "./ProjectStartActions";
 
 type PersistedHealthSummary = { path: string; scannedAt: string; score: number | null; releaseState: string; source: string };
@@ -84,7 +84,7 @@ function ProjectsSurface({ view, workspace, project, onProjectSelect, onRefresh 
 
   return <section className="kw-projects" aria-label="KForge Projects Workspace">
     <ProjectCenterCards projects={workspace?.projects || []} activeProjectId={project?.id} onProjectSelect={onProjectSelect} onNavigate={openTool} />
-    {project ? <ProjectToolGrid project={project} onNavigate={openTool} /> : null}
+    {project ? <ServiceCatalogue project={project} workspace={workspace} onNavigate={openTool} /> : null}
     <div className="kw-projects__table-heading"><div><small>ALL LOCAL PROJECTS</small><h2>Engineering table</h2></div><span>Search, sort and inspect the same real project evidence.</span></div>
     <div className="kw-table-toolbar"><label><Search size={14} /><input aria-label="Search local projects" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects, paths, types, branches…" /></label><select aria-label="Sort projects" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="activity">Last activity</option><option value="name">Project</option><option value="health">Health</option></select><label className="kw-select-all"><input type="checkbox" aria-label="Select all filtered projects" checked={allSelected} onChange={(event) => setSelected(event.target.checked ? rows.map((row) => row.id) : [])} />Select all</label><span>{rows.length} project(s)</span></div>
     {selected.length > 0 && <div className="kw-bulk-bar"><strong>{selected.length} selected</strong><span>Workspace bulk selection is observational. Collection mutations live in their dedicated Workbench.</span><button onClick={() => setSelected([])}>Clear selection</button></div>}

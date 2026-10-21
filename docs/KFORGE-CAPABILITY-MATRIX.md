@@ -46,6 +46,8 @@ Reference verification at Run #271: workflow-pin verification PASS; strict exact
 
 All currently reachable Workbench views in `client/workbench/surfaceTypes.ts` are classified `SPECIALIZED`. That is an information-architecture statement only; external provider availability still follows the evidence boundaries above.
 
+The canonical mapping from domain to section to service to action to handler to API lives in `client/workbench/serviceDirectory.ts` and is documented in `docs/KFORGE-SERVICE-DIRECTORY.md`. That directory is the single source of truth for every reachable destination, and it is asserted against the registered Express routes by `client/workbench/serviceDirectory.spec.ts`.
+
 Repository branch topology is clean at this capture point: verified ancestry/SHA checks were performed before deleting the historical handoff branch, and the current branch search returns only `main`.
 
 ## External and policy blockers
