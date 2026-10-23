@@ -7,7 +7,7 @@ const LOCAL_ORIGINS = new Set(["http://localhost:4317", "http://127.0.0.1:4317"]
 const external = (raw: string) => /^https?:$/i.test(new URL(raw).protocol) && !LOCAL_ORIGINS.has(new URL(raw).origin);
 
 test.describe("KForge Self Audit persisted evidence", () => {
-  test.setTimeout(360_000);
+  test.setTimeout(780_000);
   test.beforeEach(async () => {
     const entries = await readdir(process.cwd(), { withFileTypes: true });
     await Promise.all(entries.filter((entry) => entry.isDirectory() && entry.name.startsWith("kforge-cloud-route-")).map((entry) => rm(path.join(process.cwd(), entry.name), { recursive: true, force: true })));
@@ -29,7 +29,13 @@ test.describe("KForge Self Audit persisted evidence", () => {
     const audit = page.locator(".kw-self-audit");
     await expect(audit).toContainText("observational");
     await expect(audit).toContainText("Source mutation is NONE");
-    const persisted = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/self-audit`) && response.request().method() === "POST", { timeout: 300_000 });
+    // A measured KForge-on-KForge run takes ~400s: project scan (~40-60s), the
+    // repository's real unit suite (~100-175s idle, up to 240s+ when Self Audit
+    // runs it inside a loaded server, bounded at 300s), production build
+    // (~35-100s), runtime probe, and a post-command release gate (~25-50s). The
+    // old 300s wait sat below that real work and abandoned the run under load,
+    // leaving its child test/build processes to starve later specs.
+    const persisted = page.waitForResponse((response) => response.url().endsWith(`/api/workspace/projects/${project.id}/self-audit`) && response.request().method() === "POST", { timeout: 720_000 });
     await audit.getByRole("button", { name: "Run KForge Self Audit", exact: true }).click();
     expect((await persisted).status()).toBe(202);
     await expect(audit).toContainText(/WAITING_RESTART|restart boundary/i, { timeout: 30_000 });

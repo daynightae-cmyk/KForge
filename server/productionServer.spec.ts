@@ -29,6 +29,10 @@ async function makeApplicationRoot() {
 describe("KForge production server", () => {
   it("serves the existing API and SPA over an allocated loopback port", async () => {
     const applicationRoot = await makeApplicationRoot();
+    // Self Audit runs this file inside a server that owns a stable SPA snapshot.
+    // The test must prove its own application root, not the host harness snapshot.
+    const inheritedSpaDist = process.env.KFORGE_SPA_DIST;
+    delete process.env.KFORGE_SPA_DIST;
     const runtime = await startKForgeProductionServer({ applicationRoot, host: "127.0.0.1", port: 0 });
     try {
       expect(runtime.host).toBe("127.0.0.1");
@@ -41,6 +45,8 @@ describe("KForge production server", () => {
       await expect(application.text()).resolves.toContain("Local workspace");
     } finally {
       await runtime.close();
+      if (inheritedSpaDist === undefined) delete process.env.KFORGE_SPA_DIST;
+      else process.env.KFORGE_SPA_DIST = inheritedSpaDist;
     }
   });
 });

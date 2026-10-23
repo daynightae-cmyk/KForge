@@ -20,10 +20,12 @@ async function setTheme(page: import("@playwright/test").Page, theme: "light" | 
   expect(saved.settings.appearance.theme).toBe(theme);
   await page.goto("/workspace", { waitUntil: "domcontentloaded" });
   await expect(page.locator(".kw-shell")).toBeVisible({ timeout: 60_000 });
-  await page.waitForTimeout(1200);
+  await expect(page.locator("html")).toHaveClass(new RegExp(`(^|\\s)${theme}(\\s|$)`));
 }
 
 test.describe("KForge brand layer and native control theming", () => {
+  test.setTimeout(60_000);
+
   test("keeps the light workbench free of a dark brand canvas", async ({ page }) => {
     await setTheme(page, "light");
     await expect(page.locator("html")).toHaveClass(/light/);

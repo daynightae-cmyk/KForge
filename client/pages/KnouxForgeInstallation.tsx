@@ -1,5 +1,5 @@
 import { Volume2, VolumeX } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./KnouxForgeInstallation.css";
 import logoAsset from "../assets/knoux-forge-official-logo.webp";
@@ -103,7 +103,7 @@ export default function KnouxForgeInstallation() {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const interactive = target?.closest("button, a, input, textarea, select");
