@@ -53,15 +53,22 @@ describe("KForge Workspace engines", () => {
 
   it("normalizes a TypeScript compiler failure into a typecheck diagnostic after explicit trust", async () => {
     const projectPath = fixture("workspace-broken-typescript");
-    const workspaceRoot = path.resolve(process.cwd(), "..");
+    // Self Audit runs this suite inside a server with its own workspace root.
+    // Trust and scanning must resolve against one hermetic root, never the
+    // harness root or the parent of the checkout.
+    const inheritedWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-typecheck-trust-"));
     try {
+      process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
       await setProjectTrust(workspaceRoot, projectPath, "trusted");
       const project = await makeProjectSummary(projectPath);
       const scan = await scanProject(project);
       expect(scan.summaries.typecheck).toBe("fail");
       expect(scan.issues.some((entry) => entry.category === "typecheck" && entry.source === "TypeScript")).toBe(true);
     } finally {
-      await setProjectTrust(workspaceRoot, projectPath, "untrusted");
+      if (inheritedWorkspaceRoot === undefined) delete process.env.KFORGE_WORKSPACE_ROOT;
+      else process.env.KFORGE_WORKSPACE_ROOT = inheritedWorkspaceRoot;
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
     }
   }, 45_000);
 
@@ -353,6 +360,11 @@ describe("KForge Workspace engines", () => {
       const issue = scan.issues.find((entry) => entry.category === "typecheck" && entry.file === "src/index.ts");
       expect(issue).toBeTruthy();
       const result = await executePreviewFixVerify(project, issue!.id);
+      if (!result.ok || result.rolledBack || !result.previewAfter?.health?.ok) {
+        const stageStates = result.stages.map((stage) => `${stage.id}:${stage.state}`).join(", ");
+        const previewLogTail = (result.previewAfter?.logs || []).slice(-5).join(" | ");
+        throw new Error(`Preview Fix & Verify expected a healthy restart but got ok=${result.ok} rolledBack=${result.rolledBack}. error=${result.error ?? "none"}; stages=${stageStates}; preview=${result.previewAfter?.state ?? "unknown"} health=${result.previewAfter?.health?.detail ?? "none"}; logs=${previewLogTail}`);
+      }
       expect(result).toMatchObject({ ok: true, rolledBack: false, previewAfter: { health: { ok: true } } });
       expect(result.stages.map((stage) => `${stage.id}:${stage.state}`)).toEqual(expect.arrayContaining(["preview-evidence:PASSED", "snapshot:PASSED", "fix:PASSED", "typecheck:PASSED", "build:PASSED", "preview-restart:PASSED", "preview-verify:PASSED"]));
       expect(await fs.readFile(path.join(projectPath, "src", "index.ts"), "utf8")).toContain('status: string = "ready"');

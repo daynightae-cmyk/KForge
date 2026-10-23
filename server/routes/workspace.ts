@@ -69,6 +69,12 @@ const activities = new Map<string, WorkspaceActivity[]>();
 const openedPaths = new Set<string>();
 const latestActions = new Map<string, Partial<Record<WorkspaceAction, CommandResult>>>();
 const commandTimeoutMs = 120_000;
+// KForge's own unit suite measures ~100-175s wall on an idle host (530 tests, ~409s of test
+// CPU) and Self Audit runs it from inside a loaded server process, where the same suite has
+// been observed to need more than 240s. The shared 120s bound killed the suite mid-run and
+// left the verdict as a timeout instead of real evidence. Self Audit gets its own bounded
+// budget with real headroom while user-facing actions keep the 120s bound.
+const SELF_AUDIT_COMMAND_TIMEOUT_MS = 300_000;
 const kforgeServerInstanceId = randomUUID();
 const ignoredDirectories = new Set([".git", ".kforge", "node_modules", "dist", "build", "coverage", ".next", ".venv", "venv", "target", "vendor", "bin", "obj"]);
 const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".java", ".go", ".rs", ".cs", ".php", ".vue", ".html", ".css", ".scss"]);
@@ -77,6 +83,7 @@ interface CommandExecution {
   ok: boolean;
   code: number;
   output: string;
+  timedOut?: boolean;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -93,15 +100,16 @@ function projectId(projectPath: string) {
 
 function errorDetails(error: unknown) {
   if (typeof error === "object" && error !== null) {
-    const data = error as { message?: unknown; stdout?: unknown; stderr?: unknown; code?: unknown };
+    const data = error as { message?: unknown; stdout?: unknown; stderr?: unknown; code?: unknown; killed?: unknown; signal?: unknown };
     return {
       message: typeof data.message === "string" ? data.message : "Command failed",
       stdout: typeof data.stdout === "string" ? data.stdout : "",
       stderr: typeof data.stderr === "string" ? data.stderr : "",
       code: typeof data.code === "number" ? data.code : 1,
+      timedOut: data.killed === true || data.signal === "SIGTERM" || data.code === "ETIMEDOUT",
     };
   }
-  return { message: String(error), stdout: "", stderr: "", code: 1 };
+  return { message: String(error), stdout: "", stderr: "", code: 1, timedOut: false };
 }
 
 async function resolveLocalExecutable(command: string, args: string[]) {
@@ -128,7 +136,7 @@ async function run(command: string, args: string[], cwd: string, timeout = 15_00
     return { ok: true, code: 0, output: redactProjectText("command-output", `${result.stdout || ""}${result.stderr || ""}`.trim()).content };
   } catch (error: unknown) {
     const details = errorDetails(error);
-    return { ok: false, code: details.code, output: redactProjectText("command-output", `${details.stdout}${details.stderr || details.message}`.trim()).content };
+    return { ok: false, code: details.code, output: redactProjectText("command-output", `${details.stdout}${details.stderr || details.message}`.trim()).content, timedOut: details.timedOut };
   }
 }
 
@@ -975,7 +983,7 @@ export async function executeKForgeSelfAudit(project: ProjectSummary): Promise<S
 
   for (const [id, action] of [["tests", "test"], ["build", "build"], ["runtime", "runtime"]] as const) {
     await capture(id, async () => {
-      const result = await executeProjectAction(project, action);
+      const result = await executeProjectAction(project, action, false, SELF_AUDIT_COMMAND_TIMEOUT_MS);
       commandResults.push(result);
       return { state: selfAuditCommandState(result), evidence: boundedSelfAuditCommandEvidence(result) };
     });
@@ -1196,7 +1204,7 @@ async function runtimeCheck(project: ProjectSummary, profile: ProjectProfile): P
   return { action: "runtime", projectId: project.id, ok, startedAt, completedAt, exitCode: ok ? 0 : 1, output: output.trim(), message, transparency: projectActionTransparency(project, "runtime", startedAt, completedAt, ok ? "SUCCEEDED" : "FAILED", ok ? undefined : message) };
 }
 
-export async function executeProjectAction(project: ProjectSummary, action: WorkspaceAction, confirmedRemoteWrite = false): Promise<CommandResult> {
+export async function executeProjectAction(project: ProjectSummary, action: WorkspaceAction, confirmedRemoteWrite = false, timeoutMs = commandTimeoutMs): Promise<CommandResult> {
   const startedAt = new Date().toISOString();
   await recordProjectTask(getWorkspaceRoot(), project.path);
   const profile = await detectProjectProfile(project);
@@ -1236,9 +1244,13 @@ export async function executeProjectAction(project: ProjectSummary, action: Work
     const message = `No verified ${action} command was detected from the project manifests.`;
     return { action, projectId: project.id, ok: false, startedAt, completedAt, output: "", message, transparency: projectActionTransparency(project, action, startedAt, completedAt, "BLOCKED", message, confirmedRemoteWrite) };
   }
-  const execution = await run(command.command, command.args, project.path, commandTimeoutMs);
+  const execution = await run(command.command, command.args, project.path, timeoutMs);
   const completedAt = new Date().toISOString();
-  const message = execution.ok ? `${action[0].toUpperCase()}${action.slice(1)} completed successfully.` : missingExecutable(command.command, execution) || `${action[0].toUpperCase()}${action.slice(1)} failed.`;
+  const message = execution.ok
+    ? `${action[0].toUpperCase()}${action.slice(1)} completed successfully.`
+    : missingExecutable(command.command, execution) || (execution.timedOut
+      ? `${action[0].toUpperCase()}${action.slice(1)} exceeded the ${Math.round(timeoutMs / 1000)}s local time budget.`
+      : `${action[0].toUpperCase()}${action.slice(1)} failed.`);
   const result: CommandResult = { action, projectId: project.id, ok: execution.ok, startedAt, completedAt, exitCode: execution.code, output: execution.output, message, transparency: projectActionTransparency(project, action, startedAt, completedAt, execution.ok ? "SUCCEEDED" : "FAILED", execution.ok ? undefined : message, confirmedRemoteWrite) };
   if (action === "pull" || action === "push") await recordRemoteContact(getWorkspaceRoot(), "remote-repository", { attemptedAt: completedAt, succeeded: execution.ok, destination: project.remoteUrl, error: execution.ok ? null : execution.output || message });
   latestActions.set(project.id, { ...(latestActions.get(project.id) || {}), [action]: result });
