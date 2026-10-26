@@ -124,10 +124,17 @@ test.describe("KForge canonical Preview Workbench", () => {
     await selectExplorerView(page, "Developer Tools", "Preview");
     // The Preview controls live in the shell-owned dock, which stays collapsed
     // until a runtime is live, so reveal it before driving viewport evidence.
-    const dockViewport = page.getByLabel("Preview viewport");
+    // The locator is scoped to the dock landmark on purpose: the Preview Studio
+    // mounts its own <select aria-label="Preview viewport">, so an unscoped
+    // getByLabel("Preview viewport") resolves to two elements whenever the
+    // Studio chunk has already rendered and to one when it has not, which made
+    // this step depend on lazy-chunk timing instead of on the dock it names.
+    const dock = page.getByRole("complementary", { name: "Persistent Preview Dock", exact: true });
+    const dockViewport = dock.getByLabel("Preview viewport");
     if (await dockViewport.count() === 0) {
-      await page.getByRole("complementary", { name: "Persistent Preview Dock", exact: true }).getByLabel("Restore persistent Preview", { exact: true }).click();
+      await dock.getByLabel("Restore persistent Preview", { exact: true }).click();
     }
+    await expect(dockViewport).toHaveCount(1);
     await dockViewport.selectOption("mobile");
     await page.screenshot({ path: path.join(visualRoot, "preview-workbench-light-mobile.png"), fullPage: true });
 
