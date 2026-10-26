@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="470" viewBox="0 0 1440 470" role="img" aria-labelledby="title desc">
+<title id="title">KNOuX Forge — Engineering is not a luxury, it is a life</title>
+<desc id="desc">Pearlescent luxury-glass KNOuX Forge banner with precise typography, lilac glass panes, orbital engineering mark, and local-first engineering command center message.</desc>
+<defs>
+<linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f5f0ff"/><stop offset=".46" stop-color="#fdfcff"/><stop offset="1" stop-color="#e5daf9"/></linearGradient>
+<linearGradient id="gl" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff" stop-opacity=".94"/><stop offset=".54" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#c6a4ff" stop-opacity=".16"/></linearGradient>
+<linearGradient id="violet" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8b4dff"/><stop offset=".55" stop-color="#5e20e9"/><stop offset="1" stop-color="#b591ff"/></linearGradient>
+<radialGradient id="aura"><stop stop-color="#b489ff" stop-opacity=".38"/><stop offset="1" stop-color="#b489ff" stop-opacity="0"/></radialGradient>
+<filter id="shadow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="14"/><feComponentTransfer><feFuncA type="linear" slope=".15"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<pattern id="g" width="38" height="38" patternUnits="userSpaceOnUse"><path d="M38 0H0V38" fill="none" stroke="#6338b1" stroke-opacity=".075"/></pattern>
+</defs>
+<rect width="1440" height="470" rx="34" fill="url(#b)"/>
+<rect width="1440" height="470" rx="34" fill="url(#g)"/>
+<circle cx="1130" cy="215" r="325" fill="url(#aura)"/>
+<circle cx="100" cy="440" r="200" fill="url(#aura)" opacity=".35"/>
+<rect x="29" y="28" width="1382" height="414" rx="28" fill="url(#gl)" stroke="#fff" stroke-width="2"/>
+<rect x="29" y="28" width="1382" height="414" rx="28" fill="none" stroke="#ba9ce9" stroke-opacity=".45"/>
+<rect x="79" y="70" width="250" height="34" rx="17" fill="#f1e9ff" stroke="#b9a0ea"/>
+<circle cx="96" cy="87" r="4.7" fill="#7538e9"/>
+<text x="113" y="92" font-size="12" font-family="Segoe UI,Arial,sans-serif" font-weight="700" fill="#573285" letter-spacing="2.4">KNOUX / ENGINEERING</text>
+<text x="78" y="186" font-family="Segoe UI,Arial,sans-serif" font-weight="850" font-size="81" letter-spacing="-4" fill="#221332">KNOuX <tspan fill="#6d27eb">Forge</tspan></text>
+<text x="83" y="234" font-family="Segoe UI,Arial,sans-serif" font-weight="600" font-size="27" fill="#54436c">The engineering command center.</text>
+<text x="82" y="271" font-family="Segoe UI,Arial,sans-serif" font-size="19" fill="#685779">Discover. Understand. Build. Verify. Ship.</text>
+<rect x="81" y="309" width="193" height="44" rx="22" fill="url(#violet)" filter="url(#shadow)"/>
+<text x="177" y="336" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" fill="#fff">LOCAL-FIRST</text>
+<rect x="286" y="309" width="203" height="44" rx="22" fill="#fefcff" stroke="#c8afea"/>
+<text x="387" y="336" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" fill="#5c3585">EVIDENCE-LED</text>
+<text x="83" y="399" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="600" letter-spacing="1.6" fill="#807093">WINDOWS   ·   ELECTRON   ·   REACT   ·   TYPESCRIPT   ·   EXPRESS</text>
+<g transform="translate(1120 224)">
+<circle r="169" fill="#fff" fill-opacity=".20" stroke="#fff" stroke-opacity=".94" stroke-width="2"/>
+<circle r="166" fill="none" stroke="#9860f5" stroke-opacity=".65" stroke-width="1.5"/>
+<circle r="145" fill="none" stroke="#8f6bc5" stroke-opacity=".29" stroke-dasharray="3 9"/>
+<circle r="117" fill="url(#gl)" stroke="#fff" stroke-width="2" filter="url(#shadow)"/>
+<circle r="96" fill="none" stroke="#8a5ae5" stroke-opacity=".24" stroke-width="1.5"/>
+<path d="M-31-50 Q-44-66-27-81 Q-14-91 0-74 L47-20 Q60-6 43 11 L7 46 Q-7 60-20 47 Q-34 35-21 21 L3-4 L-31-40 Q-36-45-31-50Z" fill="url(#violet)"/>
+<path d="M18-50 Q35-67 50-51 Q65-34 49-19 L-6 35 Q-23 52-38 36 Q-51 21-33 3Z" fill="#8c4efe" opacity=".95"/>
+<circle cx="67" cy="32" r="16" fill="#6222e7"/>
+<circle cx="-153" cy="16" r="6" fill="#7e45f4"/>
+<circle cx="153" cy="-38" r="7" fill="#fff" stroke="#aa78f4" stroke-width="2"/>
+<circle cx="81" cy="-142" r="5" fill="#8d6ae7"/>
+</g>
+</svg>
