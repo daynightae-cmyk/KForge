@@ -359,3 +359,33 @@
 .kw-tech-dl > div { border-bottom-color: var(--kw-glass-border, var(--kw-border)); }
 .light .kw-tech-dl > div { border-bottom-color: rgba(88, 52, 160, .1); }
 .kw-live-preview iframe { border-color: var(--kw-glass-border, var(--kw-border)); border-radius: var(--kw-radius-card, 14px); }
+
+/* Container-owned responsiveness. The workbench canvas is narrower than the
+ * window by the rail, Explorer and Inspector tracks, so the three-column
+ * command centre has to collapse on the space it is given rather than on the
+ * viewport. Without this the provider detail and its inspector column clipped
+ * at 1366x768, the most common Windows laptop size. */
+@container kw-surface (max-width: 940px) {
+  .kw-provider-studio-grid,
+  .kw-provider-studio-grid[data-left="closed"],
+  .kw-provider-studio-grid[data-right="closed"] { grid-template-columns: 215px minmax(0, 1fr); }
+  .kw-provider-inspector { grid-column: 1 / -1; max-height: 320px; min-height: 0; }
+  .kw-ai-session-grid { grid-template-columns: 200px minmax(0, 1fr); }
+  .kw-ai-inspector-pane { grid-column: 1 / -1; min-height: 380px; }
+}
+
+@container kw-surface (max-width: 700px) {
+  .kw-provider-studio-grid,
+  .kw-provider-studio-grid[data-left="closed"],
+  .kw-provider-studio-grid[data-right="closed"] { grid-template-columns: minmax(0, 1fr); }
+  .kw-provider-list,
+  .kw-provider-main,
+  .kw-provider-inspector { max-height: none; }
+  .kw-ai-session-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .kw-ai-context-pane,
+  .kw-ai-conversation-pane,
+  .kw-ai-inspector-pane { min-height: 340px; }
+  .kw-filter-bar { grid-template-columns: minmax(0, 1fr); }
+  .kw-provider-card-grid,
+  .kw-model-table { grid-template-columns: minmax(0, 1fr); }
+}

@@ -2568,6 +2568,12 @@
 .kw-workbench-scroll {
   padding: var(--kw-space-5) var(--kw-space-6) var(--kw-space-6);
   background: none;
+  /* Surfaces that lay out in fixed columns must respond to the canvas they are
+   * actually given. The shell reserves rail + Explorer + Inspector tracks, so a
+   * viewport breakpoint let the third Provider Studio column clip on a normal
+   * 1366x768 laptop window. */
+  container-type: inline-size;
+  container-name: kw-surface;
 }
 
 /* Level 3 — the shared card material. */
@@ -3135,5 +3141,157 @@
 .kw-stack,
 .kw-provider-section,
 .kw-settings-v4__content { gap: var(--kw-space-4); }
+
+/* ---- Tailwind-composed surfaces join the same material. ----
+ * Seventeen workbench surfaces build their panels with utility classes rather
+ * than `.kw-*` classes, which left flat `bg-card` islands in the new shell.
+ * The rules below are scoped to the workbench scroll region and the Inspector,
+ * so the installation screen, the terminal interior and any embedded preview
+ * document keep their own surfaces. */
+.kw-workbench-scroll .bg-card,
+.kw-inspector .bg-card {
+  border-color: var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-3);
+  box-shadow: var(--kw-shadow-1);
+  backdrop-filter: blur(10px) saturate(128%);
+}
+
+.light .kw-workbench-scroll .bg-card,
+.light .kw-inspector .bg-card {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .96), rgba(255, 255, 255, .68) 58%, rgba(238, 230, 252, .6));
+  box-shadow: inset 0 1px 0 #fff, 0 18px 38px -30px rgba(56, 32, 116, .48);
+}
+
+.kw-workbench-scroll .bg-muted\/10,
+.kw-workbench-scroll .bg-muted\/20,
+.kw-workbench-scroll .bg-muted\/35,
+.kw-workbench-scroll .bg-muted\/40,
+.kw-workbench-scroll .bg-muted\/50 {
+  background: color-mix(in srgb, var(--kw-brand) 4%, transparent);
+}
+
+.light .kw-workbench-scroll .bg-muted\/10,
+.light .kw-workbench-scroll .bg-muted\/20,
+.light .kw-workbench-scroll .bg-muted\/35,
+.light .kw-workbench-scroll .bg-muted\/40,
+.light .kw-workbench-scroll .bg-muted\/50 {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(243, 237, 253, .62));
+}
+
+.kw-workbench-scroll .bg-background { background: transparent; }
+
+/* Utility panels still need the shell's control language. */
+.kw-workbench-scroll .bg-card button:not(.kw-badge),
+.kw-inspector .bg-card button:not(.kw-badge) {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-ctl);
+  background: color-mix(in srgb, var(--kw-panel) 70%, transparent);
+  color: var(--kw-text);
+  transition: background var(--kw-move-fast) var(--kw-ease-out), border-color var(--kw-move-fast) var(--kw-ease-out), color var(--kw-move-fast) var(--kw-ease-out);
+}
+
+.light .kw-workbench-scroll .bg-card button:not(.kw-badge),
+.light .kw-inspector .bg-card button:not(.kw-badge) {
+  border-color: rgba(88, 52, 160, .13);
+  background: rgba(255, 255, 255, .82);
+  color: #3d2f5e;
+  box-shadow: inset 0 1px 0 #fff;
+}
+
+.kw-workbench-scroll .bg-card button:not(.kw-badge):hover:not(:disabled),
+.kw-inspector .bg-card button:not(.kw-badge):hover:not(:disabled) {
+  border-color: var(--kw-glass-border-strong);
+  background: color-mix(in srgb, var(--kw-brand) 12%, transparent);
+}
+
+.light .kw-workbench-scroll .bg-card button:not(.kw-badge):hover:not(:disabled),
+.light .kw-inspector .bg-card button:not(.kw-badge):hover:not(:disabled) {
+  border-color: rgba(122, 61, 240, .34);
+  background: rgba(240, 232, 253, .92);
+  color: #2c1d52;
+}
+
+/* A loading strip should read as a composed panel, not a hairline sliver. */
+.kw-workbench-scroll [role="status"].rounded-lg,
+.kw-workbench-scroll [role="status"].rounded-xl,
+.kw-workbench-scroll [role="status"].rounded-2xl {
+  min-height: 120px;
+  display: grid;
+  align-content: center;
+  padding: var(--kw-space-5);
+  font-size: 12.5px;
+  letter-spacing: .01em;
+}
+
+/* ---- Generic evidence surfaces. ----
+ * `SimpleFetchSurface`, the release/quality/developer panels and the command
+ * table share these classes; without them a whole family of services rendered
+ * as bare rows on the canvas. */
+.kw-simple-surface,
+.kw-release-gate,
+.kw-advanced-evidence,
+.kw-command-table {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-3);
+  box-shadow: var(--kw-shadow-1);
+  backdrop-filter: blur(10px) saturate(128%);
+  padding: var(--kw-space-4);
+}
+
+.light .kw-simple-surface,
+.light .kw-release-gate,
+.light .kw-advanced-evidence,
+.light .kw-command-table {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .96), rgba(255, 255, 255, .68) 58%, rgba(238, 230, 252, .6));
+  box-shadow: inset 0 1px 0 #fff, 0 18px 38px -30px rgba(56, 32, 116, .48);
+}
+
+.kw-simple-surface h2,
+.kw-release-gate h2,
+.kw-command-table h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 680;
+  letter-spacing: -.022em;
+}
+
+.kw-inline-actions h2 { margin-right: auto; }
+
+.kw-advanced-evidence { padding: 0; border: 0; background: none; box-shadow: none; backdrop-filter: none; }
+.kw-advanced-evidence > summary {
+  width: fit-content;
+  padding: 4px 10px;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 999px;
+  background: var(--kw-glass-2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.light .kw-advanced-evidence > summary { border-color: rgba(88, 52, 160, .12); background: rgba(255, 255, 255, .8); color: #5c5378; }
+
+.kw-chip-list span {
+  border-color: var(--kw-glass-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kw-brand) 7%, transparent);
+}
+
+.light .kw-chip-list span { border-color: rgba(88, 52, 160, .12); background: rgba(255, 255, 255, .82); color: #4a3d68; }
+
+.kw-summary-strip span {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  background: linear-gradient(96deg, var(--kw-brand-lift), var(--kw-brand-deep));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 
 
