@@ -122,7 +122,7 @@ export default function TopologyLab({ project, onExecution, onInspectorContext }
 
   return <section className="overflow-hidden rounded-xl border bg-card shadow-sm" aria-label="Runtime Topology Lab" data-topology-state={session?.state || discovery?.state || "UNKNOWN"}>
     <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-      <ServerCog size={16} className="text-violet-400" /><div className="mr-auto"><h2 className="text-sm font-semibold">Full-stack Topology Lab</h2><p className="text-[11px] text-muted-foreground">Compose · Procfile · package/native runtimes · owned processes · measured health</p></div>
+      <ServerCog size={16} className="text-[color:var(--kw-brand-strong,#7a3df0)]" /><div className="mr-auto"><h2 className="text-sm font-semibold">Full-stack Topology Lab</h2><p className="text-[11px] text-muted-foreground">Compose · Procfile · package/native runtimes · owned processes · measured health</p></div>
       <StatusBadge value={session?.state || discovery?.state || "DISCOVERING"} />
       <button title={actionReason || (busy ? "Another topology operation is in progress." : !services.length ? "No runnable services were discovered." : undefined)} disabled={project.trust !== "trusted" || !services.length || Boolean(busy)} onClick={() => void operate("start")}><Play size={13} /> Start topology</button>
       <button title={actionReason || (busy ? "Another topology operation is in progress." : !session ? "No topology session exists." : undefined)} disabled={project.trust !== "trusted" || !session || Boolean(busy)} onClick={() => void operate("restart")}><RotateCw size={13} /> Restart topology</button>

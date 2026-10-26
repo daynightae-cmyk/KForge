@@ -407,3 +407,59 @@
 .light .kw-preview-frame-stage { background: radial-gradient(120% 90% at 50% 0, rgba(111, 49, 238, .06), transparent 58%), radial-gradient(rgba(60, 40, 110, .25) .5px, transparent .5px) 0 0 / 16px 16px, #efeaf8; }
 .light .kw-preview-status { background: rgba(30, 20, 60, .02); border-top-color: rgba(30, 20, 60, .08); }
 .light .kw-preview-logs { background: #fbfaff; }
+
+/* Luminous Glass: the studio frame becomes a pane of the same material as the
+ * shell, while runtime output keeps an ink interior in both themes because
+ * log text is read, not glanced at. */
+.kw-preview {
+  overflow: hidden;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: var(--kw-radius-panel, 20px);
+  box-shadow: var(--kw-shadow-2, none);
+}
+
+.light .kw-preview {
+  border-color: rgba(255, 255, 255, .92);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .9), #f6f3fd);
+  box-shadow: inset 0 1px 0 #fff, 0 26px 54px -34px rgba(56, 32, 116, .5);
+}
+
+.kw-preview-toolbar {
+  border-bottom-color: var(--kw-glass-border, var(--kw-border));
+  backdrop-filter: blur(var(--kw-blur-pane, 18px)) saturate(140%);
+}
+
+.light .kw-preview-toolbar {
+  border-bottom-color: rgba(88, 52, 160, .1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .96), rgba(248, 244, 255, .82));
+}
+
+.kw-preview-runtime-actions button:first-child:not(:disabled) {
+  border: 1px solid color-mix(in srgb, #fff 22%, transparent);
+  background: linear-gradient(150deg, var(--kw-brand-lift, #a487ff) 0%, var(--kw-brand-strong, #7a3df0) 50%, var(--kw-brand-deep, #4c1cb4) 100%);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .38), 0 14px 28px -16px color-mix(in srgb, var(--kw-primary) 92%, transparent);
+}
+
+/* Log and diagnostics output: one ink interior regardless of theme. */
+.kw-preview-logs,
+.light .kw-preview-logs {
+  background: linear-gradient(180deg, #14101f, #0b0912);
+  color: #e6e0f7;
+}
+
+.kw-preview-logs pre,
+.kw-preview-logs code { color: #d8d0ef; }
+
+.kw-preview-logs-toolbar,
+.light .kw-preview-logs-toolbar {
+  border-block-color: var(--kw-glass-border, var(--kw-border));
+  background: color-mix(in srgb, var(--kw-panel) 70%, transparent);
+}
+
+.light .kw-preview-logs-toolbar { border-block-color: rgba(88, 52, 160, .1); background: rgba(255, 255, 255, .8); }
+
+.kw-preview-evidence-list > div { border-bottom-color: var(--kw-glass-border, var(--kw-border)); }
+.light .kw-preview-evidence-list > div { border-bottom-color: rgba(88, 52, 160, .09); }
+.kw-preview-history li { border-color: var(--kw-glass-border, var(--kw-border)); border-radius: 11px; }
+.light .kw-preview-history li { border-color: rgba(88, 52, 160, .1); background: rgba(255, 255, 255, .78); }
