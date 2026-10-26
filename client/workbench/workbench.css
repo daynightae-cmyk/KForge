@@ -2110,4 +2110,1030 @@
   font-size: 9px;
 }
 
+/* ==========================================================================
+   KNOuX Luminous Glass — material system.
+
+   The last visual layer of the workbench stylesheet. It owns one thing: the
+   material grammar that makes the interior of KForge the same environment as
+   the owner-approved pearl installation screen.
+
+   It is presentation only. No selector here changes a service destination,
+   an availability state, a permission gate, an API/IPC call or an evidence
+   string. Where a token pair disagrees between themes, both are defined so
+   neither theme falls back to the other's assumptions.
+
+   Levels (dark = ink violet, light = pearl lavender):
+     0 atmospheric canvas  1 structural shell glass  2 content panels
+     3 interactive cards   4 floating popovers       5 focused overlays
+   ========================================================================== */
+
+.kw-shell {
+  /* Brand — sampled from the official symbol, not invented. */
+  --kw-brand-lift: #a487ff;
+  --kw-brand: #8958ff;
+  --kw-brand-strong: #7a3df0;
+  --kw-brand-deep: #4c1cb4;
+  --kw-brand-ink: #140f26;
+
+  /* Level tokens. */
+  --kw-glass-1: linear-gradient(180deg, rgba(24, 20, 38, .74), rgba(13, 11, 22, .84));
+  --kw-glass-2: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .012));
+  --kw-glass-3: linear-gradient(165deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .018) 46%, rgba(137, 88, 255, .05));
+  --kw-glass-4: linear-gradient(180deg, rgba(30, 25, 47, .96), rgba(15, 13, 26, .97));
+  --kw-glass-5: linear-gradient(180deg, rgba(38, 31, 60, .97), rgba(18, 15, 31, .98));
+  --kw-glass-border: rgba(255, 255, 255, .085);
+  --kw-glass-border-strong: color-mix(in srgb, var(--kw-brand) 34%, transparent);
+  --kw-glass-hi: inset 0 1px 0 rgba(255, 255, 255, .07);
+  --kw-glass-edge: inset 0 0 0 1px rgba(255, 255, 255, .02);
+  --kw-blur-pane: 22px;
+  --kw-blur-float: 30px;
+  --kw-shadow-1: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 16px 34px -28px rgba(0, 0, 0, .9);
+  --kw-shadow-2: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 26px 56px -30px rgba(0, 0, 0, .95);
+  --kw-shadow-3: 0 40px 110px -46px rgba(0, 0, 0, .98), 0 0 0 1px color-mix(in srgb, var(--kw-brand) 16%, transparent);
+
+  /* Geometry. */
+  --kw-radius-ctl: 10px;
+  --kw-radius-card: 14px;
+  --kw-radius-panel: 20px;
+  --kw-radius-float: 22px;
+  --kw-space-1: 4px;
+  --kw-space-2: 8px;
+  --kw-space-3: 12px;
+  --kw-space-4: 16px;
+  --kw-space-5: 22px;
+  --kw-space-6: 30px;
+  --kw-tap: 32px;
+
+  /* Motion. */
+  --kw-move-fast: 130ms;
+  --kw-move: 190ms;
+  --kw-move-slow: 320ms;
+  --kw-ease-out: cubic-bezier(.22, .61, .36, 1);
+  --kw-ease-glass: cubic-bezier(.16, 1, .3, 1);
+}
+
+.light .kw-shell {
+  --kw-glass-1: linear-gradient(180deg, rgba(255, 255, 255, .78), rgba(250, 247, 255, .62));
+  --kw-glass-2: linear-gradient(180deg, rgba(255, 255, 255, .66), rgba(255, 255, 255, .4));
+  --kw-glass-3: linear-gradient(168deg, rgba(255, 255, 255, .92), rgba(255, 255, 255, .58) 52%, rgba(233, 222, 252, .5));
+  --kw-glass-4: linear-gradient(180deg, rgba(255, 255, 255, .96), rgba(252, 250, 255, .92));
+  --kw-glass-5: linear-gradient(180deg, rgba(255, 255, 255, .98), rgba(250, 247, 255, .95));
+  --kw-glass-border: rgba(76, 42, 145, .1);
+  --kw-glass-border-strong: color-mix(in srgb, var(--kw-brand-strong) 30%, transparent);
+  --kw-glass-hi: inset 0 1px 0 rgba(255, 255, 255, .92);
+  --kw-glass-edge: inset 0 0 0 1px rgba(255, 255, 255, .5);
+  --kw-blur-pane: 18px;
+  --kw-blur-float: 26px;
+  --kw-shadow-1: 0 1px 0 rgba(255, 255, 255, .8) inset, 0 14px 30px -22px rgba(52, 32, 104, .38);
+  --kw-shadow-2: 0 1px 0 rgba(255, 255, 255, .9) inset, 0 24px 46px -26px rgba(52, 32, 104, .42);
+  --kw-shadow-3: 0 44px 96px -44px rgba(46, 26, 96, .5), 0 0 0 1px rgba(122, 61, 240, .12);
+}
+
+/* Level 0 — the atmospheric canvas. Pearl depth, one luminous brand bloom,
+ * a restrained halo arc and drifting orchid light. Nothing here animates. */
+.light .kw-shell {
+  background:
+    radial-gradient(120% 78% at 78% -14%, rgba(183, 145, 255, .3), transparent 58%),
+    radial-gradient(96% 66% at 8% -6%, rgba(255, 255, 255, .95), transparent 62%),
+    radial-gradient(74% 54% at 52% 108%, rgba(167, 128, 240, .16), transparent 64%),
+    linear-gradient(178deg, #fdfcff 0%, #f7f4fd 46%, #f1ecfa 100%);
+}
+
+.kw-shell {
+  background:
+    radial-gradient(112% 70% at 80% -12%, color-mix(in srgb, var(--kw-brand) 16%, transparent), transparent 60%),
+    radial-gradient(84% 56% at 6% -4%, rgba(255, 255, 255, .05), transparent 58%),
+    radial-gradient(70% 52% at 46% 108%, color-mix(in srgb, var(--kw-brand-deep) 22%, transparent), transparent 66%),
+    linear-gradient(180deg, #0c0a14 0%, #09080f 48%, #07070b 100%);
+}
+
+.kw-shell-glow {
+  inset: 52px 0 0 56px;
+  opacity: 1;
+  background:
+    radial-gradient(30% 26% at 74% 6%, rgba(255, 255, 255, .5), transparent 72%),
+    radial-gradient(46% 40% at 78% 12%, color-mix(in srgb, var(--kw-brand) 22%, transparent), transparent 74%),
+    conic-gradient(from 210deg at 76% 16%, transparent 0 62%, color-mix(in srgb, var(--kw-brand) 12%, transparent) 74%, transparent 88%);
+  mask-image: radial-gradient(120% 100% at 70% 0, black 12%, transparent 74%);
+}
+
+.light .kw-shell-glow {
+  opacity: .82;
+  background:
+    radial-gradient(28% 24% at 76% 4%, rgba(255, 255, 255, .96), transparent 70%),
+    radial-gradient(48% 42% at 78% 14%, rgba(169, 122, 255, .34), transparent 74%),
+    radial-gradient(24% 20% at 12% 88%, rgba(196, 160, 255, .22), transparent 72%);
+}
+
+/* The halo motif carried forward from the installation emblem. */
+.kw-shell::after {
+  inset: -140px -140px auto auto;
+  left: auto;
+  width: 620px;
+  height: 620px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 44%, color-mix(in srgb, var(--kw-brand) 9%, transparent) 44.6%, transparent 46%),
+    radial-gradient(circle at 50% 50%, transparent 0 58%, color-mix(in srgb, var(--kw-brand) 6%, transparent) 58.5%, transparent 60%),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--kw-brand) 12%, transparent) 0 26%, transparent 62%);
+  mask-image: none;
+}
+
+.light .kw-shell::after { opacity: .9; }
+
+/* Level 1 — structural shell glass. Every pane is the same material: one
+ * translucent face, one hairline, one upper highlight, one blur. */
+.kw-topbar {
+  border-bottom: 1px solid var(--kw-glass-border);
+  background: var(--kw-glass-1);
+  box-shadow: var(--kw-glass-hi), 0 18px 40px -34px rgba(0, 0, 0, .8);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(155%);
+}
+
+.light .kw-topbar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .84), rgba(250, 247, 255, .68));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95), 0 18px 40px -32px rgba(60, 36, 120, .3);
+}
+
+.kw-activity-bar {
+  border-right: 1px solid var(--kw-glass-border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--kw-brand-deep) 12%, transparent), transparent 42%);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+}
+
+.kw-explorer {
+  border-right: 1px solid var(--kw-glass-border);
+  background: var(--kw-glass-2);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+}
+
+.kw-inspector {
+  border-left: 1px solid var(--kw-glass-border);
+  background: var(--kw-glass-2);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+}
+
+.light .kw-activity-bar { background: linear-gradient(180deg, rgba(255, 255, 255, .6), rgba(246, 241, 254, .34)); }
+.light .kw-explorer { background: linear-gradient(180deg, rgba(255, 255, 255, .66), rgba(248, 244, 255, .42)); }
+.light .kw-inspector { background: linear-gradient(180deg, rgba(252, 249, 255, .72), rgba(247, 242, 255, .5)); }
+
+/* Where blur is unavailable or expensive, the same panes stay legible on a
+ * solid face instead of collapsing into the canvas. */
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  .kw-topbar, .kw-activity-bar, .kw-explorer, .kw-inspector { backdrop-filter: none; }
+  .kw-activity-bar, .kw-explorer, .kw-inspector { background: var(--kw-panel); }
+  .kw-topbar { background: var(--kw-panel); }
+}
+
+[data-kf-reduced-motion="true"] .kw-shell,
+[data-kf-reduced-motion="true"] .kw-shell-glow { animation: none !important; }
+
+/* Blur is a material effect, not a licence to drop contrast: text on a glass
+ * pane keeps the ink roles defined above. */
+.kw-shell {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Official symbol, cropped from the approved installation emblem rather than
+ * redrawn. It is the only brand mark the repository ships, so the workbench
+ * uses those pixels at 1x/2x instead of imitating the shape. */
+.kw-brand-mark {
+  overflow: hidden;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 120% at 30% 0, rgba(255, 255, 255, .16), transparent 58%),
+    linear-gradient(150deg, color-mix(in srgb, var(--kw-brand) 34%, transparent), color-mix(in srgb, var(--kw-brand-deep) 44%, transparent));
+  box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--kw-brand) 85%, transparent), var(--kw-glass-hi);
+  font-size: 0;
+}
+
+.kw-brand-mark img {
+  display: block;
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 5px rgba(20, 8, 48, .35));
+}
+
+.light .kw-brand-mark {
+  border-color: rgba(255, 255, 255, .8);
+  background:
+    radial-gradient(120% 120% at 28% 0, rgba(255, 255, 255, .98), rgba(246, 241, 255, .7) 62%, rgba(232, 220, 252, .66));
+  box-shadow: 0 12px 26px -16px rgba(84, 44, 168, .5), inset 0 1px 0 #fff;
+}
+
+.kw-brand > div { gap: 2px; }
+
+.kw-brand strong {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -.026em;
+}
+
+.kw-brand small {
+  color: color-mix(in srgb, var(--kw-brand) 62%, var(--kw-muted));
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .19em;
+}
+
+.light .kw-brand strong { color: #1b1430; }
+.light .kw-brand small { color: #6c3ce0; }
+
+.kw-brand-edition {
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--kw-brand) 34%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kw-brand) 12%, transparent);
+  color: color-mix(in srgb, var(--kw-brand) 72%, var(--kw-text));
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+
+.light .kw-brand-edition {
+  border-color: rgba(122, 61, 240, .26);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(238, 229, 253, .8));
+  color: #5f27cf;
+}
+
+/* Level 2/3 controls. */
+.kw-command-trigger,
+.kw-project-switcher {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 12px;
+  background: var(--kw-glass-3);
+  box-shadow: var(--kw-glass-hi);
+}
+
+.light .kw-command-trigger,
+.light .kw-project-switcher {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(247, 243, 254, .74));
+  box-shadow: inset 0 1px 0 #fff, 0 10px 24px -20px rgba(60, 36, 120, .5);
+}
+
+.kw-topbar-meta button,
+.kw-topbar-meta select {
+  border-radius: var(--kw-radius-ctl);
+}
+
+.kw-mode-beacon {
+  border-color: var(--kw-glass-border);
+  background: var(--kw-glass-3);
+}
+
+/* Activity rail — a navigation object, not a strip of icons. */
+.kw-activity-bar {
+  padding: 12px 0;
+  gap: 5px;
+}
+
+.kw-activity-bar button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  color: color-mix(in srgb, var(--kw-muted) 92%, transparent);
+  transition: color var(--kw-move) var(--kw-ease-out), background var(--kw-move) var(--kw-ease-out),
+    border-color var(--kw-move) var(--kw-ease-out), transform var(--kw-move) var(--kw-ease-out),
+    box-shadow var(--kw-move) var(--kw-ease-out);
+}
+
+.kw-activity-bar button:hover {
+  border-color: var(--kw-glass-border);
+  background: var(--kw-glass-3);
+  color: var(--kw-text);
+  transform: translateY(-1px);
+}
+
+.kw-activity-bar button.is-active {
+  border-color: color-mix(in srgb, var(--kw-brand-lift) 42%, transparent);
+  background: linear-gradient(160deg, var(--kw-brand) 0%, var(--kw-brand-strong) 52%, var(--kw-brand-deep) 100%);
+  color: #fff;
+  box-shadow: 0 14px 30px -14px color-mix(in srgb, var(--kw-brand) 92%, transparent), inset 0 1px 0 rgba(255, 255, 255, .34);
+}
+
+.light .kw-activity-bar button.is-active {
+  border-color: rgba(255, 255, 255, .7);
+  box-shadow: 0 16px 30px -16px rgba(96, 46, 200, .62), inset 0 1px 0 rgba(255, 255, 255, .5);
+}
+
+.kw-activity-bar button.is-active::before {
+  left: -10px;
+  width: 3px;
+  height: 22px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, #fff, color-mix(in srgb, #fff 30%, transparent));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--kw-brand) 90%, transparent);
+}
+
+.kw-activity-bar button::after {
+  border-color: var(--kw-glass-border);
+  border-radius: var(--kw-radius-ctl);
+  background: var(--kw-glass-5);
+  box-shadow: var(--kw-shadow-2);
+  backdrop-filter: blur(var(--kw-blur-float)) saturate(150%);
+}
+
+.light .kw-activity-bar button::after {
+  border-color: rgba(255, 255, 255, .9);
+  background: rgba(255, 255, 255, .95);
+}
+
+/* Explorer — section headings and the active service indicator. */
+.kw-explorer-heading {
+  border-bottom: 1px solid var(--kw-glass-border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--kw-brand) 6%, transparent), transparent);
+}
+
+.kw-explorer-heading small {
+  color: color-mix(in srgb, var(--kw-brand) 58%, var(--kw-muted));
+  letter-spacing: .18em;
+}
+
+.light .kw-explorer-heading small { color: #7a45e8; }
+
+.kw-explorer-scroll h2,
+.kw-explorer-scroll h3 {
+  color: color-mix(in srgb, var(--kw-brand) 40%, var(--kw-muted));
+  letter-spacing: .16em;
+}
+
+.light .kw-explorer-scroll h2,
+.light .kw-explorer-scroll h3 { color: #7a45e8; }
+
+.kw-explorer-scroll section > button {
+  min-height: 34px;
+  border-radius: 12px;
+  transition: background var(--kw-move) var(--kw-ease-out), border-color var(--kw-move) var(--kw-ease-out),
+    color var(--kw-move) var(--kw-ease-out), transform var(--kw-move) var(--kw-ease-out);
+}
+
+.kw-explorer-scroll section > button.is-active {
+  border-color: color-mix(in srgb, var(--kw-brand) 34%, transparent);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--kw-brand) 22%, transparent), color-mix(in srgb, var(--kw-brand) 6%, transparent) 62%, transparent);
+  color: var(--kw-text);
+  box-shadow: var(--kw-glass-hi);
+}
+
+.light .kw-explorer-scroll section > button.is-active {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(100deg, rgba(235, 224, 253, .96), rgba(246, 241, 254, .8) 60%, rgba(255, 255, 255, .6));
+  color: #2a1c4d;
+  box-shadow: inset 0 1px 0 #fff, 0 10px 22px -18px rgba(74, 40, 158, .6);
+}
+
+/* Level 2 — the content canvas stays transparent so the atmosphere reads
+ * through the cards; only its dividers are drawn. */
+.kw-workbench { background: transparent; }
+
+.kw-breadcrumb {
+  min-height: 36px;
+  border-bottom: 1px solid var(--kw-glass-border);
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.kw-surface-heading {
+  padding: var(--kw-space-6) var(--kw-space-6) var(--kw-space-5);
+  border-bottom: 1px solid transparent;
+  background: none;
+}
+
+.kw-surface-heading::after { display: none; }
+
+.kw-surface-heading p {
+  color: color-mix(in srgb, var(--kw-brand) 70%, var(--kw-muted));
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .2em;
+}
+
+.light .kw-surface-heading p { color: #7a45e8; }
+
+.kw-surface-heading h1 {
+  margin: 6px 0 0;
+  font-size: clamp(26px, 2.4vw, 34px);
+  font-weight: 700;
+  line-height: 1.06;
+  letter-spacing: -.038em;
+}
+
+.kw-surface-heading h1 .kw-title-accent {
+  background: linear-gradient(96deg, var(--kw-brand-lift) 0%, var(--kw-brand-strong) 46%, var(--kw-brand-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.light .kw-surface-heading h1 { color: #171132; }
+
+.light .kw-surface-heading h1 .kw-title-accent {
+  background: linear-gradient(96deg, #8b5cf6 0%, #6f31ee 52%, #4c1cb4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.kw-surface-heading small {
+  max-width: 78ch;
+  margin-top: 8px;
+  color: var(--kw-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.light .kw-surface-heading small { color: #5c5378; }
+
+.kw-surface-heading > button {
+  min-height: var(--kw-tap);
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 12px;
+  background: var(--kw-glass-3);
+  box-shadow: var(--kw-glass-hi);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.light .kw-surface-heading > button {
+  border-color: rgba(255, 255, 255, .95);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .95), rgba(248, 244, 255, .8));
+  color: #33254f;
+  box-shadow: inset 0 1px 0 #fff, 0 12px 26px -20px rgba(60, 36, 120, .55);
+}
+
+.kw-workbench-scroll {
+  padding: var(--kw-space-5) var(--kw-space-6) var(--kw-space-6);
+  background: none;
+}
+
+/* Level 3 — the shared card material. */
+.kw-surface-section,
+.kw-operation-panel,
+.kw-quality-card,
+.kw-system-grid article,
+.kw-agent-panel,
+.kw-evidence-card,
+.kw-form-surface,
+.kw-action-surface,
+.kw-tool-grid,
+.kw-project-card,
+.kw-settings-v4__card,
+.kw-start-actions,
+.kw-online-context > div,
+.kw-summary-strip > div,
+.kw-release-grid article,
+.kw-online-inspector,
+.kw-answer,
+.kw-security-invariants {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-3);
+  box-shadow: var(--kw-shadow-1);
+  backdrop-filter: blur(10px) saturate(130%);
+}
+
+.light .kw-surface-section,
+.light .kw-operation-panel,
+.light .kw-quality-card,
+.light .kw-system-grid article,
+.light .kw-agent-panel,
+.light .kw-evidence-card,
+.light .kw-form-surface,
+.light .kw-action-surface,
+.light .kw-tool-grid,
+.light .kw-project-card,
+.light .kw-settings-v4__card,
+.light .kw-start-actions,
+.light .kw-online-context > div,
+.light .kw-summary-strip > div,
+.light .kw-release-grid article,
+.light .kw-online-inspector,
+.light .kw-answer,
+.light .kw-security-invariants {
+  border-color: rgba(255, 255, 255, .86);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .94), rgba(255, 255, 255, .62) 58%, rgba(238, 230, 252, .56));
+  box-shadow: inset 0 1px 0 #fff, 0 18px 38px -28px rgba(56, 32, 116, .48);
+}
+
+.kw-quality-card:hover,
+.kw-system-grid article:hover,
+.kw-evidence-card:hover,
+.kw-project-card:hover {
+  border-color: var(--kw-glass-border-strong);
+  box-shadow: var(--kw-shadow-2);
+  transform: translateY(-2px);
+}
+
+/* Level 4/5 — floating surfaces. */
+.kw-palette {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-float);
+  background: var(--kw-glass-5);
+  box-shadow: var(--kw-shadow-3);
+  backdrop-filter: blur(var(--kw-blur-float)) saturate(160%);
+}
+
+.light .kw-palette {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .97), rgba(250, 247, 255, .94));
+}
+
+.kw-palette-backdrop {
+  background: color-mix(in srgb, var(--kw-brand-ink) 52%, transparent);
+  backdrop-filter: blur(10px) saturate(120%);
+}
+
+.light .kw-palette-backdrop {
+  background: rgba(46, 28, 92, .26);
+}
+
+/* Motion policy: one easing family, short durations, and nothing that runs
+ * while the user is trying to read or click. */
+@keyframes kw-glass-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.kw-workbench-scroll > * { animation: kw-glass-rise var(--kw-move-slow) var(--kw-ease-glass) both; }
+.kw-workbench-scroll > :nth-child(2) { animation-delay: 40ms; }
+.kw-workbench-scroll > :nth-child(3) { animation-delay: 80ms; }
+
+[data-kf-reduced-motion="true"] .kw-workbench-scroll > *,
+[data-kf-reduced-motion="true"] .kw-activity-bar button,
+[data-kf-reduced-motion="true"] .kw-explorer-scroll section > button,
+[data-kf-reduced-motion="true"] .kw-quality-card,
+[data-kf-reduced-motion="true"] .kw-system-grid article,
+[data-kf-reduced-motion="true"] .kw-evidence-card,
+[data-kf-reduced-motion="true"] .kw-project-card {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kw-workbench-scroll > * { animation: none; }
+}
+
+/* ---- Explorer as a three-row pane: heading, scroll, brand footer. ---- */
+.kw-explorer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.kw-explorer-scroll { height: auto; }
+
+.kw-explorer-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 10px 10px;
+  padding: 10px;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-3);
+  box-shadow: var(--kw-glass-hi);
+}
+
+.light .kw-explorer-brand {
+  border-color: rgba(255, 255, 255, .9);
+  background:
+    radial-gradient(120% 130% at 88% 0, rgba(196, 160, 255, .42), transparent 62%),
+    linear-gradient(168deg, rgba(255, 255, 255, .96), rgba(246, 241, 254, .78));
+  box-shadow: inset 0 1px 0 #fff, 0 16px 30px -26px rgba(56, 32, 116, .5);
+}
+
+.kw-explorer-brand__mark {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 9px;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--kw-brand) 30%, transparent), color-mix(in srgb, var(--kw-brand-deep) 40%, transparent));
+}
+
+.kw-explorer-brand__mark img { width: 84%; height: 84%; object-fit: contain; }
+.light .kw-explorer-brand__mark { border-color: rgba(255, 255, 255, .9); background: linear-gradient(150deg, #fff, #efe7fe); }
+
+.kw-explorer-brand__copy { display: grid; min-width: 0; gap: 2px; }
+
+.kw-explorer-brand__copy bdi {
+  color: var(--kw-text);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.light .kw-explorer-brand__copy bdi { color: #2c1d52; }
+
+.kw-explorer-brand__copy small {
+  overflow: hidden;
+  color: var(--kw-muted);
+  font-size: 9.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.light .kw-explorer-brand__copy small { color: #6a5f86; }
+
+/* ---- Controls: one radius, one focus ring, one hover language. ---- */
+.kw-shell input:not([type="checkbox"]):not([type="radio"]),
+.kw-shell select,
+.kw-shell textarea {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-ctl);
+  background: color-mix(in srgb, var(--kw-panel) 72%, transparent);
+  color: var(--kw-text);
+}
+
+.light .kw-shell input:not([type="checkbox"]):not([type="radio"]),
+.light .kw-shell select,
+.light .kw-shell textarea {
+  border-color: rgba(88, 52, 160, .14);
+  background: rgba(255, 255, 255, .82);
+  color: #241a3d;
+}
+
+.kw-shell input:focus-visible,
+.kw-shell select:focus-visible,
+.kw-shell textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--kw-brand) 62%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kw-brand) 20%, transparent);
+  outline: none;
+}
+
+.kw-shell button.is-primary,
+.kw-shell .kw-action-primary,
+.kw-project-card__actions button.is-primary,
+.kw-settings-v4__header button.is-primary,
+.kw-start-actions__primary {
+  border: 1px solid color-mix(in srgb, #fff 22%, transparent);
+  border-radius: var(--kw-radius-ctl);
+  background: linear-gradient(150deg, var(--kw-brand-lift) 0%, var(--kw-brand-strong) 48%, var(--kw-brand-deep) 100%);
+  color: #fff;
+  font-weight: 650;
+  letter-spacing: -.005em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .38), 0 16px 30px -16px color-mix(in srgb, var(--kw-brand) 92%, transparent);
+}
+
+.kw-shell button.is-primary:hover:not(:disabled),
+.kw-shell .kw-action-primary:hover:not(:disabled),
+.kw-project-card__actions button.is-primary:hover:not(:disabled),
+.kw-settings-v4__header button.is-primary:hover:not(:disabled),
+.kw-start-actions__primary:hover:not(:disabled) {
+  background: linear-gradient(150deg, #b79bff 0%, #8b52ff 48%, #5a24d6 100%);
+  transform: translateY(-1px);
+}
+
+.light .kw-shell button.is-primary,
+.light .kw-shell .kw-action-primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 18px 34px -18px rgba(96, 46, 200, .68);
+}
+
+/* ---- Status badges: material, and colour never alone. ---- */
+.kw-badge {
+  gap: 5px;
+  min-height: 21px;
+  padding: 2px 9px;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kw-panel) 66%, transparent);
+  box-shadow: var(--kw-glass-hi);
+  font-size: 8.5px;
+  font-weight: 750;
+  letter-spacing: .07em;
+}
+
+.light .kw-badge {
+  border-color: rgba(88, 52, 160, .13);
+  background: rgba(255, 255, 255, .78);
+}
+
+/* ---- Empty and prerequisite states: composed, not vacant. ---- */
+.kw-empty {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 260px;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-panel);
+  background: var(--kw-glass-2);
+  box-shadow: var(--kw-shadow-1);
+}
+
+.kw-empty::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -40%;
+  left: 50%;
+  width: min(520px, 92%);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--kw-brand) 16%, transparent) 0 38%, transparent 66%);
+}
+
+.kw-empty::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -18%;
+  left: 50%;
+  width: min(360px, 74%);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--kw-brand) 22%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 34px color-mix(in srgb, var(--kw-brand) 5%, transparent);
+}
+
+.light .kw-empty {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .8), rgba(246, 241, 254, .5));
+}
+
+.light .kw-empty::before { background: radial-gradient(circle, rgba(178, 138, 255, .34) 0 40%, transparent 68%); }
+.light .kw-empty::after { border-color: rgba(145, 96, 240, .26); box-shadow: 0 0 0 34px rgba(178, 138, 255, .09); }
+
+.kw-empty h3 { color: var(--kw-text); font-size: 15px; font-weight: 660; letter-spacing: -.02em; }
+.light .kw-empty h3 { color: #241a3d; }
+.kw-empty p { color: var(--kw-muted); font-size: 12px; line-height: 1.6; }
+.light .kw-empty p { color: #5c5378; }
+
+/* ---- Terminal: the shell is glass, the output stays an ink surface. ---- */
+.kw-terminal {
+  overflow: hidden;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background: linear-gradient(180deg, #14101f, #0b0912);
+  box-shadow: var(--kw-shadow-2);
+  color: #ece7fb;
+}
+
+.kw-terminal-header {
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--kw-brand) 22%, transparent), transparent 62%);
+}
+
+.kw-terminal p,
+.kw-terminal small { color: #b7aed4; }
+
+.kw-terminal code { color: #cbb6ff; }
+
+.kw-shell pre {
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(12, 9, 21, .92), rgba(8, 6, 15, .96));
+  color: #e6e0f7;
+}
+
+.light .kw-shell pre {
+  border-color: rgba(38, 22, 70, .18);
+  background: linear-gradient(180deg, #171128, #100c1d);
+  color: #ece8fa;
+}
+
+/* ---- Persistent Preview dock: same material as the shell, not a pasted toolbar. ---- */
+.kw-persistent-preview {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-panel);
+  background: var(--kw-glass-4);
+  box-shadow: var(--kw-shadow-3);
+  backdrop-filter: blur(var(--kw-blur-float)) saturate(150%);
+}
+
+.light .kw-persistent-preview {
+  border-color: rgba(255, 255, 255, .92);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(248, 244, 255, .86));
+}
+
+.kw-persistent-preview__header {
+  min-height: 44px;
+  border-bottom: 1px solid var(--kw-glass-border);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--kw-brand) 18%, transparent), transparent 58%);
+}
+
+.light .kw-persistent-preview__header {
+  border-bottom-color: rgba(88, 52, 160, .1);
+  background: linear-gradient(100deg, rgba(231, 219, 252, .9), rgba(255, 255, 255, .5) 58%);
+}
+
+.kw-persistent-preview__browser form {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kw-panel) 60%, transparent);
+}
+
+.light .kw-persistent-preview__browser form { border-color: rgba(88, 52, 160, .12); background: rgba(255, 255, 255, .9); }
+
+.kw-persistent-preview-launcher {
+  border: 1px solid var(--kw-glass-border) !important;
+  border-radius: 999px;
+  background: var(--kw-glass-5);
+  box-shadow: var(--kw-shadow-2);
+  backdrop-filter: blur(var(--kw-blur-float)) saturate(150%);
+}
+
+.light .kw-persistent-preview-launcher {
+  border-color: rgba(255, 255, 255, .95) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .95), rgba(246, 241, 254, .88));
+}
+
+/* ---- Bottom execution panel. ---- */
+.kw-bottom-panel {
+  border-top: 1px solid var(--kw-glass-border);
+  background: var(--kw-glass-1);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+}
+
+.light .kw-bottom-panel {
+  border-top-color: rgba(88, 52, 160, .1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(246, 241, 254, .82));
+}
+
+/* ---- Pass 2: light-theme specificity, project entry, and reading comfort. ---- */
+
+/* The light rail must use the same lit active tile as the dark rail. The earlier
+   light pass only tinted it, which left the selected activity indistinguishable
+   from a hovered one on a pearl canvas. */
+.light .kw-activity-bar button.is-active {
+  border-color: rgba(255, 255, 255, .72);
+  background: linear-gradient(160deg, var(--kw-brand-lift) 0%, var(--kw-brand-strong) 52%, var(--kw-brand-deep) 100%);
+  color: #fff;
+  box-shadow: 0 16px 30px -16px rgba(96, 46, 200, .66), inset 0 1px 0 rgba(255, 255, 255, .42);
+}
+
+.light .kw-activity-bar button.is-active::before {
+  background: linear-gradient(180deg, #fff, rgba(255, 255, 255, .35));
+  box-shadow: 0 0 14px rgba(139, 92, 246, .9);
+}
+
+.light .kw-activity-bar button:hover:not(.is-active) {
+  background: rgba(255, 255, 255, .74);
+  border-color: rgba(122, 61, 240, .2);
+  color: #3a2765;
+}
+
+/* Project entry: the source selector is the primary action of the state. */
+.kw-start-actions__tabs button {
+  min-height: 34px;
+  padding: 6px 13px;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 11px;
+  background: var(--kw-glass-2);
+  color: var(--kw-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kw-start-actions__tabs button.is-active {
+  border-color: color-mix(in srgb, #fff 22%, transparent);
+  background: linear-gradient(150deg, var(--kw-brand-lift) 0%, var(--kw-brand-strong) 50%, var(--kw-brand-deep) 100%);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4), 0 14px 28px -16px color-mix(in srgb, var(--kw-brand) 90%, transparent);
+}
+
+.light .kw-start-actions__tabs button {
+  border-color: rgba(255, 255, 255, .92);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(246, 241, 254, .7));
+  color: #5c5378;
+  box-shadow: inset 0 1px 0 #fff;
+}
+
+.light .kw-start-actions__tabs button.is-active {
+  border-color: color-mix(in srgb, #fff 24%, transparent);
+  background: linear-gradient(150deg, var(--kw-brand-lift) 0%, var(--kw-brand-strong) 50%, var(--kw-brand-deep) 100%);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .42), 0 16px 30px -18px rgba(96, 46, 200, .7);
+}
+
+.kw-start-actions__quick button {
+  min-height: 30px;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-ctl);
+  background: var(--kw-glass-2);
+}
+
+.light .kw-start-actions__quick button {
+  border-color: rgba(255, 255, 255, .9);
+  background: rgba(255, 255, 255, .8);
+  color: #4a3d68;
+}
+
+.kw-start-actions__quick button:hover { border-color: var(--kw-glass-border-strong); color: var(--kw-text); }
+.light .kw-start-actions__quick button:hover { border-color: rgba(122, 61, 240, .34); color: #2c1d52; }
+
+/* A prerequisite state should occupy the space it is explaining instead of
+ * leaving a band of bare canvas under it. */
+.kw-empty {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  min-height: clamp(280px, 44vh, 460px);
+  padding: var(--kw-space-6) var(--kw-space-5);
+}
+
+.kw-empty > * { position: relative; z-index: 1; }
+
+/* The ambient wordmark sits behind prose, not through it. */
+.kw-shell .knoux-living-mark-fallback[data-mode="workspace"] { opacity: .24; }
+.light .kw-shell .knoux-living-mark-fallback[data-mode="workspace"] { opacity: .1; }
+
+/* Anchored to the lower-right band so it never crosses centred copy, and
+ * scaled down on narrow canvases where it would sit under the table. */
+.kw-shell .kw-workbench > .knoux-living-mark-fallback[data-mode="workspace"] {
+  justify-content: flex-end;
+  padding-right: 4%;
+  padding-bottom: 4%;
+  mask-image: radial-gradient(78% 78% at 88% 88%, black 20%, transparent 76%);
+}
+
+.kw-shell .kw-workbench > .knoux-living-mark-fallback[data-mode="workspace"] svg { width: min(38vw, 460px); }
+
+/* Tables, messages and the loading screen share the material. */
+.kw-table-wrap {
+  overflow: hidden;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-2);
+  box-shadow: var(--kw-shadow-1);
+}
+
+.light .kw-table-wrap {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(250, 247, 255, .74));
+}
+
+.kw-table,
+.kw-table th { background: transparent; }
+.kw-table th { border-bottom: 1px solid var(--kw-glass-border); }
+.kw-table td { border-bottom: 1px solid color-mix(in srgb, var(--kw-glass-border) 70%, transparent); }
+.kw-table tbody tr:last-child td { border-bottom: 0; }
+
+.light .kw-table th { border-bottom-color: rgba(88, 52, 160, .12); }
+.light .kw-table td { border-bottom-color: rgba(88, 52, 160, .07); }
+
+.kw-message,
+.kw-warning {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-2);
+  color: var(--kw-text);
+  font-size: 12px;
+}
+
+.light .kw-message { border-color: rgba(122, 61, 240, .18); background: linear-gradient(180deg, rgba(255, 255, 255, .94), rgba(243, 236, 255, .8)); color: #3b2a63; }
+.light .kw-warning { border-color: rgba(190, 60, 70, .22); background: linear-gradient(180deg, rgba(255, 251, 251, .96), rgba(253, 238, 240, .82)); color: #7c2230; }
+
+.kw-loading {
+  background:
+    radial-gradient(90% 70% at 76% -10%, rgba(169, 122, 255, .3), transparent 62%),
+    linear-gradient(178deg, #fdfcff, #f2edfa);
+  color: #4a3d68;
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+
+/* One focus language across the shell. */
+.kw-shell :focus-visible {
+  outline: 2px solid var(--kw-brand);
+  outline-offset: 2px;
+}
+
+.light .kw-shell :focus-visible { outline-color: #6f31ee; }
+
+/* Scrollbars read as part of the pane, not as an OS strip beside it. */
+.kw-shell ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kw-brand) 26%, transparent);
+  background-clip: padding-box;
+}
+
+.light .kw-shell ::-webkit-scrollbar-thumb { background: rgba(108, 74, 190, .26); background-clip: padding-box; }
+.light .kw-shell ::-webkit-scrollbar-thumb:hover { background: rgba(108, 74, 190, .46); background-clip: padding-box; }
+
+/* Card grids keep one gap rhythm across every surface. */
+.kw-card-grid,
+.kw-project-card-grid,
+.kw-quality-list,
+.kw-system-grid,
+.kw-provider-grid,
+.kw-tool-grid__cards,
+.kw-release-grid { gap: var(--kw-space-3); }
+
+.kw-stack,
+.kw-provider-section,
+.kw-settings-v4__content { gap: var(--kw-space-4); }
+
 

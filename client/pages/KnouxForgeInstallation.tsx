@@ -30,7 +30,8 @@ function rememberInstallation() {
   }
 }
 
-function getDashboardTheme(): SplashTheme {
+function getDashboardTheme(persisted?: SplashTheme | null): SplashTheme {
+  if (persisted) return persisted;
   const html = document.documentElement;
   const body = document.body;
   const explicitDark = html.dataset.theme === "dark"
@@ -40,11 +41,34 @@ function getDashboardTheme(): SplashTheme {
   return explicitDark ? "dark" : "light";
 }
 
+/**
+ * The entry screen and the workbench must resolve the same theme. The workbench
+ * resolves the persisted `system` preference against the operating-system colour
+ * scheme; the splash used to resolve only the (still empty) document classes, so a
+ * dark-mode desktop could pass from the approved pearl entrance into the dark
+ * interior. This reads the same local setting the workbench reads.
+ */
+async function readPersistedTheme(): Promise<SplashTheme | null> {
+  try {
+    const response = await fetch("/api/workspace/settings", { cache: "no-store" });
+    if (!response.ok) return null;
+    const payload = await response.json() as { settings?: { appearance?: { theme?: string } } };
+    const theme = payload?.settings?.appearance?.theme;
+    if (theme === "light" || theme === "dark") return theme;
+    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return null;
+  } catch {
+    // The local default stands; the entrance must never block on a settings read.
+    return null;
+  }
+}
+
 export default function KnouxForgeInstallation() {
   const navigate = useNavigate();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const soundEnabledRef = useRef(true);
   const navigationStarted = useRef(false);
+  const persistedTheme = useRef<SplashTheme | null>(null);
   const [firstLaunch] = useState(isFirstLaunch);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [splashTheme, setSplashTheme] = useState<SplashTheme>(getDashboardTheme);
@@ -88,7 +112,7 @@ export default function KnouxForgeInstallation() {
     const schemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
     const applyPreferences = () => {
       setReducedMotion(motionMedia.matches);
-      setSplashTheme(getDashboardTheme());
+      setSplashTheme(getDashboardTheme(persistedTheme.current));
     };
     const themeObserver = new MutationObserver(applyPreferences);
     applyPreferences();
@@ -96,6 +120,11 @@ export default function KnouxForgeInstallation() {
     schemeMedia.addEventListener("change", applyPreferences);
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
     themeObserver.observe(document.body, { attributes: true, attributeFilter: ["class", "data-theme"] });
+    void readPersistedTheme().then((theme) => {
+      if (!theme) return;
+      persistedTheme.current = theme;
+      setSplashTheme((current) => (current === theme ? current : theme));
+    });
     return () => {
       motionMedia.removeEventListener("change", applyPreferences);
       schemeMedia.removeEventListener("change", applyPreferences);

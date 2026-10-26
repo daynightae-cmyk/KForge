@@ -212,3 +212,150 @@
   .kw-ai-inspector-pane { min-height: 360px; }
   .kw-ai-approval { align-items: stretch; flex-direction: column; }
 }
+
+/* Luminous Glass treatment for Provider Studio and the AI session.
+ * Visual only: provider, credential, health and model states keep the exact
+ * strings the adapter reports. */
+.kw-provider-list,
+.kw-provider-main,
+.kw-provider-inspector,
+.kw-ai-context-pane,
+.kw-ai-conversation-pane,
+.kw-ai-inspector-pane,
+.kw-ai-bottom-pane {
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: var(--kw-radius-card, 14px);
+  background: var(--kw-glass-2, var(--kw-panel));
+  box-shadow: var(--kw-shadow-1, none);
+  backdrop-filter: blur(10px) saturate(128%);
+}
+
+.light .kw-provider-list,
+.light .kw-provider-main,
+.light .kw-provider-inspector,
+.light .kw-ai-context-pane,
+.light .kw-ai-conversation-pane,
+.light .kw-ai-inspector-pane,
+.light .kw-ai-bottom-pane {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .66) 58%, rgba(238, 230, 252, .58));
+  box-shadow: inset 0 1px 0 #fff, 0 18px 38px -30px rgba(56, 32, 116, .5);
+}
+
+.kw-pane-heading strong { color: color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 58%, var(--kw-muted)); letter-spacing: .14em; }
+.light .kw-pane-heading strong { color: #7a45e8; }
+
+.kw-vault-pill {
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 999px;
+  background: var(--kw-glass-3, var(--kw-panel));
+  padding: 0 10px;
+}
+
+.light .kw-vault-pill { border-color: rgba(88, 52, 160, .14); background: rgba(255, 255, 255, .82); }
+
+.kw-provider-list > button {
+  padding: 10px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 12px;
+  background: var(--kw-glass-3, var(--kw-panel));
+  transition: border-color 160ms var(--kw-ease-out, ease), box-shadow 160ms var(--kw-ease-out, ease), transform 160ms var(--kw-ease-out, ease);
+}
+
+.light .kw-provider-list > button {
+  border-color: rgba(255, 255, 255, .86);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .92), rgba(248, 244, 255, .62));
+  box-shadow: inset 0 1px 0 #fff;
+}
+
+.kw-provider-list > button:hover { transform: translateY(-1px); border-color: var(--kw-glass-border-strong, var(--kw-primary)); box-shadow: var(--kw-shadow-2, none); }
+.light .kw-provider-list > button:hover { border-color: rgba(122, 61, 240, .3); }
+
+.kw-provider-list > button.is-active {
+  border-color: color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 52%, transparent);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 16%, transparent), transparent 72%);
+  box-shadow: inset 3px 0 var(--kw-brand, var(--kw-primary)), var(--kw-shadow-1, none);
+}
+
+.light .kw-provider-list > button.is-active {
+  border-color: rgba(255, 255, 255, .92);
+  background: linear-gradient(120deg, rgba(231, 218, 252, .96), rgba(255, 255, 255, .74) 70%);
+  box-shadow: inset 3px 0 #7a3df0, inset 0 1px 0 #fff, 0 14px 28px -22px rgba(74, 40, 158, .6);
+}
+
+.kw-provider-hero {
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: var(--kw-radius-card, 14px);
+  background:
+    radial-gradient(120% 150% at 100% 0, color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 12%, transparent), transparent 62%),
+    var(--kw-glass-3, var(--kw-panel-2));
+}
+
+.light .kw-provider-hero {
+  border-color: rgba(255, 255, 255, .92);
+  background:
+    radial-gradient(120% 150% at 100% 0, rgba(190, 152, 255, .4), transparent 62%),
+    linear-gradient(168deg, rgba(255, 255, 255, .96), rgba(248, 244, 255, .78));
+  box-shadow: inset 0 1px 0 #fff, 0 16px 34px -28px rgba(56, 32, 116, .5);
+}
+
+.kw-provider-identity h3 { font-size: 18px; font-weight: 700; letter-spacing: -.028em; }
+.kw-provider-identity p { color: color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 62%, var(--kw-muted)); font-weight: 800; letter-spacing: .16em; }
+.light .kw-provider-identity p { color: #7a45e8; }
+
+.kw-provider-tabs { border-bottom-color: var(--kw-glass-border, var(--kw-border)); }
+
+.kw-provider-tabs button,
+.kw-mini-tabs button {
+  min-height: 30px;
+  padding: 4px 11px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 999px;
+  background: var(--kw-glass-2, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+}
+
+.light .kw-provider-tabs button,
+.light .kw-mini-tabs button { border-color: rgba(88, 52, 160, .12); background: rgba(255, 255, 255, .7); color: #5c5378; }
+
+.kw-provider-tabs button.is-active,
+.kw-mini-tabs button.is-active {
+  border-color: color-mix(in srgb, #fff 20%, transparent);
+  background: linear-gradient(150deg, var(--kw-brand-lift, var(--kw-primary)) 0%, var(--kw-brand-strong, var(--kw-primary)) 52%, var(--kw-brand-deep, var(--kw-primary)) 100%);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .36), 0 12px 24px -16px color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 90%, transparent);
+}
+
+.kw-model-table article,
+.kw-compare-grid article,
+.kw-usage-grid article,
+.kw-config-grid > div,
+.kw-session-composer,
+.kw-checkpoint-card {
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 12px;
+  background: var(--kw-glass-3, var(--kw-panel-2));
+  box-shadow: var(--kw-glass-hi, none);
+}
+
+.light .kw-model-table article,
+.light .kw-compare-grid article,
+.light .kw-usage-grid article,
+.light .kw-config-grid > div,
+.light .kw-session-composer,
+.light .kw-checkpoint-card {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .94), rgba(248, 244, 255, .66));
+  box-shadow: inset 0 1px 0 #fff;
+}
+
+.kw-model-table article.is-selected { border-color: var(--kw-glass-border-strong, var(--kw-primary)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 22%, transparent); }
+.kw-ai-event { border-color: var(--kw-glass-border, var(--kw-border)); background: var(--kw-glass-3, var(--kw-panel-2)); border-radius: 12px; }
+.light .kw-ai-event { border-color: rgba(255, 255, 255, .88); background: rgba(255, 255, 255, .8); }
+.kw-ai-approval { border-color: var(--kw-glass-border-strong, var(--kw-primary)); border-radius: 12px; background: var(--kw-glass-3, var(--kw-panel-2)); }
+.light .kw-ai-approval { border-color: rgba(122, 61, 240, .3); background: linear-gradient(180deg, rgba(255, 255, 255, .95), rgba(243, 236, 255, .8)); }
+.kw-tech-dl > div { border-bottom-color: var(--kw-glass-border, var(--kw-border)); }
+.light .kw-tech-dl > div { border-bottom-color: rgba(88, 52, 160, .1); }
+.kw-live-preview iframe { border-color: var(--kw-glass-border, var(--kw-border)); border-radius: var(--kw-radius-card, 14px); }
