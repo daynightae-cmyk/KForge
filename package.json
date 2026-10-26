@@ -48,7 +48,7 @@
     "express-rate-limit": "^8.7.1",
     "three": "0.186.1",
     "typescript": "^5.9.3",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

@@ -39,7 +39,7 @@ const pypiInfoSchema = z
     author_email: z.string().optional(),
     license: z.string().optional(),
     home_page: z.string().optional(),
-    project_urls: z.record(z.string()).nullable().optional(),
+    project_urls: z.record(z.string(), z.string()).nullable().optional(),
     requires_dist: z.array(z.string()).nullable().optional(),
     classifiers: z.array(z.string()).optional(),
     keywords: z.string().nullable().optional(),
@@ -49,7 +49,7 @@ const pypiInfoSchema = z
 const pypiPackageSchema = z
   .object({
     info: pypiInfoSchema,
-    releases: z.record(z.array(pypiFileSchema)).optional(),
+    releases: z.record(z.string(), z.array(pypiFileSchema)).optional(),
     urls: z.array(pypiFileSchema).optional(),
     last_serial: z.number().optional(),
   })

@@ -156,7 +156,7 @@ interface LocalRegistryFile {
 
 const permissionClasses: MarketplacePermissionClass[] = ["filesystem-read", "filesystem-write", "network", "process-execution", "git", "project-read", "project-write", "ai-access", "external-apis"];
 const packageIdPattern = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/;
-const registrySchema = z.object({ schemaVersion: z.literal(1).optional(), items: z.array(z.record(z.unknown())).optional() });
+const registrySchema = z.object({ schemaVersion: z.literal(1).optional(), items: z.array(z.record(z.string(), z.unknown())).optional() });
 const manifestPermissionSchema = z.object({ id: z.string().min(1), required: z.boolean(), detail: z.string().min(1) });
 const manifestDependencySchema = z.object({ id: z.string().min(1), version: z.string().optional() }).passthrough();
 const manifestSchema = z.object({

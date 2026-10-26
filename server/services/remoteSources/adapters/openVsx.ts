@@ -30,7 +30,7 @@ import { missingIntegrity, unknownLicense, unverifiedSignature } from "../contra
 export const OPEN_VSX_SOURCE_ID = "open-vsx" as const;
 export const OPEN_VSX_BASE_URL = "https://open-vsx.org";
 
-const ovsxFilesSchema = z.record(z.unknown()).optional();
+const ovsxFilesSchema = z.record(z.string(), z.unknown()).optional();
 
 const ovsxExtensionSchema = z
   .object({
