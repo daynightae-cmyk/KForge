@@ -121,7 +121,7 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext, onNa
     { target: "developer-tools:lint", label: "Lint", detail: "Bounded lint evidence" },
     { target: "developer-tools:logs", label: "Logs", detail: "Persisted execution logs" },
     { target: "developer-tools:diagnostics", label: "Diagnostics", detail: "Measured capability state" },
-    { target: "quality:problems", label: "Problems", detail: "Normalized scan findings" },
+    { target: "quality:problems", label: "Quality findings", detail: "Normalized scan findings" },
     { target: "quality:security", label: "Security", detail: "Scanner and tool evidence" },
     { target: "intelligence:project-graph", label: "Project Graph", detail: "Bounded local structure" },
     { target: "release:release-gate", label: "Release Gate", detail: "Independent release verdicts" },
