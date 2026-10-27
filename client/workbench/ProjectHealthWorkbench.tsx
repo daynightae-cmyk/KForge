@@ -3,6 +3,7 @@ import type { BoundedEvidenceCoverage, ProjectHealth, ProjectSummary, ReleaseDec
 import type { SurfaceProps } from "./surfaceContracts";
 import { fetchJson } from "./api";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
+import { Activity, CalendarClock, Gauge, GitBranch, HeartPulse, ShieldCheck } from "lucide-react";
 import { ProjectRequired } from "./ProjectStartActions";
 
 type PersistedHealthSummary = {
@@ -76,29 +77,33 @@ function ProjectHealthWorkbench({ project, onRefresh }: { project?: ProjectSumma
   if (!project) return <ProjectRequired detail="Project Health is project-scoped. Select a local project before running a bounded scan." />;
 
   return <section className="space-y-4" aria-label="KForge Project Health Workbench" data-health-scan-state={running ? "RUNNING" : data ? "SCANNED" : "NOT_RUN_THIS_SESSION"}>
-    <header className="flex flex-wrap items-start gap-3 rounded-lg border bg-card p-4">
-      <div className="min-w-0 flex-1">
-        <h2 className="text-sm font-semibold">Project Health Workbench</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Opening this surface reads persisted local summary evidence only; it never starts a scan. A fresh health calculation runs only after explicit execution.</p>
+    <header className="kf-hero-band kw-health-banner">
+      <div className="kw-health-banner__copy">
+        <small>LOCAL PROJECT HEALTH</small>
+        <h2>{project.name}</h2>
+        <p><span>{project.path}</span><code>{project.branch || "NO_GIT"}</code><StatusBadge value={project.trust} /></p>
       </div>
-      <StatusBadge value={data ? data.health.release.state : persisted?.releaseState || "NOT_RUN_THIS_SESSION"} />
-      <button onClick={() => void runHealthScan()} disabled={running}>{running ? "Scanning…" : "Run Project Health scan"}</button>
+      <div className="kw-health-banner__actions">
+        <StatusBadge value={data ? data.health.release.state : persisted?.releaseState || "NOT_RUN_THIS_SESSION"} />
+        <button className="kf-btn kf-btn--primary" onClick={() => void runHealthScan()} disabled={running}><HeartPulse size={14} />{running ? "Scanning…" : "Run Project Health scan"}</button>
+      </div>
     </header>
+    <p className="kw-health-note">Opening this surface reads persisted local summary evidence only; it never starts a scan. A fresh health calculation runs only after explicit execution.</p>
 
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Project health prior evidence">
-      <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Persisted health evidence</span><strong className="mt-1 block text-sm">{persisted?.scannedAt || "NEVER"}</strong><small className="text-muted-foreground">{persisted ? "persisted-project-health" : "No persisted summary"}</small></article>
-      <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Persisted health score</span><strong className="mt-1 block text-sm">{persisted?.score ?? "NOT_SCANNED"}</strong>{persisted ? <div className="mt-1"><StatusBadge value={persisted.releaseState} /></div> : null}</article>
-      <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Trust</span><div className="mt-1"><StatusBadge value={project.trust} /></div></article>
-      <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Git working changes</span><strong className="mt-1 block text-sm">{project.modifiedFiles + project.untrackedFiles}</strong></article>
+    <section className="kf-stat-grid" aria-label="Project health prior evidence">
+      <article className="kf-stat"><span className="kf-tile"><CalendarClock size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Persisted evidence</span><strong className="kf-stat__value" style={{ fontSize: 16 }}>{persisted?.scannedAt ? new Date(persisted.scannedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "NEVER"}</strong><span className="kf-stat__foot">{persisted?.scannedAt ? `persisted-project-health · ${new Date(persisted.scannedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}` : "No persisted summary"}</span></div></article>
+      <article className="kf-stat"><span className="kf-tile"><Gauge size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Persisted health score</span><strong className="kf-stat__value">{persisted?.score ?? "—"}<small>{persisted ? " / 100" : " not scanned"}</small></strong><span className="kf-stat__foot">{persisted ? <StatusBadge value={persisted.releaseState} /> : "Run a scan to calculate"}</span></div></article>
+      <article className="kf-stat"><span className="kf-tile kf-tile--green"><ShieldCheck size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Trust</span><span className="kw-health-badge"><StatusBadge value={project.trust} /></span><span className="kf-stat__foot">Execution remains permission-gated</span></div></article>
+      <article className="kf-stat"><span className="kf-tile kf-tile--amber"><GitBranch size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Git working changes</span><strong className="kf-stat__value">{project.modifiedFiles + project.untrackedFiles}<small> files</small></strong><span className="kf-stat__foot">{project.ahead} ahead · {project.behind} behind</span></div></article>
     </section>
 
     {!data ? <EmptyState title="No current-session health evidence" detail={persisted ? "A persisted summary is visible above, but it is not promoted to a fresh current-session scan. Run Project Health explicitly to refresh metrics, coverage and release evidence." : "Run Project Health scan explicitly to calculate metrics, evidence coverage, release readiness and source freshness. KForge does not manufacture a score from stale or unrelated state."} /> : <>
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Project health summary">
-        <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Health score</span><strong className="mt-1 block text-lg">{data.health.score ?? "UNKNOWN"}</strong></article>
-        <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Coverage</span><strong className="mt-1 block text-lg">{data.health.evidenceCoverage}%</strong></article>
-        <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Passed metrics</span><strong className="mt-1 block text-lg">{summary.pass}</strong></article>
-        <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Warning / failed</span><strong className="mt-1 block text-lg">{summary.warning + summary.fail}</strong></article>
-        <article className="rounded-lg border bg-card p-3"><span className="text-xs text-muted-foreground">Unknown / unavailable</span><strong className="mt-1 block text-lg">{summary.unknown}</strong></article>
+      <section className="kf-stat-grid" aria-label="Project health summary">
+        <article className="kf-stat"><span className="kf-tile"><HeartPulse size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Health score</span><strong className="kf-stat__value">{data.health.score ?? "UNKNOWN"}</strong><span className="kf-stat__foot">Bounded calculation</span></div></article>
+        <article className="kf-stat"><span className="kf-tile"><Activity size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Evidence coverage</span><strong className="kf-stat__value">{data.health.evidenceCoverage}<small>%</small></strong><span className="kf-stat__foot">Measured evidence share</span></div></article>
+        <article className="kf-stat"><span className="kf-tile kf-tile--green"><ShieldCheck size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Passed metrics</span><strong className="kf-stat__value">{summary.pass}</strong><span className="kf-stat__foot">Current scan</span></div></article>
+        <article className="kf-stat kw-stat-warn"><span className="kf-tile kf-tile--amber"><Gauge size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Warning / failed</span><strong className="kf-stat__value">{summary.warning + summary.fail}</strong><span className="kf-stat__foot">Needs review</span></div></article>
+        <article className="kf-stat"><span className="kf-tile kf-tile--blue"><GitBranch size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Unknown / unavailable</span><strong className="kf-stat__value">{summary.unknown}</strong><span className="kf-stat__foot">Never promoted to pass</span></div></article>
       </section>
 
       <section className="rounded-lg border bg-card p-4" aria-label="Project health metrics">

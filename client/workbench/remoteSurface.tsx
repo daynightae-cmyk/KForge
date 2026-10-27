@@ -123,22 +123,24 @@ function GitWorkbench({ view, project, onExecution, onRefresh }: Pick<SurfacePro
   if (!data) return <EmptyState title="Git evidence unavailable" detail={notice || "KForge could not read the selected repository."} />;
 
   return (
-    <section className="space-y-4" aria-label="KForge Git Workbench">
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
-        <div className="mr-auto min-w-0">
-          <div className="flex items-center gap-2"><GitBranch size={16} /><strong className="text-sm">{data.branch || "detached"}</strong><StatusBadge value={trusted ? "TRUSTED" : "UNTRUSTED"} /></div>
-          <p className="mt-1 max-w-3xl truncate text-xs text-muted-foreground" title={data.remoteUrl || "No remote configured"}>{data.remoteUrl || "No remote configured · local Git operations only"}</p>
-        </div>
-        <span className="rounded-md bg-muted px-2 py-1 text-[11px]">{stagedCount} staged</span>
-        <span className="rounded-md bg-muted px-2 py-1 text-[11px]">{workingCount} working</span>
-        <button className={buttonClass} onClick={() => void load()} disabled={Boolean(busy)}><RefreshCw size={13} />Refresh</button>
+    <section className="kf-stack" aria-label="KForge Git Workbench">
+      <section className="kf-stat-grid kw-git-stats" aria-label="Git repository summary">
+        <article className="kf-stat"><span className="kf-tile"><GitBranch size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Current branch</span><strong className="kf-stat__value" style={{ fontSize: 17 }}>{data.branch || "detached"}</strong><span className="kf-stat__foot"><StatusBadge value={trusted ? "TRUSTED" : "UNTRUSTED"} /> · local repository</span></div></article>
+        <article className="kf-stat"><span className="kf-tile kf-tile--blue"><Archive size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Remote</span><strong className="kf-stat__value" style={{ fontSize: 15 }}>{data.remoteUrl ? "origin" : "No remote"}</strong><span className="kf-stat__foot" title={data.remoteUrl || "No remote configured"}>{data.remoteUrl || "No remote configured · local Git operations only"}</span></div></article>
+        <article className="kf-stat"><span className="kf-tile kf-tile--amber"><FileCode2 size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Working tree</span><strong className="kf-stat__value">{data.changes.length}<small> changes</small></strong><span className="kf-stat__foot">{stagedCount} staged · {workingCount} working</span></div></article>
+        <article className="kf-stat"><span className="kf-tile kf-tile--green"><ShieldCheck size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Repository status</span><strong className="kf-stat__value" style={{ fontSize: 17 }}>{data.changes.length ? "Changes pending" : "Clean"}</strong><span className="kf-stat__foot">{project?.ahead ?? 0} ahead · {project?.behind ?? 0} behind</span></div></article>
+      </section>
+
+      <div className="kw-git-toolbar">
+        <span>Mutations are restricted to the selected local repository and always require trust plus confirmation.</span>
+        <button className="kf-btn" onClick={() => void load()} disabled={Boolean(busy)}><RefreshCw size={13} />Refresh evidence</button>
       </div>
 
       {notice && <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs" role="alert">{notice}</div>}
 
       {view === "git" && <>
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <section className="min-w-0 rounded-lg border bg-card" aria-label="Working tree changes">
+          <section className="kf-card kw-git-card" aria-label="Working tree changes">
             <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3"><FileCode2 size={15} /><h2 className="text-sm font-semibold">Working tree</h2><span className="text-xs text-muted-foreground">{data.changes.length} change{data.changes.length === 1 ? "" : "s"}</span><div className="ml-auto flex gap-2"><button className={buttonClass} disabled={!trusted || !stageable.length || Boolean(busy)} onClick={() => void mutate("stage")}><Plus size={13} />Stage selected</button><button className={buttonClass} disabled={!trusted || !unstageable.length || Boolean(busy)} onClick={() => void mutate("unstage")}><Minus size={13} />Unstage selected</button></div></div>
             {data.changes.length ? <div className="divide-y">
               {data.changes.map((change) => <label key={change.file} className="grid cursor-pointer grid-cols-[24px_72px_minmax(0,1fr)_110px] items-center gap-2 px-4 py-2 text-xs hover:bg-muted/40" data-git-file={change.file}>
@@ -150,16 +152,29 @@ function GitWorkbench({ view, project, onExecution, onRefresh }: Pick<SurfacePro
             </div> : <p className="p-5 text-sm text-muted-foreground">Working tree is clean.</p>}
           </section>
 
-          <aside className="space-y-3 rounded-lg border bg-card p-4" aria-label="Local commit composer">
-            <div className="flex items-center gap-2"><GitCommit size={15} /><h2 className="text-sm font-semibold">Commit staged changes</h2></div>
-            <p className="text-xs text-muted-foreground">Creates a local commit only. KForge never pushes from this action.</p>
-            <textarea aria-label="Git commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} rows={4} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="feat(scope): describe the verified change" />
-            <button className={`${primaryButtonClass} w-full`} disabled={!trusted || stagedCount === 0 || !commitMessage.trim() || Boolean(busy)} onClick={() => void mutate("commit")}><GitCommit size={13} />Commit staged</button>
-            {!trusted && <p className="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300"><ShieldCheck size={13} className="mt-0.5 shrink-0" />Trust the selected project before staging, unstaging, or committing.</p>}
-            <div className="rounded-md bg-muted/50 p-2"><strong className="text-[11px] uppercase tracking-wide">Staged diff</strong><pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{data.stagedDiffStat || "No staged diff."}</pre></div>
+          <aside className="kf-card kw-git-commit" aria-label="Local commit composer">
+            <div className="flex items-center gap-2 border-b px-4 py-3"><GitCommit size={15} /><h2 className="text-sm font-semibold">Commit staged changes</h2></div>
+            <div className="kw-git-commit__body">
+              <p className="text-xs text-muted-foreground">Creates a local commit only. KForge never pushes from this action.</p>
+              <textarea aria-label="Git commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} rows={4} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="feat(scope): describe the verified change" />
+              <button className={`${primaryButtonClass} w-full`} disabled={!trusted || stagedCount === 0 || !commitMessage.trim() || Boolean(busy)} onClick={() => void mutate("commit")}><GitCommit size={13} />Commit staged</button>
+              {!trusted && <p className="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300"><ShieldCheck size={13} className="mt-0.5 shrink-0" />Trust the selected project before staging, unstaging, or committing.</p>}
+              <div className="rounded-md bg-muted/50 p-2"><strong className="text-[11px] uppercase tracking-wide">Staged diff</strong><pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{data.stagedDiffStat || "No staged diff."}</pre></div>
+            </div>
           </aside>
         </div>
         <details className="rounded-lg border bg-card px-4 py-3"><summary className="cursor-pointer text-xs font-medium">Raw Git status evidence</summary><pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] text-muted-foreground">{data.status || "No status output."}</pre></details>
+
+        <div className="kw-git-lower">
+          <section className="kf-card" aria-label="Recent commits">
+            <header className="kf-card__head"><div className="kf-card__title"><span className="kf-tile"><GitCommit size={17} /></span><div><h2>Recent commits</h2><p>Latest local repository history.</p></div></div><span className="kf-chip">{data.commits.length} commits</span></header>
+            {data.commits.length ? <div className="kf-list">{data.commits.slice(0, 5).map((commit) => <div className="kf-row" key={commit.sha}><span className="kw-git-avatar" aria-hidden="true">K</span><div className="kf-row__main"><strong>{commit.subject}</strong><small><code>{commit.shortSha}</code> · {commit.committedAt ? new Date(commit.committedAt).toLocaleString() : "UNKNOWN"}</small></div></div>)}</div> : <p className="kf-card__body text-xs text-muted-foreground">No commit history is available.</p>}
+          </section>
+          <section className="kf-card" aria-label="Branches">
+            <header className="kf-card__head"><div className="kf-card__title"><span className="kf-tile kf-tile--blue"><GitBranch size={17} /></span><div><h2>Branches</h2><p>Local references in this repository.</p></div></div><span className="kf-chip">{data.branches.length}</span></header>
+            {data.branches.length ? <div className="kf-list">{data.branches.slice(0, 6).map((branch) => <div className="kf-row" key={branch}><span className="kw-git-branch-icon" aria-hidden="true"><GitBranch size={13} /></span><div className="kf-row__main"><strong>{branch}</strong><small>{branch === data.branch ? "current branch" : "local branch"}</small></div>{branch === data.branch ? <StatusBadge value="CURRENT" /> : null}</div>)}</div> : <p className="kf-card__body text-xs text-muted-foreground">No local branch evidence.</p>}
+          </section>
+        </div>
       </>}
 
       {view === "branches" && <div className="grid gap-4 lg:grid-cols-2">

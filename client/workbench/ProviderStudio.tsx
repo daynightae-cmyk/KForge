@@ -56,7 +56,7 @@ export default function ProviderStudio({ project }: { view: string; project?: Pr
   const [environmentDraft, setEnvironmentDraft] = useState<Record<string, string>>({});
   const [environmentBusy, setEnvironmentBusy] = useState("");
   const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(false);
   const [form, setForm] = useState({ name: "", baseUrl: "", apiKey: "", organization: "", timeoutMs: 30000, streaming: true, modelsEndpoint: "", chatEndpoint: "", customHeaders: "" });
   const [assign, setAssign] = useState({ model: "", mode: "PLAN", contextScope: "Repository", task: "", disclosure: false, autonomy: "SAFE IMPLEMENTATION" });
   const [compare, setCompare] = useState<string[]>([]);
@@ -262,16 +262,17 @@ export default function ProviderStudio({ project }: { view: string; project?: Pr
   return (
     <div className="kw-provider-studio" data-testid="provider-studio">
       <header className="kw-provider-studio-head">
-        <div>
-          <p>KNOuX / AI / Provider Studio</p>
-          <h2>Provider + Model Command Center</h2>
-          <small>Full-width engineering control plane. Credentials stay masked. Provider protocols are adapter-owned. Unknown stays UNKNOWN.</small>
+        <div className="kw-provider-studio-meta">
+          <span className="kw-vault-pill" title={vault?.migration.detail}>Protected vault <strong>{vault?.backend || "UNKNOWN"}</strong></span>
+          <span className="kf-chip kf-chip--violet">{providers.filter((provider) => provider.credentialState === "CONFIGURED").length} configured</span>
+          <span className="kf-chip">{models.length} models loaded</span>
+          <strong className="kw-provider-studio-title">Provider + Model Command Center</strong>
+          <span className="kw-provider-studio-note">Credentials stay masked · adapters own protocol behaviour · unknown stays UNKNOWN.</span>
         </div>
         <div className="kw-provider-studio-actions">
-          <span className="kw-vault-pill" title={vault?.migration.detail}>Vault <strong>{vault?.backend || "UNKNOWN"}</strong></span>
           <button onClick={() => setLeftOpen((open) => !open)}>{leftOpen ? "Hide providers" : "Show providers"}</button>
-          <button onClick={() => setRightOpen((open) => !open)}>{rightOpen ? "Hide inspector" : "Show inspector"}</button>
-          <button disabled={busy} onClick={() => void refresh()}>Refresh</button>
+          <button onClick={() => setRightOpen((open) => !open)}>{rightOpen ? "Hide details" : "Provider details"}</button>
+          <button className="is-primary" disabled={busy} onClick={() => void refresh()}>Refresh</button>
         </div>
       </header>
 
@@ -281,7 +282,7 @@ export default function ProviderStudio({ project }: { view: string; project?: Pr
           <aside className="kw-provider-list" aria-label="Providers">
             <div className="kw-pane-heading"><strong>PROVIDERS</strong><small>{providers.length}</small></div>
             {providers.map((providerRow) => (
-              <button key={providerRow.id} className={providerRow.id === selectedProvider ? "is-active" : ""} onClick={() => setSelectedProvider(providerRow.id)}>
+              <button key={providerRow.id} data-initial={providerRow.name.slice(0, 2).toUpperCase()} className={providerRow.id === selectedProvider ? "is-active" : ""} onClick={() => setSelectedProvider(providerRow.id)}>
                 <span><strong>{providerRow.name}</strong><StatusBadge value={providerRow.health} /></span>
                 <small>{providerRow.type} · {providerRow.authState}</small>
                 <small>{providerRow.modelsDiscovered} models · {providerRow.discoveryState}</small>

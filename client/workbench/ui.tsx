@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FolderSearch } from "lucide-react";
 import type { RecordRow, TaskRow } from "./surfaceContracts";
 
 export function StatusBadge({ value }: { value?: unknown }) {
@@ -6,8 +7,8 @@ export function StatusBadge({ value }: { value?: unknown }) {
   return <span className={`kw-badge kw-badge--${normalized.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{normalized}</span>;
 }
 
-export function EmptyState({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) {
-  return <section className="kw-empty" aria-label={title}><h2>{title}</h2><p>{detail}</p>{action}</section>;
+export function EmptyState({ title, detail, action, icon }: { title: string; detail: string; action?: ReactNode; icon?: ReactNode }) {
+  return <section className="kw-empty" aria-label={title}><span className="kw-empty__mark" aria-hidden="true">{icon || <FolderSearch size={22} />}</span><h2>{title}</h2><p>{detail}</p>{action}</section>;
 }
 
 function primitiveRows(value: RecordRow | null | undefined) {

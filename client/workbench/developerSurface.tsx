@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Terminal } from "lucide-react";
+import { LockKeyhole, Play, ScrollText, ShieldCheck, Terminal } from "lucide-react";
 import type { ProjectSummary, WorkspaceActionDescriptor, CommandResult } from "@shared/workspace";
 import type { SurfaceProps } from "./surfaceContracts";
 import { fetchJson, jsonRequest } from "./api";
@@ -14,12 +14,14 @@ function DeveloperSurface({ view, project, onExecution }: SurfaceProps) {
 
 function CommandTerminal({ project, onExecution }: { project: ProjectSummary; onExecution: SurfaceProps["onExecution"] }) {
   const [actions, setActions] = useState<WorkspaceActionDescriptor[]>([]);
-  const [message, setMessage] = useState("Loading registered commands…");
+  const [message, setMessage] = useState("");
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     void fetchJson<{ actions: WorkspaceActionDescriptor[] }>(`/api/workspace/projects/${encodeURIComponent(project.id)}/actions`)
       .then((data) => { setActions(data.actions); setMessage(""); })
-      .catch((error) => setMessage(error instanceof Error ? error.message : "Action evidence unavailable."));
+      .catch((error) => setMessage(error instanceof Error ? error.message : "Action evidence unavailable."))
+      .finally(() => setLoaded(true));
   }, [project.id]);
 
   const run = async (descriptor: WorkspaceActionDescriptor) => {
@@ -35,13 +37,27 @@ function CommandTerminal({ project, onExecution }: { project: ProjectSummary; on
     }
   };
 
-  return <section className="kw-terminal" aria-label="KForge Command Terminal">
-    <div className="kw-terminal-header"><Terminal size={18} /><div><strong>KForge Command Terminal</strong><small>Working directory · {project.path}</small></div></div>
-    <p>Only registered KForge actions are executable. There is no unrestricted shell input.</p>
-    <p>Tests, Build, Runtime, Lint and Preview have dedicated Workbenches and are not duplicated here.</p>
-    {message && <p className="kw-message" role="status">{message}</p>}
-    <div className="kw-command-table"><div className="kw-command-head"><span>Command</span><span>State</span><span>Permission</span><span>Evidence source</span><span /></div>{actions.map((descriptor) => <div key={descriptor.id}><span><strong>{descriptor.label}</strong><code>{descriptor.command || "NO_EXECUTABLE_EVIDENCE"}</code></span><StatusBadge value={descriptor.state} /><span>{descriptor.requiredPermission}</span><span>{descriptor.source}<small>{descriptor.unavailableReason}</small></span><button disabled={!descriptor.enabled} onClick={() => void run(descriptor)}>Run</button></div>)}</div>
-  </section>;
+  const executable = actions.filter((action) => action.enabled).length;
+  const gated = actions.filter((action) => action.requiresConfirmation).length;
+
+  return <div className="kf-stack" aria-label="KForge Command Terminal">
+    <section className="kf-stat-grid" aria-label="Command terminal summary">
+      <article className="kf-stat"><span className="kf-tile"><Terminal size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Registered actions</span><strong className="kf-stat__value">{loaded ? actions.length : "…"}</strong><span className="kf-stat__foot">Canonical project actions</span></div></article>
+      <article className="kf-stat"><span className="kf-tile kf-tile--green"><Play size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Executable now</span><strong className="kf-stat__value">{loaded ? executable : "…"}</strong><span className="kf-stat__foot">Eligibility checked server-side</span></div></article>
+      <article className="kf-stat"><span className="kf-tile kf-tile--amber"><LockKeyhole size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Confirmation gated</span><strong className="kf-stat__value">{loaded ? gated : "…"}</strong><span className="kf-stat__foot">Explicit confirmation required</span></div></article>
+      <article className="kf-stat"><span className="kf-tile kf-tile--blue"><ShieldCheck size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Shell access</span><strong className="kf-stat__value" style={{ fontSize: 17 }}>NONE</strong><span className="kf-stat__foot">No unrestricted shell input</span></div></article>
+    </section>
+
+    <section className="kw-terminal" aria-label="KForge registered command terminal">
+      <div className="kw-terminal-header"><span className="kw-terminal-mark"><Terminal size={19} /></span><div><strong>KForge Command Terminal</strong><small>Working directory · {project.path}</small></div><span className="kw-terminal-live"><i />LOCAL</span></div>
+      <div className="kw-terminal-notes">
+        <span><ShieldCheck size={13} />Only registered KForge actions are executable. There is no unrestricted shell input.</span>
+        <span><ScrollText size={13} />Tests, Build, Runtime, Lint and Preview have dedicated Workbenches and are not duplicated here.</span>
+      </div>
+      {message && <p className="kw-message" role="status">{message}</p>}
+      {!loaded ? <div className="kw-terminal-loading" role="status">Reading registered project actions…</div> : actions.length ? <div className="kw-command-table"><div className="kw-command-head"><span>Command</span><span>State</span><span>Permission</span><span>Evidence source</span><span /></div>{actions.map((descriptor) => <div key={descriptor.id}><span><strong>{descriptor.label}</strong><code>{descriptor.command || "NO_EXECUTABLE_EVIDENCE"}</code></span><StatusBadge value={descriptor.state} /><span>{descriptor.requiredPermission}</span><span>{descriptor.source}<small>{descriptor.unavailableReason}</small></span><button disabled={!descriptor.enabled} onClick={() => void run(descriptor)}><Play size={11} />Run</button></div>)}</div> : <div className="kw-terminal-loading">No registered command is available for this project. KForge does not create an unrestricted shell fallback.</div>}
+    </section>
+  </div>;
 }
 
 export default DeveloperSurface;

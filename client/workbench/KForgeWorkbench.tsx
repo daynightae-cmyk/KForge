@@ -1,5 +1,12 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, Bot, BrainCircuit, ChevronRight, Cloud, FolderKanban, GitBranch, RefreshCw, Rocket, Search, Settings2, ShieldCheck, SlidersHorizontal, Terminal, X } from "lucide-react";
+import {
+  Activity, Archive, ArrowLeft, Bot, Boxes, BrainCircuit, Bug, Building2, Camera, ChevronRight, CircleDot,
+  Clock3, Cloud, Code2, Download, FileSearch, FolderKanban, FolderOpen, Gauge, GitBranch, GitCommit, Github,
+  GitPullRequest, Globe2, HardDrive, HeartPulse, KeyRound, Layers, ListChecks, MonitorPlay, Network,
+  Package, PackagePlus, Pin, Play, Puzzle, Radar, RefreshCw, Rocket, ScanSearch, ScrollText, Search, Settings2,
+  ShieldCheck, SlidersHorizontal, Star, Stethoscope, Store, Tag, Tags, Terminal, TestTube2, Wifi, Workflow, Wrench,
+  X, Zap,
+} from "lucide-react";
 import type { KForgeActivity, KForgePlatformSettings, ProjectSummary, WorkspaceResponse } from "@shared/workspace";
 import { ACTIVITIES, KFORGE_ACTIVITY_IDS, ONLINE_EXPLORER_VIEWS, activityDefinition, activityLabel, defaultView, viewLabel } from "./navigation";
 import { ACTIVITY_PURPOSE, browseWorkbenchDomains, resolveWorkbenchTarget, searchWorkbenchServices, serviceDefinition } from "./serviceDirectory";
@@ -13,6 +20,10 @@ import ProjectContextExplorer from "./ProjectContextExplorer";
 import LivingMarkGate from "@/components/brand/LivingMarkGate";
 import brandSymbol from "../assets/knoux-forge-symbol.webp";
 import "./workbench.css";
+import "./rebirth.css";
+import "./rebirth-screens.css";
+import "./rebirth-graph.css";
+import "./rebirth-apps.css";
 
 const CanonicalInspector = lazy(() => import("./CanonicalInspector"));
 
@@ -28,6 +39,31 @@ const icons: Record<KForgeActivity, ReactNode> = {
   remote: <GitBranch size={20} />,
   release: <Rocket size={20} />,
   system: <Settings2 size={20} />,
+};
+
+/**
+ * Explorer glyphs are presentation-only. They mirror the canonical view label and
+ * never substitute for the label text or the service definition authority.
+ */
+const viewIcons: Record<string, ReactNode> = {
+  workspace: <FolderKanban size={15} />, health: <HeartPulse size={15} />,
+  recent: <Clock3 size={15} />, favorites: <Star size={15} />, pinned: <Pin size={15} />, archive: <Archive size={15} />,
+  "open-project": <FolderOpen size={15} />, "import-project": <Download size={15} />,
+  providers: <Cloud size={15} />, models: <Boxes size={15} />, agents: <Bot size={15} />, tasks: <ListChecks size={15} />,
+  discover: <Search size={15} />, marketplace: <Store size={15} />, extensions: <Puzzle size={15} />, tools: <Wrench size={15} />,
+  integrations: <Layers size={15} />, installed: <Package size={15} />, updates: <RefreshCw size={15} />, downloads: <Download size={15} />,
+  "remote-sources": <Globe2 size={15} />, documentation: <ScrollText size={15} />, security: <ShieldCheck size={15} />, activity: <Activity size={15} />,
+  "project-graph": <Network size={15} />, dependencies: <Workflow size={15} />, "impact-analysis": <Zap size={15} />,
+  "code-understanding": <Code2 size={15} />, "ask-kforge": <Bot size={15} />, architecture: <Building2 size={15} />,
+  sonar: <Radar size={15} />, problems: <Bug size={15} />, solutions: <Wrench size={15} />, performance: <Gauge size={15} />,
+  "technical-debt": <Layers size={15} />, snapshots: <Camera size={15} />,
+  terminal: <Terminal size={15} />, tests: <TestTube2 size={15} />, build: <Package size={15} />, runtime: <Play size={15} />,
+  lint: <ScanSearch size={15} />, logs: <ScrollText size={15} />, diagnostics: <Stethoscope size={15} />, preview: <MonitorPlay size={15} />,
+  git: <GitBranch size={15} />, branches: <GitBranch size={15} />, commits: <GitCommit size={15} />, github: <Github size={15} />,
+  "pull-requests": <GitPullRequest size={15} />, issues: <CircleDot size={15} />, actions: <Workflow size={15} />, releases: <Tag size={15} />,
+  "release-gate": <ShieldCheck size={15} />, "release-preparation": <PackagePlus size={15} />, artifacts: <Package size={15} />, versioning: <Tags size={15} />,
+  settings: <Settings2 size={15} />, trust: <ShieldCheck size={15} />, permissions: <KeyRound size={15} />, storage: <HardDrive size={15} />,
+  "online-offline": <Wifi size={15} />, "self-audit": <FileSearch size={15} />, "system-diagnostics": <Activity size={15} />,
 };
 
 async function refreshSettings(): Promise<KForgePlatformSettings> {
@@ -227,7 +263,7 @@ export default function KForgeWorkbench() {
       <div className="kw-explorer-scroll">
         <p className="kw-explorer-purpose">{ACTIVITY_PURPOSE[activity]}</p>
         <div className={activeProject ? "kw-explorer-capabilities" : ""}>
-          {groupedViews.map(([group, views]) => <section key={group}><h2>{group}</h2>{views.map((item) => <button key={item.id} title={serviceDefinition(activity, item.id)?.description} data-workbench-view={item.id} aria-current={view === item.id ? "page" : undefined} className={view === item.id ? "is-active" : ""} onClick={() => navigate(activity, item.id)}><span>{item.label}</span><ChevronRight size={12} aria-hidden="true" /></button>)}</section>)}
+          {groupedViews.map(([group, views]) => <section key={group}><h2>{group}</h2>{views.map((item) => <button key={item.id} title={serviceDefinition(activity, item.id)?.description} data-workbench-view={item.id} aria-current={view === item.id ? "page" : undefined} className={view === item.id ? "is-active" : ""} onClick={() => navigate(activity, item.id)}><span className="kw-explorer-item-icon" aria-hidden="true">{viewIcons[item.id] || <CircleDot size={15} />}</span><span>{item.label}</span><ChevronRight size={12} aria-hidden="true" /></button>)}</section>)}
         </div>
         {activeProject ? <details className="kw-explorer-project-details"><summary>Project context · {activeProject.name}</summary><ProjectContextExplorer project={activeProject} onNavigate={deepNavigate} /></details> : null}
       </div>
