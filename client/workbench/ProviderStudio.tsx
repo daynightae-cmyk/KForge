@@ -14,7 +14,7 @@ import "./providerStudio.css";
 const MODES = ["ASK", "PLAN", "IMPLEMENT", "REVIEW", "DEBUG", "TEST", "REFACTOR", "SECURITY_AUDIT", "FULL_MISSION"] as const;
 const AUTONOMY = ["CHAT ONLY", "READ ONLY", "REVIEW", "SAFE IMPLEMENTATION", "FULL PROJECT MISSION"] as const;
 
-type ProviderTab = "MODELS" | "SESSIONS" | "USAGE" | "CONFIG" | "SECURITY" | "EVENTS";
+type ProviderTab = "ENVIRONMENT" | "MODELS" | "SESSIONS" | "USAGE" | "CONFIG" | "SECURITY" | "EVENTS";
 
 interface VaultStatus {
   availability: string;
@@ -53,6 +53,8 @@ export default function ProviderStudio({ project }: { view: string; project?: Pr
   const [revealConfirm, setRevealConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [replacementKey, setReplacementKey] = useState("");
+  const [environmentDraft, setEnvironmentDraft] = useState<Record<string, string>>({});
+  const [environmentBusy, setEnvironmentBusy] = useState("");
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [form, setForm] = useState({ name: "", baseUrl: "", apiKey: "", organization: "", timeoutMs: 30000, streaming: true, modelsEndpoint: "", chatEndpoint: "", customHeaders: "" });
@@ -158,6 +160,39 @@ export default function ProviderStudio({ project }: { view: string; project?: Pr
     setReplacementKey("");
     setMessage("Credential replaced. Connection and model health remain unverified until tested again.");
     await refresh();
+  });
+
+  /**
+   * One action, two real steps: store the credential through the existing
+   * protected boundary, then ask that provider's own adapter to enumerate its
+   * models. The linked count is whatever the adapter returned — a provider that
+   * is configured but never discovered still reads NEVER_RUN here.
+   */
+  const configureAndLink = (providerId: string) => perform(`Configuring ${providerId} and linking its models…`, async () => {
+    const secret = (environmentDraft[providerId] || "").trim();
+    if (secret.length < 8) throw new Error("A credential must be at least 8 characters before it can be stored.");
+    setEnvironmentBusy(providerId);
+    try {
+      await fetchJson(`/api/workspace/ai/command-center/providers/${encodeURIComponent(providerId)}/key`, jsonRequest({ apiKey: secret }));
+      setEnvironmentDraft((current) => ({ ...current, [providerId]: "" }));
+      setSelectedProvider(providerId);
+      await refresh();
+      const discovered = await fetchJson<{ models: CanonicalModel[] }>(
+        `/api/workspace/ai/command-center/providers/${encodeURIComponent(providerId)}/discover`,
+        jsonRequest({}),
+      ).catch((error: unknown) => {
+        setMessage(`Credential stored, but model linking did not complete: ${error instanceof Error ? error.message : "the provider adapter rejected the request."}`);
+        return null;
+      });
+      if (discovered) {
+        setModels(discovered.models || []);
+        setSelectedModel(null);
+        setMessage(discovered.models?.length ? `${discovered.models.length} model(s) linked from ${providerId}.` : `${providerId} accepted the credential but returned no models.`);
+      }
+      await refresh();
+    } finally {
+      setEnvironmentBusy("");
+    }
   });
 
   const deleteKey = () => perform("Deleting protected credential…", async () => {
@@ -297,8 +332,64 @@ export default function ProviderStudio({ project }: { view: string; project?: Pr
           )}
 
           <nav className="kw-provider-tabs" aria-label="Provider tabs">
-            {(["MODELS", "SESSIONS", "USAGE", "CONFIG", "SECURITY", "EVENTS"] as ProviderTab[]).map((entry) => <button key={entry} className={tab === entry ? "is-active" : ""} onClick={() => setTab(entry)}>{entry}</button>)}
+            {(["ENVIRONMENT", "MODELS", "SESSIONS", "USAGE", "CONFIG", "SECURITY", "EVENTS"] as ProviderTab[]).map((entry) => <button key={entry} className={tab === entry ? "is-active" : ""} onClick={() => setTab(entry)}>{entry}</button>)}
           </nav>
+
+          {tab === "ENVIRONMENT" && (
+            <section className="kw-provider-section" aria-label="Provider environment and model linking">
+              <h3>Environment &amp; model linking</h3>
+              <p className="kw-security-note">
+                Each adapter reads one environment variable when no protected vault record exists. KForge shows the
+                variable <strong>name</strong> only — never a value, length, or partial. Storing a credential here writes it
+                through the same protected boundary as the Config tab, then immediately asks that provider&apos;s own adapter
+                for its models. Nothing is inferred: a provider that was never discovered stays NEVER_RUN.
+              </p>
+              <div className="kw-environment-grid">
+                {providers.map((providerRow) => (
+                  <article key={providerRow.id} className={providerRow.id === selectedProvider ? "is-selected" : ""}>
+                    <header>
+                      <div>
+                        <strong>{providerRow.name}</strong>
+                        <code>{providerRow.environmentVariable || "no environment convention for this adapter"}</code>
+                      </div>
+                      <span className="kw-row">
+                        <StatusBadge value={providerRow.credentialState} />
+                        <StatusBadge value={providerRow.discoveryState} />
+                      </span>
+                    </header>
+                    <dl className="kw-tech-dl">
+                      <div><dt>Adapter</dt><dd>{providerRow.kind}</dd></div>
+                      <div><dt>Credential source</dt><dd>{providerRow.credentialSource}</dd></div>
+                      <div><dt>Models linked</dt><dd>{providerRow.modelsDiscovered}</dd></div>
+                      <div><dt>Last verified</dt><dd>{providerRow.lastVerifiedAt || "never"}</dd></div>
+                    </dl>
+                    <label className="kw-field">
+                      Set {providerRow.environmentVariable || providerRow.name} credential
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={environmentDraft[providerRow.id] || ""}
+                        onChange={(event) => setEnvironmentDraft((current) => ({ ...current, [providerRow.id]: event.target.value }))}
+                        placeholder="Stored through the protected vault, never written to disk as plaintext"
+                      />
+                    </label>
+                    <div className="kw-row">
+                      <button
+                        className="is-primary"
+                        disabled={busy || environmentBusy === providerRow.id || (environmentDraft[providerRow.id] || "").trim().length < 8}
+                        onClick={() => void configureAndLink(providerRow.id)}
+                      >
+                        {environmentBusy === providerRow.id ? "Linking…" : "Configure & link models"}
+                      </button>
+                      <button disabled={busy || providerRow.credentialState !== "CONFIGURED" || environmentBusy === providerRow.id} onClick={() => void perform("Selecting this provider…", async () => { setSelectedProvider(providerRow.id); })}>
+                        Focus provider
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
 
           {tab === "MODELS" && (
             <section className="kw-provider-section">
