@@ -156,6 +156,15 @@ export function environmentSecret(providerId: string) {
   return value || "";
 }
 
+/**
+ * The environment variable an adapter reads when no vault record exists.
+ * Names only: this is the developer-facing convention surface, and no value,
+ * length, or suffix may ever be derived from it.
+ */
+export function environmentVariableFor(providerId: string): string | null {
+  return environmentNames[normalizeId(providerId)] || null;
+}
+
 function ephemeralStore(root: string) {
   const key = path.resolve(root);
   let store = ephemeralByRoot.get(key);

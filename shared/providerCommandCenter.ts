@@ -82,6 +82,12 @@ export interface ProviderSummary {
   authState: "CONFIGURED" | "NOT_CONFIGURED";
   credentialState: "CONFIGURED" | "NOT_CONFIGURED";
   credentialSource: "os-vault" | "ephemeral-memory" | "server-environment" | "none";
+  /**
+   * The process environment variable this adapter reads when no vault record
+   * exists, or null when the adapter has no environment convention. Only the
+   * name is ever exposed — never a value, length, or partial.
+   */
+  environmentVariable: string | null;
   modelsDiscovered: number;
   favoriteModel: string | null;
   health: "HEALTHY" | "DEGRADED" | "UNREACHABLE" | "NOT_EVALUATED" | "NOT_CONFIGURED";
