@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { FolderKanban } from "lucide-react";
 import { activityLabel, viewLabel } from "./navigation";
 import { EvidenceRows, StatusBadge } from "./ui";
 import type { CanonicalInspectorProps, RecordRow } from "./surfaceContracts";
@@ -76,7 +77,25 @@ export default function CanonicalInspector(props: CanonicalInspectorProps) {
         </div>
         <h2>Project context</h2>
         {project ? (
-          <EvidenceRows value={project as unknown as RecordRow} />
+          <>
+            <div className="kw-inspector-project">
+              <span className="kw-inspector-project__mark" aria-hidden="true"><FolderKanban size={17} /></span>
+              <div><strong>{project.name}</strong><small title={project.path}>{project.path}</small></div>
+              <StatusBadge value={project.trust} />
+            </div>
+            <dl className="kw-inspector-facts">
+              <div><dt>Type</dt><dd>{project.projectType || "UNKNOWN"}</dd></div>
+              <div><dt>Branch</dt><dd>{project.branch || "NO_GIT"}</dd></div>
+              <div><dt>Health</dt><dd>{project.healthScore ?? "NOT_SCANNED"}</dd></div>
+              <div><dt>Last scan</dt><dd>{project.lastScan ? new Date(project.lastScan).toLocaleString() : "NEVER"}</dd></div>
+              <div><dt>Changes</dt><dd>{project.modifiedFiles + project.untrackedFiles} working</dd></div>
+              <div><dt>Activity</dt><dd>{project.lastActivity ? new Date(project.lastActivity).toLocaleString() : "UNKNOWN"}</dd></div>
+            </dl>
+            <details className="kw-inspector-advanced">
+              <summary>Advanced project evidence</summary>
+              <EvidenceRows value={project as unknown as RecordRow} />
+            </details>
+          </>
         ) : (
           <p className="kw-message">No project selected. Online compatibility remains NOT_EVALUATED.</p>
         )}

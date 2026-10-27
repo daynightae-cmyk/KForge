@@ -21,27 +21,36 @@
 }
 
 .kw-service-card__header {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: start;
+  gap: 3px 9px;
 }
 
 .kw-service-card__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  grid-row: 1 / span 2;
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border: 1px solid color-mix(in srgb, var(--kw-service-card-primary) 26%, transparent);
-  border-radius: 8px;
+  border-radius: 9px;
   background: color-mix(in srgb, var(--kw-service-card-primary) 12%, transparent);
   color: var(--kw-service-card-primary);
 }
 
 .kw-service-card__identity {
+  grid-column: 2;
   min-width: 0;
-  flex: 1 1 auto;
+}
+
+.kw-service-card__state {
+  display: flex;
+  grid-column: 2;
+  flex: 0 0 auto;
+  align-items: center;
 }
 
 .kw-service-card__title {

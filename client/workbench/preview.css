@@ -463,3 +463,150 @@
 .light .kw-preview-evidence-list > div { border-bottom-color: rgba(88, 52, 160, .09); }
 .kw-preview-history li { border-color: var(--kw-glass-border, var(--kw-border)); border-radius: 11px; }
 .light .kw-preview-history li { border-color: rgba(88, 52, 160, .1); background: rgba(255, 255, 255, .78); }
+
+/* Live runtime status strip. It is a read-out of values the runtime service
+ * already returns — never a decoration that implies health. */
+.kw-preview-livebar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  margin-block: 2px; padding: 9px 12px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: var(--kw-radius-card, 14px);
+  background: var(--kw-glass-3, var(--kw-panel));
+  box-shadow: var(--kw-shadow-1, none);
+  backdrop-filter: blur(10px) saturate(128%);
+}
+.light .kw-preview-livebar {
+  border-color: rgba(255, 255, 255, .92);
+  background: linear-gradient(100deg, rgba(233, 223, 252, .78), rgba(255, 255, 255, .82) 46%, rgba(248, 244, 255, .7));
+  box-shadow: inset 0 1px 0 #fff, 0 16px 32px -28px rgba(56, 32, 116, .5);
+}
+.kw-preview-livebar__item { display: inline-flex; align-items: center; gap: 5px; color: var(--kw-muted); font-size: 10.5px; letter-spacing: .04em; }
+.kw-preview-livebar__item strong { color: var(--kw-text); font: 650 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+.light .kw-preview-livebar__item strong { color: #241a3d; }
+.kw-preview-livebar__item--wide { flex: 1 1 320px; min-width: 0; }
+
+/* Connected services rail: real destinations, reached through the shell. */
+.kw-preview-services {
+  display: grid; gap: 8px; padding: 12px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: var(--kw-radius-panel, 20px);
+  background: var(--kw-glass-2, var(--kw-panel));
+  box-shadow: var(--kw-shadow-1, none);
+  backdrop-filter: blur(10px) saturate(128%);
+}
+.light .kw-preview-services {
+  border-color: rgba(255, 255, 255, .92);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .9), rgba(248, 244, 255, .6));
+  box-shadow: inset 0 1px 0 #fff, 0 18px 36px -30px rgba(56, 32, 116, .5);
+}
+.kw-preview-services h2 { margin: 0; font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 62%, var(--kw-muted)); }
+.light .kw-preview-services h2 { color: #7a45e8; }
+.kw-preview-services p { margin: 0; color: var(--kw-muted); font-size: 11px; line-height: 1.5; }
+.kw-preview-services__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 7px; }
+.kw-preview-services__grid button {
+  display: grid; gap: 2px; text-align: left; padding: 9px 11px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--kw-panel) 72%, transparent);
+  transition: border-color var(--kw-move-fast, 130ms) ease, background var(--kw-move-fast, 130ms) ease, transform var(--kw-move-fast, 130ms) ease;
+}
+.light .kw-preview-services__grid button { border-color: rgba(88, 52, 160, .12); background: rgba(255, 255, 255, .82); box-shadow: inset 0 1px 0 #fff; }
+.kw-preview-services__grid button:hover { border-color: var(--kw-glass-border-strong, var(--kw-primary)); background: color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 10%, transparent); transform: translateY(-1px); }
+.light .kw-preview-services__grid button:hover { border-color: rgba(122, 61, 240, .34); background: rgba(240, 232, 253, .9); }
+.kw-preview-services__grid strong { font-size: 11.5px; font-weight: 650; }
+.kw-preview-services__grid span { color: var(--kw-muted); font-size: 10px; line-height: 1.4; }
+
+/* ---- Live runtime bar: every value is read from the canonical Preview status
+ * payload, nothing is composed for effect. ---- */
+.kw-preview-livebar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 12px;
+  background: var(--kw-glass-2, var(--kw-panel-2));
+  font-size: 10px; letter-spacing: .04em; color: var(--kw-muted);
+  font-variant-numeric: tabular-nums;
+}
+.light .kw-preview-livebar {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .94), rgba(246, 241, 254, .72));
+  box-shadow: inset 0 1px 0 #fff;
+}
+.kw-preview-livebar__item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.kw-preview-livebar__item strong {
+  color: var(--kw-text); font-weight: 650;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px;
+}
+.light .kw-preview-livebar__item strong { color: #2c1d52; }
+.kw-preview-livebar__item--wide { flex: 1 1 240px; min-width: 0; }
+.kw-preview-livebar__item--wide strong { overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- Connected services rail ---- */
+.kw-preview-services {
+  display: grid; gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 14px;
+  background: var(--kw-glass-2, var(--kw-panel));
+}
+.light .kw-preview-services {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .95), rgba(247, 242, 255, .7));
+  box-shadow: inset 0 1px 0 #fff, 0 18px 36px -30px rgba(56, 32, 116, .45);
+}
+.kw-preview-services h2 { margin: 0; font-size: 13px; letter-spacing: -.015em; }
+.kw-preview-services p { margin: 0; color: var(--kw-muted); font-size: 10.5px; line-height: 1.5; }
+.light .kw-preview-services p { color: #5c5378; }
+.kw-preview-services__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 6px; }
+.kw-preview-services__grid button {
+  display: grid; gap: 1px; padding: 8px 10px; text-align: left;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 10px;
+  background: var(--kw-glass-3, transparent);
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+.light .kw-preview-services__grid button { border-color: rgba(88, 52, 160, .12); background: rgba(255, 255, 255, .82); }
+.kw-preview-services__grid button:hover {
+  transform: translateY(-1px);
+  border-color: var(--kw-glass-border-strong, var(--kw-primary));
+}
+.light .kw-preview-services__grid button:hover { border-color: rgba(122, 61, 240, .34); background: #fff; }
+.kw-preview-services__grid strong { font-size: 11.5px; color: var(--kw-text); }
+.light .kw-preview-services__grid strong { color: #241a3d; }
+.kw-preview-services__grid span { color: var(--kw-muted); font-size: 9.5px; line-height: 1.4; }
+.light .kw-preview-services__grid span { color: #6a5f86; }
+
+/* ---- Studio sections: an index over panels that already exist. ---- */
+.kw-preview-sections {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 14px;
+  background: var(--kw-glass-2, var(--kw-panel-2));
+}
+.light .kw-preview-sections {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .94), rgba(246, 241, 254, .7));
+  box-shadow: inset 0 1px 0 #fff;
+}
+.kw-preview-sections button {
+  display: grid; gap: 1px; flex: 1 1 130px; min-width: 0;
+  padding: 7px 11px; text-align: left;
+  border: 1px solid transparent; border-radius: 10px;
+  background: transparent; color: var(--kw-muted);
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.kw-preview-sections button strong { font-size: 11.5px; font-weight: 650; }
+.kw-preview-sections button span { font-size: 9px; opacity: .82; }
+.kw-preview-sections button:hover { border-color: var(--kw-glass-border, var(--kw-border)); background: var(--kw-glass-3, transparent); color: var(--kw-text); }
+.kw-preview-sections button[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 44%, transparent);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--kw-brand-lift, #a487ff) 26%, transparent), color-mix(in srgb, var(--kw-brand-deep, #4c1cb4) 14%, transparent));
+  color: var(--kw-text);
+}
+.light .kw-preview-sections button[aria-selected="true"] {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(150deg, #ffffff, rgba(238, 229, 253, .9));
+  box-shadow: inset 0 1px 0 #fff, 0 12px 24px -20px rgba(74, 40, 158, .6);
+}
+.light .kw-preview-sections button[aria-selected="true"] strong { color: #4c1cb4; }

@@ -1,7 +1,7 @@
 import "./preview.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ArrowLeft, ArrowRight, Clipboard, ExternalLink, Expand, Home, Monitor, Pause, Play, RefreshCcw, RotateCw, Search, ShieldCheck, Smartphone, Square, Tablet, TerminalSquare, Trash2, TriangleAlert } from "lucide-react";
-import type { CommandResult, ProjectSummary, WorkspaceActionDescriptor } from "@shared/workspace";
+import type { CommandResult, KForgeActivity, ProjectSummary, WorkspaceActionDescriptor } from "@shared/workspace";
 import type { SurfaceProps, RecordRow } from "./surfaceContracts";
 import { fetchJson, jsonRequest } from "./api";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
@@ -61,10 +61,11 @@ const VIEWPORTS: Record<ViewportId, { label: string; width?: number; height?: nu
   mobile: { label: "Mobile · 390×844", width: 390, height: 844, icon: Smartphone },
 };
 
-function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
+function PreviewStudioWorkbench({ project, onExecution, onInspectorContext, onNavigate }: {
   project: ProjectSummary;
   onExecution: SurfaceProps["onExecution"];
   onInspectorContext?: SurfaceProps["onInspectorContext"];
+  onNavigate?: SurfaceProps["onNavigate"];
 }) {
   const [data, setData] = useState<PreviewStatus | null>(null);
   const [capability, setCapability] = useState<PreviewCapability | null>(null);
@@ -92,6 +93,52 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
   const [inspection, setInspection] = useState<PreviewInspection | null>(null);
   const [inspectionBusy, setInspectionBusy] = useState(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // A live clock only while a runtime is actually owned. Idle or stopped
+  // previews do not get a ticking timer that re-renders the studio for nothing.
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  const runtimeLive = data?.state === "running" || data?.state === "starting";
+  useEffect(() => {
+    if (!runtimeLive) return undefined;
+    setClockNow(Date.now());
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [runtimeLive]);
+  const uptimeLabel = useMemo(() => {
+    if (!runtimeLive || !data?.startedAt) return "NOT_RUNNING";
+    const started = Date.parse(data.startedAt);
+    if (!Number.isFinite(started)) return "UNKNOWN";
+    const seconds = Math.max(0, Math.floor((clockNow - started) / 1000));
+    const parts = [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60];
+    return `${parts[0]}h ${String(parts[1]).padStart(2, "0")}m ${String(parts[2]).padStart(2, "0")}s`;
+  }, [clockNow, data?.startedAt, runtimeLive]);
+  /** Sections are an index over panels that already exist — each one is a real
+   *  DockTab, so the studio gains organisation without a second copy of any
+   *  evidence view. */
+  const [studioSection, setStudioSection] = useState("browser");
+  const studioSections: Array<{ id: string; label: string; detail: string; dockTab?: DockTab }> = [
+    { id: "browser", label: "Browser", detail: "Rendered application frame" },
+    { id: "console", label: "Console", detail: "Process stdout and stderr" },
+    { id: "inspection", label: "Inspection", detail: "Delivered HTML findings", dockTab: "qa" },
+    { id: "routes", label: "Routes", detail: "Observed local routes", dockTab: "routes" },
+    { id: "health", label: "Health", detail: "Measured probe timeline", dockTab: "health" },
+    { id: "evidence", label: "Evidence", detail: "Session evidence record", dockTab: "session" },
+  ];
+  /** Every destination here is a real workbench view reached through the shell's
+   *  own navigation contract. Nothing is a decorative shortcut. */
+  const connectedServices = useMemo(() => [
+    { target: "developer-tools:terminal", label: "Terminal", detail: "Registered project commands" },
+    { target: "developer-tools:runtime", label: "Runtime", detail: "Process ownership and health" },
+    { target: "developer-tools:tests", label: "Tests", detail: "Explicit local test authority" },
+    { target: "developer-tools:build", label: "Build", detail: "Discovery and bounded build" },
+    { target: "developer-tools:lint", label: "Lint", detail: "Bounded lint evidence" },
+    { target: "developer-tools:logs", label: "Logs", detail: "Persisted execution logs" },
+    { target: "developer-tools:diagnostics", label: "Diagnostics", detail: "Measured capability state" },
+    { target: "quality:problems", label: "Quality findings", detail: "Normalized scan findings" },
+    { target: "quality:security", label: "Security", detail: "Scanner and tool evidence" },
+    { target: "intelligence:project-graph", label: "Project Graph", detail: "Bounded local structure" },
+    { target: "release:release-gate", label: "Release Gate", detail: "Independent release verdicts" },
+    { target: "system:storage", label: "Storage", detail: "Cache and workspace footprint" },
+  ], []);
 
   const previewEndpoint = `/api/workspace/projects/${encodeURIComponent(project.id)}/preview`;
   const actionsEndpoint = `/api/workspace/projects/${encodeURIComponent(project.id)}/actions`;
@@ -328,6 +375,19 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
   const stageHeight = fixedViewport && viewportHeight ? Math.round(viewportHeight * fitScale) : undefined;
 
   return <section className="flex min-h-0 flex-col gap-3" aria-label="KForge Preview Workbench" data-preview-state={data.state} data-preview-studio="3" data-preview-experience="5">
+    <nav className="kw-preview-services" aria-label="Connected KForge services">
+      <h2>Connected services</h2>
+      <p>Each card navigates through the shell's own contract. Nothing here opens a parallel surface or re-implements a capability.</p>
+      <div className="kw-preview-services__grid">
+        {connectedServices.map((service) => (
+          <button key={service.target} onClick={() => { const [activity, view] = service.target.split(":"); onNavigate?.(activity as KForgeActivity, view); }}>
+            <strong>{service.label}</strong>
+            <span>{service.detail}</span>
+          </button>
+        ))}
+      </div>
+    </nav>
+
     <TopologyLab project={project} onExecution={onExecution} onInspectorContext={onInspectorContext} />
     <header className="rounded-xl border bg-card shadow-sm">
       <div className="flex min-h-10 items-center gap-2 border-b px-3 py-2">
@@ -385,6 +445,39 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext }: {
       <span className="text-[11px] text-muted-foreground">{fixedViewport && viewportWidth && viewportHeight ? `${viewportWidth}×${viewportHeight} · ${Math.round(fitScale * 100)}% rendered` : "Fluid canvas"}</span>
       <button className="ml-auto" aria-label="Fullscreen Preview canvas" onClick={() => void fullscreen()}><Expand size={14} /> Fullscreen</button>
       <button aria-label="Inspect delivered Preview document" disabled={!liveFrame || inspectionBusy} onClick={() => void runInspection()}><ShieldCheck size={14} /> {inspectionBusy ? "Inspecting…" : "Inspect HTML"}</button>
+    </div>
+
+    <div className="kw-preview-livebar" aria-label="Live runtime status" role="group">
+      <span className="kw-preview-livebar__item"><StatusBadge value={data.state.toUpperCase()} /> <strong>{data.url || "no loopback URL yet"}</strong></span>
+      <span className="kw-preview-livebar__item"><Activity size={12} /> Uptime <strong>{uptimeLabel}</strong></span>
+      <span className="kw-preview-livebar__item">Port <strong>{data.port ?? "UNKNOWN"}</strong></span>
+      <span className="kw-preview-livebar__item">PID <strong>{data.pid ?? "UNKNOWN"}</strong></span>
+      <span className="kw-preview-livebar__item">Latency <strong>{data.health?.latencyMs === undefined || data.health?.latencyMs === null ? "UNKNOWN" : `${data.health.latencyMs}ms`}</strong></span>
+      <span className="kw-preview-livebar__item">HTTP <strong>{data.health?.status ?? "UNKNOWN"}</strong></span>
+      <span className="kw-preview-livebar__item">Checks <strong>{data.healthHistory.length}</strong></span>
+      <span className="kw-preview-livebar__item">Logs <strong>{data.logs.length}</strong></span>
+      <span className="kw-preview-livebar__item">Routes <strong>{data.routes.length}</strong></span>
+      <span className="kw-preview-livebar__item">Embed <strong>{data.embedding.state}</strong></span>
+      <span className="kw-preview-livebar__item">Browser console <strong>{data.telemetry.browserConsoleCaptured === true ? "CAPTURED" : "NOT_CAPTURED"}</strong></span>
+      <span className="kw-preview-livebar__item kw-preview-livebar__item--wide">Command <strong>{data.command || "not captured"}</strong></span>
+    </div>
+
+    <div className="kw-preview-sections" role="tablist" aria-label="Preview studio sections">
+      {studioSections.map((entry) => (
+        <button
+          key={entry.id}
+          role="tab"
+          aria-selected={studioSection === entry.id}
+          onClick={() => {
+            setStudioSection(entry.id);
+            if (entry.dockTab) { setDockTab(entry.dockTab); setDockOpen(true); }
+            else setDockOpen(false);
+          }}
+        >
+          <strong>{entry.label}</strong>
+          <span>{entry.detail}</span>
+        </button>
+      ))}
     </div>
 
     <div className="grid min-h-[560px] flex-1 gap-3 xl:grid-rows-[minmax(420px,1fr)_auto]">

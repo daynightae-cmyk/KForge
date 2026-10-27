@@ -9,7 +9,7 @@ import type {
   ProviderSummary,
   ProviderType,
 } from "../../shared/providerCommandCenter";
-import { createCredentialVault, credentialDisplay, maskWithSuffix, migrateLegacyPlaintextSecrets } from "./credentialVault";
+import { createCredentialVault, credentialDisplay, environmentVariableFor, maskWithSuffix, migrateLegacyPlaintextSecrets } from "./credentialVault";
 import { isProviderRefreshEnabled } from "./localPlatform";
 import { getAdapter, type AdapterContext } from "./providerAdapters";
 
@@ -170,6 +170,7 @@ export async function listProviderSummaries(root: string): Promise<ProviderSumma
       authState: display.configured || noCredentialRequired ? "CONFIGURED" : "NOT_CONFIGURED",
       credentialState: display.configured ? "CONFIGURED" : "NOT_CONFIGURED",
       credentialSource: vaultSourceLabel(display.source),
+      environmentVariable: environmentVariableFor(builtin.id),
       modelsDiscovered: config?.modelsDiscovered ?? 0,
       favoriteModel: config?.favoriteModel ?? null,
       health: config?.health ?? (display.configured || noCredentialRequired ? "NOT_EVALUATED" : "NOT_CONFIGURED"),
@@ -193,6 +194,7 @@ export async function listProviderSummaries(root: string): Promise<ProviderSumma
       authState: display.configured ? "CONFIGURED" : "NOT_CONFIGURED",
       credentialState: display.configured ? "CONFIGURED" : "NOT_CONFIGURED",
       credentialSource: vaultSourceLabel(display.source),
+      environmentVariable: environmentVariableFor(config.id),
       modelsDiscovered: config.modelsDiscovered,
       favoriteModel: config.favoriteModel,
       health: config.health,
