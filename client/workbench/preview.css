@@ -575,3 +575,38 @@
 .light .kw-preview-services__grid strong { color: #241a3d; }
 .kw-preview-services__grid span { color: var(--kw-muted); font-size: 9.5px; line-height: 1.4; }
 .light .kw-preview-services__grid span { color: #6a5f86; }
+
+/* ---- Studio sections: an index over panels that already exist. ---- */
+.kw-preview-sections {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--kw-glass-border, var(--kw-border));
+  border-radius: 14px;
+  background: var(--kw-glass-2, var(--kw-panel-2));
+}
+.light .kw-preview-sections {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(168deg, rgba(255, 255, 255, .94), rgba(246, 241, 254, .7));
+  box-shadow: inset 0 1px 0 #fff;
+}
+.kw-preview-sections button {
+  display: grid; gap: 1px; flex: 1 1 130px; min-width: 0;
+  padding: 7px 11px; text-align: left;
+  border: 1px solid transparent; border-radius: 10px;
+  background: transparent; color: var(--kw-muted);
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.kw-preview-sections button strong { font-size: 11.5px; font-weight: 650; }
+.kw-preview-sections button span { font-size: 9px; opacity: .82; }
+.kw-preview-sections button:hover { border-color: var(--kw-glass-border, var(--kw-border)); background: var(--kw-glass-3, transparent); color: var(--kw-text); }
+.kw-preview-sections button[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 44%, transparent);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--kw-brand-lift, #a487ff) 26%, transparent), color-mix(in srgb, var(--kw-brand-deep, #4c1cb4) 14%, transparent));
+  color: var(--kw-text);
+}
+.light .kw-preview-sections button[aria-selected="true"] {
+  border-color: rgba(255, 255, 255, .9);
+  background: linear-gradient(150deg, #ffffff, rgba(238, 229, 253, .9));
+  box-shadow: inset 0 1px 0 #fff, 0 12px 24px -20px rgba(74, 40, 158, .6);
+}
+.light .kw-preview-sections button[aria-selected="true"] strong { color: #4c1cb4; }

@@ -111,6 +111,18 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext, onNa
     const parts = [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60];
     return `${parts[0]}h ${String(parts[1]).padStart(2, "0")}m ${String(parts[2]).padStart(2, "0")}s`;
   }, [clockNow, data?.startedAt, runtimeLive]);
+  /** Sections are an index over panels that already exist — each one is a real
+   *  DockTab, so the studio gains organisation without a second copy of any
+   *  evidence view. */
+  const [studioSection, setStudioSection] = useState("browser");
+  const studioSections: Array<{ id: string; label: string; detail: string; dockTab?: DockTab }> = [
+    { id: "browser", label: "Browser", detail: "Rendered application frame" },
+    { id: "console", label: "Console", detail: "Process stdout and stderr" },
+    { id: "inspection", label: "Inspection", detail: "Delivered HTML findings", dockTab: "qa" },
+    { id: "routes", label: "Routes", detail: "Observed local routes", dockTab: "routes" },
+    { id: "health", label: "Health", detail: "Measured probe timeline", dockTab: "health" },
+    { id: "evidence", label: "Evidence", detail: "Session evidence record", dockTab: "session" },
+  ];
   /** Every destination here is a real workbench view reached through the shell's
    *  own navigation contract. Nothing is a decorative shortcut. */
   const connectedServices = useMemo(() => [
@@ -448,6 +460,24 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext, onNa
       <span className="kw-preview-livebar__item">Embed <strong>{data.embedding.state}</strong></span>
       <span className="kw-preview-livebar__item">Browser console <strong>{data.telemetry.browserConsoleCaptured === true ? "CAPTURED" : "NOT_CAPTURED"}</strong></span>
       <span className="kw-preview-livebar__item kw-preview-livebar__item--wide">Command <strong>{data.command || "not captured"}</strong></span>
+    </div>
+
+    <div className="kw-preview-sections" role="tablist" aria-label="Preview studio sections">
+      {studioSections.map((entry) => (
+        <button
+          key={entry.id}
+          role="tab"
+          aria-selected={studioSection === entry.id}
+          onClick={() => {
+            setStudioSection(entry.id);
+            if (entry.dockTab) { setDockTab(entry.dockTab); setDockOpen(true); }
+            else setDockOpen(false);
+          }}
+        >
+          <strong>{entry.label}</strong>
+          <span>{entry.detail}</span>
+        </button>
+      ))}
     </div>
 
     <div className="grid min-h-[560px] flex-1 gap-3 xl:grid-rows-[minmax(420px,1fr)_auto]">
