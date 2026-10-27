@@ -44,7 +44,7 @@ export function WorkbenchSurface(props: SurfaceProps) {
   else if (props.activity === "developer-tools" && props.view === "build" && props.project) surface = <DeveloperBuildWorkbench project={props.project} onExecution={props.onExecution} />;
   else if (props.activity === "developer-tools" && props.view === "runtime" && props.project) surface = <DeveloperRuntimeWorkbench project={props.project} onExecution={props.onExecution} />;
   else if (props.activity === "developer-tools" && props.view === "lint" && props.project) surface = <DeveloperLintWorkbench project={props.project} onExecution={props.onExecution} />;
-  else if (props.activity === "developer-tools" && props.view === "preview" && props.project) surface = <PreviewStudioWorkbench project={props.project} onExecution={props.onExecution} onInspectorContext={props.onInspectorContext} />;
+  else if (props.activity === "developer-tools" && props.view === "preview" && props.project) surface = <PreviewStudioWorkbench project={props.project} onExecution={props.onExecution} onInspectorContext={props.onInspectorContext} onNavigate={props.onNavigate} />;
   else if (props.activity === "developer-tools" && props.view === "logs") surface = <DeveloperExecutionLedger project={props.project} onExecution={props.onExecution} />;
   else if (props.activity === "developer-tools" && props.view === "diagnostics") surface = <DeveloperObservabilityWorkbench {...props} />;
   else if (props.activity === "developer-tools") surface = <DeveloperSurface {...props} />;
