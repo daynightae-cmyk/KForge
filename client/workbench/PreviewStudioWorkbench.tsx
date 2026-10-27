@@ -364,7 +364,7 @@ function PreviewStudioWorkbench({ project, onExecution, onInspectorContext, onNa
 
   return <section className="flex min-h-0 flex-col gap-3" aria-label="KForge Preview Workbench" data-preview-state={data.state} data-preview-studio="3" data-preview-experience="5">
     <nav className="kw-preview-services" aria-label="Connected KForge services">
-      <h3>Connected services</h3>
+      <h2>Connected services</h2>
       <p>Each card navigates through the shell's own contract. Nothing here opens a parallel surface or re-implements a capability.</p>
       <div className="kw-preview-services__grid">
         {connectedServices.map((service) => (
