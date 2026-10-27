@@ -42,7 +42,7 @@ describe("credential vault environment conventions", () => {
   });
 
   it("keeps an ephemeral credential behind a masked display rather than plaintext", async () => {
-    const vault = createCredentialVault(root, { platform: "posix" });
+    const vault = createCredentialVault(root, { platform: "linux" });
     await vault.set("openai", "sk-local-development-value-1234");
     const display = await credentialDisplay(root, "openai");
     expect(display.configured).toBe(true);
