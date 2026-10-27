@@ -1,0 +1,1 @@
+{"$schema":"https://openapi.vercel.sh/vercel.json","framework":null,"rewrites":[{"source":"/health","destination":"/api/index"},{"source":"/auth/github/callback","destination":"/api/index"},{"source":"/github/setup","destination":"/api/index"},{"source":"/api/auth/github/:path*","destination":"/api/index"},{"source":"/api/github/:path*","destination":"/api/index"}]}

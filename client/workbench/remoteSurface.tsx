@@ -3,6 +3,7 @@ import { FileCode2, GitBranch, GitCommit, RefreshCw, ShieldCheck, Tag, Archive, 
 import type { SurfaceProps } from "./surfaceContracts";
 import { EmptyState, StatusBadge } from "./ui";
 import GitHubRemoteWorkbench from "./GitHubRemoteWorkbench";
+import GitHubConnectPanel from "./GitHubConnectPanel";
 import { fetchJson, jsonRequest } from "./api";
 import { ProjectRequired } from "./ProjectStartActions";
 
@@ -48,9 +49,15 @@ const buttonClass = "inline-flex items-center justify-center gap-1.5 rounded-md 
 const primaryButtonClass = `${buttonClass} border-primary bg-primary text-primary-foreground hover:bg-primary/90`;
 
 function RemoteSurface({ view, project, onExecution, onRefresh }: SurfaceProps) {
-  if (!project) return <ProjectRequired detail="Git and GitHub evidence requires project context." />;
+  if (view === "github") return <div className="space-y-3">
+    <GitHubConnectPanel />
+    {project
+      ? <GitHubRemoteWorkbench view={view} project={project} onExecution={onExecution} />
+      : <ProjectRequired detail="Select a local project to inspect GitHub remote evidence. Account sign-in does not require a project." />}
+  </div>;
+  if (!project) return <ProjectRequired detail="Git evidence requires a project. GitHub sign-in is available under Remote / Git → GitHub." />;
   if (["git", "branches", "commits"].includes(view)) return <GitWorkbench view={view} project={project} onExecution={onExecution} onRefresh={onRefresh} />;
-  if (["github", "pull-requests", "issues", "actions", "releases"].includes(view)) return <GitHubRemoteWorkbench view={view} project={project} onExecution={onExecution} />;
+  if (["pull-requests", "issues", "actions", "releases"].includes(view)) return <GitHubRemoteWorkbench view={view} project={project} onExecution={onExecution} />;
   return <EmptyState title="Unknown Remote / Git view" detail={`No verified Remote / Git surface is registered for '${view}'.`} />;
 }
 

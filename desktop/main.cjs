@@ -1,11 +1,12 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, session } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, session, safeStorage } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
 const { isTrustedKForgeOrigin, toSafeExternalHttpUrl } = require("./trustOrigin.cjs");
+const { createGitHubConnect } = require("./githubConnect.cjs");
 
 const PRODUCT_NAME = "KNOuX Forge";
-const DESKTOP_CHANNELS = new Set(["kforge:runtime"]);
+const DESKTOP_CHANNELS = new Set(["kforge:runtime", "kforge:github-start", "kforge:github-status", "kforge:github-disconnect", "kforge:github-installations", "kforge:github-repositories"]);
 const isDevelopment = !app.isPackaged;
 // Production resources are intentionally kept inside app.asar so the bundled
 // server can resolve its production Node dependencies without relying on a
@@ -16,6 +17,12 @@ const userDataRoot = path.join(localAppData, PRODUCT_NAME);
 const workspaceRoot = path.join(userDataRoot, "workspace");
 const logsRoot = path.join(userDataRoot, "logs");
 const logFile = path.join(logsRoot, "desktop.log");
+const githubConnect = createGitHubConnect({
+  safeStorage,
+  userDataRoot,
+  workspaceRoot,
+  external: (url) => shell.openExternal(url),
+});
 
 let mainWindow = null;
 let productionServer = null;
@@ -209,6 +216,22 @@ if (!app.requestSingleInstanceLock()) {
     if (mainWindow || startupError) return;
     void startApplication();
   });
+
+  const githubHandlers = [
+    ["kforge:github-start", () => githubConnect.start()],
+    ["kforge:github-status", () => githubConnect.status()],
+    ["kforge:github-disconnect", () => githubConnect.disconnect()],
+    ["kforge:github-installations", () => githubConnect.installations()],
+    ["kforge:github-repositories", (installationId) => githubConnect.repositories(installationId)],
+  ];
+  for (const [channel, action] of githubHandlers) {
+    ipcMain.handle(channel, (event, installationId) => {
+      if (!DESKTOP_CHANNELS.has(event.channel) || !productionServer) throw new Error("Desktop IPC is not available.");
+      const senderUrl = event.senderFrame && typeof event.senderFrame.url === "string" ? event.senderFrame.url : "";
+      if (!isTrustedKForgeOrigin(senderUrl, productionServer.url)) throw new Error("Untrusted desktop sender.");
+      return action(installationId);
+    });
+  }
 
   ipcMain.handle("kforge:runtime", (event) => {
     if (!DESKTOP_CHANNELS.has(event.channel)) throw new Error("Desktop IPC channel is not allowed.");

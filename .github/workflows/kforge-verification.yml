@@ -34,6 +34,9 @@ jobs:
           node-version: '24'
           cache: npm
 
+      - name: Verify GitHub Connect security contracts
+        run: npm run test:github-connect
+
       - name: Run authoritative verification gate
         env:
           KFORGE_TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -78,6 +81,9 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Verify GitHub Connect security contracts
+        run: npm run test:github-connect
 
       - name: Validate production types
         run: npm run typecheck
