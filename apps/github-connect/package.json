@@ -1,0 +1,1 @@
+{"name":"@knoux/github-connect","private":true,"version":"0.1.0","type":"module","engines":{"node":">=22"},"scripts":{"test":"node --test test/*.test.mjs","check":"node --check src/crypto.mjs && node --check src/store.mjs && node --check src/github.mjs && node --check src/router.mjs && node --check api/index.mjs"}}
