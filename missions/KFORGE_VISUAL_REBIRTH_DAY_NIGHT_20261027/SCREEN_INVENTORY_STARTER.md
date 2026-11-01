@@ -1,6 +1,6 @@
 # Screenshot-derived starter inventory (verify against route registry)
 
-Ten confirmed pictured target surfaces: 
+Ten confirmed pictured target surfaces:
 1. Projects / Workspace — Project selection, inventory, collections, open/import controls, project inspector and NO_PROJECT state
 2. AI / Providers — Provider studio, model discovery, bounded connection tests, credential-safe inspector, configuration statuses
 3. Online / Discover — Local evidence, recommendations, explicit MCP/VSX/HF remote search and offline/no-results states

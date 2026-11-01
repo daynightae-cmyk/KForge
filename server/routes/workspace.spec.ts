@@ -73,7 +73,7 @@ describe("KForge Workspace engines", () => {
   }, 45_000);
 
   it("blocks network-based npm audit during offline scans without delaying local diagnostics", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-offline-audit-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-offline-audit-"));
     const projectPath = path.join(workspaceRoot, "npm-project");
     const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
     try {
@@ -101,7 +101,7 @@ describe("KForge Workspace engines", () => {
   }, 15_000);
 
   it("classifies a missing environment template as a deterministic safe local patch", async () => {
-    const projectPath = await fs.mkdtemp(path.join(process.cwd(), "kforge-env-example-"));
+    const projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-env-example-"));
     try {
       await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "environment-template-fixture", version: "1.0.0", private: true }), "utf8");
       await fs.writeFile(path.join(projectPath, ".env"), "PUBLIC_API_URL=https://local.invalid\nSERVICE_TOKEN=fixture-value-not-copied\n", "utf8");
@@ -126,7 +126,7 @@ describe("KForge Workspace engines", () => {
   }, 15_000);
 
   it("blocks an unconfirmed Git push before any remote contact", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-push-confirmation-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-push-confirmation-"));
     const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
     try {
       process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
@@ -211,7 +211,7 @@ describe("KForge Workspace engines", () => {
   }, 30_000);
 
   it("persists project collections and derives truthful category membership", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-collections-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-collections-"));
     const projectPath = path.join(workspaceRoot, "project");
     try {
       await fs.mkdir(projectPath);
@@ -234,7 +234,7 @@ describe("KForge Workspace engines", () => {
   });
 
   it("uses a unique atomic temporary file for overlapping project collection writes", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-collections-concurrent-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-collections-concurrent-"));
     const projectPath = path.join(workspaceRoot, "project");
     try {
       await fs.mkdir(projectPath);
@@ -252,7 +252,7 @@ describe("KForge Workspace engines", () => {
 
   it("serializes heterogeneous project collection mutations without losing independent fields", async () => {
     for (let iteration = 0; iteration < 10; iteration += 1) {
-      const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-collections-mixed-concurrent-"));
+      const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-collections-mixed-concurrent-"));
       const projectPath = path.join(workspaceRoot, "project");
       try {
         await fs.mkdir(projectPath);
@@ -286,7 +286,7 @@ describe("KForge Workspace engines", () => {
   }, 30_000);
 
   it("ignores a deleted project path retained in local collections", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-stale-collection-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-stale-collection-"));
     const removedProject = path.join(workspaceRoot, "removed-project");
     try {
       await fs.mkdir(removedProject);
@@ -299,7 +299,7 @@ describe("KForge Workspace engines", () => {
   });
 
   it("discovers supported non-Node projects from their canonical root metadata", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-non-node-discovery-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-non-node-discovery-"));
     const dotnetProject = path.join(workspaceRoot, "dotnet-app");
     const gradleProject = path.join(workspaceRoot, "gradle-app");
     const requirementsProject = path.join(workspaceRoot, "python-app");
@@ -410,7 +410,7 @@ describe("KForge Workspace engines", () => {
   });
 
   it("keeps a newly opened project untrusted until explicit local approval", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(process.cwd(), "kforge-trust-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-trust-"));
     const projectPath = path.join(workspaceRoot, "unknown-project");
     try {
       await fs.mkdir(projectPath);
@@ -423,7 +423,7 @@ describe("KForge Workspace engines", () => {
   });
 
   it("keeps untrusted projects read-only while detecting hardcoded credential evidence", async () => {
-    const projectPath = await fs.mkdtemp(path.join(process.cwd(), "kforge-security-"));
+    const projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-security-"));
     try {
       await fs.mkdir(path.join(projectPath, "src"));
       const keyName = ["API", "KEY"].join("_");
