@@ -81,7 +81,7 @@ describe("repository documentation truth contract", () => {
     const activeDocs = `${status}\n${matrix}`;
 
     expect(manifest.allowScripts).toEqual({
-      "@swc/core@1.16.18": true,
+      "@swc/core@1.16.20": true,
       "esbuild@0.25.4": true,
       "esbuild@0.28.2": true,
       "fsevents@2.3.2": true,
