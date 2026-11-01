@@ -1,0 +1,398 @@
+[
+  {
+    "source": "base-untracked\\KFORGE-DEEP-RESEARCH-SOURCE-PACK.md",
+    "destination": "docs\\research\\recovered-20261017\\source-research\\KFORGE-DEEP-RESEARCH-SOURCE-PACK.md",
+    "bytes": 69524,
+    "sha256": "5f54d0787ef7834e19743f3bdc54e8970b6882daae0f4004ba0b30ed0e1c915b"
+  },
+  {
+    "source": "base-untracked\\KFORGE-INTEGRATION-MAP.md",
+    "destination": "docs\\research\\recovered-20261017\\source-research\\KFORGE-INTEGRATION-MAP.md",
+    "bytes": 10629,
+    "sha256": "6816e441ce658dd2ab50a6e85622a032c0df703a6ddee37407f1658ec18ee624"
+  },
+  {
+    "source": "base-untracked\\kforge-sources.json",
+    "destination": "docs\\research\\recovered-20261017\\source-research\\kforge-sources.json",
+    "bytes": 75872,
+    "sha256": "a24490408822f5d07d2d7fe63d485134755acced6727da448c5a42528aa8306f"
+  },
+  {
+    "source": "base-untracked\\RESEARCH-PACK-MANIFEST.json",
+    "destination": "docs\\research\\recovered-20261017\\source-research\\RESEARCH-PACK-MANIFEST.json",
+    "bytes": 441,
+    "sha256": "73b9fa336cc7a19c16c14a9615081485cc7c209740a9df5a14c4281dba99ecf1"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\.eslintrc.js",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\.eslintrc.js",
+    "bytes": 4548,
+    "sha256": "878a799acb2a9f208b907f7ef526d914affa700b3d3855935fcccca13f17f4bd"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\.gitignore",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\.gitignore",
+    "bytes": 1517,
+    "sha256": "78653ba7608d302ed395a755fde3d0ee1a8977b064392f811d6f648a6bb51609"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\.npmignore",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\.npmignore",
+    "bytes": 22,
+    "sha256": "c9cc4da975009c1b3b1a0c8547a7d9348caf14cd4fc325faffa75c7ef81b168f"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\.npmrc",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\.npmrc",
+    "bytes": 121,
+    "sha256": "573b6a63257ad7d69080f2253449b1a993afd42b4feb7e0ee19c105062be60bf"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\.prettierignore",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\.prettierignore",
+    "bytes": 36,
+    "sha256": "37ca10c1485d44038380a3ee5c320baf2341ebf8667f502e89a3a88df5abb3eb"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\.prettierrc",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\.prettierrc",
+    "bytes": 152,
+    "sha256": "56c9463821de33c19fd323d59c97272983aea6fb75c1c26a243268f8d9c8e342"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\KFORGE-SPIKE-ACCEPTANCE.md",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\KFORGE-SPIKE-ACCEPTANCE.md",
+    "bytes": 704,
+    "sha256": "69c8ae05054d0922ba1785f34f42fa9b2247362209c0e27930e81ae64959e3c2"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\KFORGE-UPSTREAM.md",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\KFORGE-UPSTREAM.md",
+    "bytes": 584,
+    "sha256": "6434485ffb4b4e85f3b89c45f0eed566d7f926116f46e5efa90c30bbb343fe26"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\LICENSE.OpenSumi-MIT",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\LICENSE.OpenSumi-MIT",
+    "bytes": 1148,
+    "sha256": "280a4136dab3906e937f583baa80e9e9fe38b2994e39b858dd2cde42ce75d8c9"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\package-lock.json",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\package-lock.json",
+    "bytes": 657779,
+    "sha256": "5b5d5535da799193aa7ac45d33043028966435d88447cecb31366b0fd436ea60"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\package.json",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\package.json",
+    "bytes": 6311,
+    "sha256": "c2e1c6edbd39ba065eecd77d104f91a7aefa1a223b373ffc13760f5cf9cd778e"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\product.json",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\product.json",
+    "bytes": 272,
+    "sha256": "a0f2ba3fa40e6e226fe18877a7bdd6bc5edaa339ef57b93fc4c5c15451df8718"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\README.md",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\README.md",
+    "bytes": 903,
+    "sha256": "ee7b6abf4de8ab758f52e436e7638b5ff59919bb4fe7addb9e46189687c27e7b"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\tsconfig.json",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\tsconfig.json",
+    "bytes": 852,
+    "sha256": "bfa934fb035f5af27e8dd81ad5d6696598ed3b409a426980c219d85e3e14d596"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\docs\\build.md",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\docs\\build.md",
+    "bytes": 28,
+    "sha256": "f7b32ac78b50a31e3f189987d788cadfd4d8b2f670049b4e4d06c45946caffff"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\scripts\\apply-product.js",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\scripts\\apply-product.js",
+    "bytes": 2310,
+    "sha256": "91fbe656e8b0a10abe1b647a33af63b8b13ec8c4c6e68107d756456779de644a"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\scripts\\download-extensions.js",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\scripts\\download-extensions.js",
+    "bytes": 7039,
+    "sha256": "2ce028c49474d75d5be25d015ad93ad39ae740fc4e770511cb1008016d859d0f"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\scripts\\link-local.js",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\scripts\\link-local.js",
+    "bytes": 1810,
+    "sha256": "a2c63ace78d0102552ae304e9aed7f92277f310a9c1c7d170248d859747818fd"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\scripts\\rebuild-native.js",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\scripts\\rebuild-native.js",
+    "bytes": 3139,
+    "sha256": "174e714838c884bb5110123221c3e9391e54e39ac5f32b0a68582a5233bc1e21"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\browser\\app.tsx",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\browser\\app.tsx",
+    "bytes": 1578,
+    "sha256": "1774569039ffc6b077dbf92b46dcbb93135acac65208e335b850f562ac5ebe42"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\browser\\commands.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\browser\\commands.ts",
+    "bytes": 2582,
+    "sha256": "59c0f6593153d027ff9ebbe4c3c7addc0cb320a83d6ce5bc3055d29ee22e141c"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\browser\\index.html",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\browser\\index.html",
+    "bytes": 1123,
+    "sha256": "335a68e371b4d91da017dd7a34c240e250fd3e5b3f7f5245809d371b04e1fc12"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\browser\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\browser\\index.ts",
+    "bytes": 4376,
+    "sha256": "ec4748df1c7ff4d3af034b5a900dd3f95154384e6d6007583a8d5d02cc1871d4"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\browser\\layout.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\browser\\layout.ts",
+    "bytes": 1023,
+    "sha256": "f7de646d86eb9e9fd255754fcae3a7ae8841bb15300debb8687dbe0565c8e2e2"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\browser\\module.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\browser\\module.ts",
+    "bytes": 518,
+    "sha256": "81d8e1431745eacb6cc76153ea69604ed051380b51782dc88c91c7e5be09cd84"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\browser\\project.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\browser\\project.ts",
+    "bytes": 3334,
+    "sha256": "67c87aa8854f9b47df1641744118908bda62307500119330d1d29e6eeabca035"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\common\\constants.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\common\\constants.ts",
+    "bytes": 617,
+    "sha256": "e59aa9abbcfc6ee99b7d3d8eb5c68ccfb6240305ab755d974450a7b03837351d"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\common\\types.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\common\\types.ts",
+    "bytes": 599,
+    "sha256": "78fefd5942e4c35098e6a17a873f77e24c859808da282b629c387ecaaca7c47a"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\extension\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\extension\\index.ts",
+    "bytes": 460,
+    "sha256": "9f9d10c6300e17e2c0be53f741d9725046aed1f36520c746d0f736aa87214ee4"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\extension\\index.worker.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\extension\\index.worker.ts",
+    "bytes": 66,
+    "sha256": "be0d6bb9f7abab6bfecb8ee00ba3cd30606b21896e5b186ed0e2de699c9c88e0"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\extensionManager\\browser.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\extensionManager\\browser.ts",
+    "bytes": 120,
+    "sha256": "53c7614f7745c73596f258a9aa79541bf3586cc09ca32af24f2945fab18eb81b"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\extensionManager\\node.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\extensionManager\\node.ts",
+    "bytes": 117,
+    "sha256": "11a832c7613e70ac4e50834c294de54b89cd6b023fa8c8934de55dc3532ce2ec"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\main\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\main\\index.ts",
+    "bytes": 1460,
+    "sha256": "cbd7889fe187cb4819ff1c0ad098172a46c2da6e3f35d29f34cd559c3228cb69"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\main\\launch.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\main\\launch.ts",
+    "bytes": 4235,
+    "sha256": "bdced9e83f638591cc673cded5b8c140557e42c598ae7c9904621e454b2d096f"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\main\\module.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\main\\module.ts",
+    "bytes": 969,
+    "sha256": "0c85a39af42d0045356731a997939e787fc40fb0a605966b81ff00b322ad9530"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\node\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\node\\index.ts",
+    "bytes": 1422,
+    "sha256": "40c6a6d162e3eb0c50b1810d819073bb93dba09e047694c044acbdbd970debba"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\node\\module.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\node\\module.ts",
+    "bytes": 4876,
+    "sha256": "25431a0fac2bb16850d33f86557c7517fb95a5997be5746e869bcd428186bdde"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\node\\server.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\node\\server.ts",
+    "bytes": 1939,
+    "sha256": "b51eaf8c363d32f433b66e218834d5fd7f84e2ba8abc79a1f6b0434fea650fa0"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\typings\\style.d.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\typings\\style.d.ts",
+    "bytes": 51,
+    "sha256": "1ef2ad1e13ad823b3dbe27b471c62f94bd4d2831c793b29b25338f64f8def9ec"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\demo\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\demo\\index.ts",
+    "bytes": 28,
+    "sha256": "0e29beda1b6df704d50dfcf95a33e29ee9538c68b57896b703fc0299cc1f948b"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\topbar\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\topbar\\index.ts",
+    "bytes": 52,
+    "sha256": "014b23509a42e1d501e204636bf00ef8831a97dcc965ee96923134f3624f17f8"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\topbar\\browser\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\topbar\\browser\\index.ts",
+    "bytes": 1051,
+    "sha256": "65635483f9b37af195772bb017fd797491c0ebb2d735f27b8184298a251fed9b"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\topbar\\browser\\topbar.service.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\topbar\\browser\\topbar.service.ts",
+    "bytes": 478,
+    "sha256": "7a956a12e95da980d2d2134baba271e1d23bc2d9ccac6214db5a41e60e23e5ec"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\topbar\\browser\\topbar.view.tsx",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\topbar\\browser\\topbar.view.tsx",
+    "bytes": 709,
+    "sha256": "a2478a9e08114f303fa717e5333ad38e3a56a5765f59ac43998d6d6d007af285"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\topbar\\common\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\topbar\\common\\index.ts",
+    "bytes": 391,
+    "sha256": "7fcbf6f8cadd7362b7f26000c2cb1aa36b70af0976b8666be03ed3ec72910998"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\topbar\\node\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\topbar\\node\\index.ts",
+    "bytes": 541,
+    "sha256": "4905782876eae7a8c2fd1b626245df70bd81cb89e7d16e11de443bd873dc78fe"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\topbar\\node\\topbar-node-server.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\topbar\\node\\topbar-node-server.ts",
+    "bytes": 236,
+    "sha256": "2556de3659d97fccec358879c8bfa0dbac5072637a0178cca9f8d8b879d5cc60"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\demo\\browser\\demo.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\demo\\browser\\demo.ts",
+    "bytes": 788,
+    "sha256": "ae04499e97c5242690142e3797501d2d87e7e89ad134fe2c56fbde7600e9fc55"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\demo\\browser\\editor-empty-component.contribution.tsx",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\demo\\browser\\editor-empty-component.contribution.tsx",
+    "bytes": 1921,
+    "sha256": "bee776716cded5b13cf04529137979a6767e03abd1b45e5c5d4018b13cfd2add"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\demo\\browser\\editor-empty-component.module.less",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\demo\\browser\\editor-empty-component.module.less",
+    "bytes": 2159,
+    "sha256": "314bb6461d1cc0be33851b7cbf976f42a585d7d3c799bd4835eefe64c7dcb823"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\demo\\browser\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\demo\\browser\\index.ts",
+    "bytes": 644,
+    "sha256": "a443e17e61134a108e31f0ca5b41ca71d8baf81775778b44fe462c98aab19fba"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\basic\\browser\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\basic\\browser\\index.ts",
+    "bytes": 645,
+    "sha256": "e3ae8cd3e9631de4db0ca3e37b669e75dd1545c2d03cba05e7067c0ecded1adc"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\basic\\browser\\menu.contribution.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\basic\\browser\\menu.contribution.ts",
+    "bytes": 556,
+    "sha256": "a3a0711ea1317d290821fb5a9d53def8e1c6e9a7c426142cec7269335714c989"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\modules\\basic\\browser\\theme.contribution.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\modules\\basic\\browser\\theme.contribution.ts",
+    "bytes": 2063,
+    "sha256": "37ed7b63012108bf8a3ba1ba7a68cc42631644b05a1b8062e270999acf402641"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\main\\services\\hello.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\main\\services\\hello.ts",
+    "bytes": 877,
+    "sha256": "2dac045ff9fd477f958f123db8e13a9088df9bf63d2f201a9d13e9cb7344148c"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\main\\services\\index.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\main\\services\\index.ts",
+    "bytes": 699,
+    "sha256": "a3b004bf9b23e5f43b9e1059efc5aa4016e965e8903faba96ab3a15cecd381c2"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\main\\services\\storage.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\main\\services\\storage.ts",
+    "bytes": 4380,
+    "sha256": "2cc70a547c34af9a2f983cd6a7e61f4004de2278c8e245298e4574944b15aae7"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\common\\i18n\\en-US.lang.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\common\\i18n\\en-US.lang.ts",
+    "bytes": 427,
+    "sha256": "46602b35b8ed33e07a992339e14d14582d33ddeea9aaeffb101dd0d47b933c03"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\common\\i18n\\setup.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\common\\i18n\\setup.ts",
+    "bytes": 296,
+    "sha256": "bd6f14bc0fcd9ed1dfce0467d1670fd058a59f504e4f28d19f0e8ffd56b1f220"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\common\\i18n\\zh-CN.lang.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\common\\i18n\\zh-CN.lang.ts",
+    "bytes": 422,
+    "sha256": "c2179d4529909097695fc9a6335f980c7085bf5745a4d02d555e46d44bae81cd"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\src\\common\\node\\utils.ts",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\src\\common\\node\\utils.ts",
+    "bytes": 898,
+    "sha256": "f0e4070fb56eb2f35256e2e0e45003f0b6293fa2840c807758d67b851b2ba34b"
+  },
+  {
+    "source": "opensumi-labs\\opensumi-workbench\\resources\\darwin\\bin\\sumi",
+    "destination": "docs\\research\\recovered-20261017\\opensumi-spike-source\\resources\\darwin\\bin\\sumi",
+    "bytes": 786,
+    "sha256": "50d7470f1d13a4bb6da48ac5ae89464d3349b8e5fbd4f8b775eba3b97475a01e"
+  }
+]

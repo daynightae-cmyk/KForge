@@ -1,0 +1,12 @@
+{
+  "productName": "KNOuX Forge",
+  "applicationName": "knoux-forge",
+  "dataFolderName": ".knoux-forge",
+  "version": "0.0.0-spike",
+  "urlProtocol": "knoux-forge",
+  "serverApp": {
+    "marketplace": {}
+  },
+  "devtoolFrontendUrl": "",
+  "sumiVersion": ""
+}

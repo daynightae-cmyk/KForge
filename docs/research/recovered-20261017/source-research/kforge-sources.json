@@ -1,0 +1,1731 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-24T01:19:00+04:00",
+  "project": {
+    "name": "KNOuX Forge",
+    "repository": "daynightae-cmyk/KForge",
+    "canonicalBranch": "main",
+    "researchBaselineSha": "d2a8a58fa295c885d5162092c0257922580b5833",
+    "truthBoundary": "LOCAL_FIRST"
+  },
+  "researchAudit": {
+    "exaSearchResultSlotsReviewed": 207,
+    "note": "207 is the sum of result slots requested/reviewed across Exa workstreams, not 207 unique URLs. Results overlap by design.",
+    "googleDriveSearches": [
+      "KForge",
+      "KNOuX Forge"
+    ],
+    "googleDriveMatches": 0,
+    "huggingFaceConnectorStatus": "Installed/enabled but Hugging Face MCP action invocations returned tool-not-found in this session; Hugging Face facts were verified from official Hugging Face OpenAPI/docs via Exa.",
+    "sciteIncludedDois": [
+      "10.1109/MSEC.2022.3173123",
+      "10.1145/3372297.3420015",
+      "10.1109/ICSE48619.2023.00052"
+    ]
+  },
+  "sources": [
+    {
+      "id": "mcp-official-registry",
+      "name": "Official MCP Registry",
+      "category": "MCP Registry",
+      "priority": "P0",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://registry.modelcontextprotocol.io",
+      "docsUrl": "https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/official-registry-api.md",
+      "schemaUrls": [
+        "https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml"
+      ],
+      "readEndpoints": [
+        "GET /v0.1/servers",
+        "GET /v0.1/servers/{serverName}/versions",
+        "GET /v0.1/servers/{serverName}/versions/{version}"
+      ],
+      "auth": "Read discovery is suitable for unauthenticated public consumption; publishing uses namespace authentication (GitHub OAuth/OIDC or DNS/HTTP verification).",
+      "pagination": "Opaque cursor returned as metadata.nextCursor; list endpoint supports cursor and limit.",
+      "rateLimits": "No numeric public read limit verified in reviewed official reference; adapter must observe 429/Retry-After and provider headers.",
+      "caching": "No universal cache contract verified; use conditional/provider headers when present and a bounded KForge cache.",
+      "webhooks": "Not required for read discovery; publishing/auth flows exist.",
+      "licenseTerms": "OpenAPI declares MIT. Registry service usage still follows project/service policies.",
+      "capabilities": [
+        "SEARCH",
+        "LIST",
+        "DETAIL",
+        "VERSIONS",
+        "INSTALL_METADATA"
+      ],
+      "targetCapabilities": [
+        "Online Hub",
+        "Marketplace",
+        "Agents",
+        "Tools",
+        "MCP Server detail"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_READ_DISCOVERY",
+      "notes": "Search supports search, updated_since, version=latest/exact, include_deleted. Package metadata can describe npm/PyPI/OCI/NuGet/MCPB distribution, runtime hints, transports, args and environment variables. Registry metadata is not proof that a server's tools/resources/prompts are executable."
+    },
+    {
+      "id": "open-vsx",
+      "name": "Open VSX Registry",
+      "category": "IDE Extensions",
+      "priority": "P0",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://open-vsx.org",
+      "docsUrl": "https://open-vsx.org/swagger-ui/index.html",
+      "schemaUrls": [
+        "https://open-vsx.org/v3/api-docs/registry"
+      ],
+      "readEndpoints": [
+        "GET /api/-/query",
+        "GET /api/-/search",
+        "GET /api/{namespace}/{extension}",
+        "GET /api/{namespace}/{extension}/{version}",
+        "GET /api/{namespace}/{extension}/versions"
+      ],
+      "auth": "Public metadata reads do not require publisher authentication; publishing requires authentication.",
+      "pagination": "Documented query/search endpoints expose bounded result/pagination parameters; consume exact OpenAPI at implementation time.",
+      "rateLimits": "OpenAPI declares X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset and Retry-After/429. Do not hardcode a numeric quota unless returned/published.",
+      "caching": "Official server implementation uses cache-control on metadata paths; preserve Cache-Control/ETag if returned. Do not assume one TTL for every endpoint.",
+      "webhooks": "No webhook dependency required for catalog reads.",
+      "licenseTerms": "OpenAPI termsOfService: https://www.eclipse.org/legal/termsofuse.php ; API project license Eclipse Public License 2.0.",
+      "capabilities": [
+        "SEARCH",
+        "LIST",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS",
+        "CHANGELOG",
+        "DOCUMENTATION",
+        "INSTALL_METADATA"
+      ],
+      "targetCapabilities": [
+        "Online Hub",
+        "Extensions",
+        "Marketplace"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_READ_DISCOVERY",
+      "notes": "Official API exposes VSIX/file assets and schemas. The VSCode adapter implementation enumerates asset types including VSIX, manifest, license, changelog, signature and public key. Treat catalog presence separately from extension execution compatibility."
+    },
+    {
+      "id": "npm-registry",
+      "name": "npm Public Registry",
+      "category": "Package Registry",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://registry.npmjs.org",
+      "docsUrl": "https://api-docs.npmjs.com/",
+      "schemaUrls": [
+        "Official downloadable OpenAPI from api-docs.npmjs.com"
+      ],
+      "readEndpoints": [
+        "GET /-/v1/search",
+        "GET /{package}",
+        "GET /{package}/{version}",
+        "GET /-/npm/v1/keys"
+      ],
+      "auth": "Public package metadata/search is generally readable without auth; authenticated management uses scoped/bearer/OIDC tokens.",
+      "pagination": "Search endpoint is paginated; use documented size/from parameters and bounded result limits.",
+      "rateLimits": "No single numeric registry-read quota was established in reviewed official API docs. Website crawling policy is distinct; do not crawl npmjs.com. Respect provider headers/backoff.",
+      "caching": "Registry metadata supports normal HTTP caching; do not mirror the full registry for KForge. Query on demand.",
+      "webhooks": "Not required for KForge read catalog.",
+      "licenseTerms": "npm Open Source Terms govern website/public registry. Public registry metadata/full dataset access is documented; website high-velocity crawling is discouraged/limited.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS",
+        "SECURITY",
+        "INSTALL_METADATA"
+      ],
+      "targetCapabilities": [
+        "Packages",
+        "Marketplace",
+        "Security",
+        "Project dependency intelligence"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "Version dist metadata includes tarball, shasum, integrity and may include ECDSA registry signatures. Provenance can link build workflow/source commit through npm/Sigstore, but programmatic provenance retrieval must be verified before implementation rather than guessed."
+    },
+    {
+      "id": "pypi",
+      "name": "Python Package Index (PyPI)",
+      "category": "Package Registry",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://pypi.org",
+      "docsUrl": "https://docs.pypi.org/api/",
+      "schemaUrls": [
+        "https://docs.pypi.org/api/index-api/",
+        "https://docs.pypi.org/api/integrity/"
+      ],
+      "readEndpoints": [
+        "GET /simple/",
+        "GET /simple/{project}/",
+        "GET /pypi/{project}/json",
+        "GET /integrity/{project}/{version}/{filename}/provenance"
+      ],
+      "auth": "Public read APIs are anonymous; upload/management requires auth.",
+      "pagination": "Simple Index is index-oriented rather than conventional page pagination; JSON project endpoint returns project/releases. Use targeted project queries.",
+      "rateLimits": "PyPI states no current edge rate limiting for JSON/RSS/Index APIs, but irresponsible use can be blocked. XML-RPC may be rate limited and is not recommended for new integrations.",
+      "caching": "JSON/RSS/Index responses are CDN cached and expose X-Cache/X-Cache-Hits and ETag. KForge should use If-None-Match.",
+      "webhooks": "Not required; RSS is preferred by PyPI for periodic update checks.",
+      "licenseTerms": "PyPI Terms of Service and API Terms apply: https://policies.python.org/pypi.org/Terms-of-Service/",
+      "capabilities": [
+        "LIST",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS",
+        "INSTALL_METADATA",
+        "SECURITY"
+      ],
+      "targetCapabilities": [
+        "Packages",
+        "Marketplace",
+        "Security"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "Simple API artifact links can carry hashes that clients must verify. Integrity API implements PEP 740 and exposes provenance/attestations tied to Trusted Publisher identity, including SLSA/PyPI publish attestations."
+    },
+    {
+      "id": "nuget-v3",
+      "name": "NuGet V3 / nuget.org",
+      "category": "Package Registry",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://api.nuget.org/v3/index.json",
+      "docsUrl": "https://learn.microsoft.com/en-us/nuget/api/overview",
+      "schemaUrls": [
+        "https://learn.microsoft.com/en-us/nuget/api/service-index"
+      ],
+      "readEndpoints": [
+        "Service Index discovery",
+        "SearchQueryService",
+        "RegistrationsBaseUrl",
+        "PackageBaseAddress",
+        "Catalog",
+        "RepositorySignatures"
+      ],
+      "auth": "Public nuget.org read endpoints are public; private sources can require provider-specific auth.",
+      "pagination": "Search uses skip/take; registration and catalog resources have their own page structures discovered from service index.",
+      "rateLimits": "No numeric nuget.org public read quota verified in reviewed docs; respect HTTP/provider headers and bounded concurrency.",
+      "caching": "Use GET/HEAD and provider cache headers. Resource URLs must be discovered from service index rather than hardcoded.",
+      "webhooks": "Not needed for read catalog.",
+      "licenseTerms": "NuGet/Microsoft service terms apply; individual package licenses vary.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS",
+        "INSTALL_METADATA",
+        "SECURITY"
+      ],
+      "targetCapabilities": [
+        "Packages",
+        "Marketplace",
+        "Security"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "RepositorySignatures resource identifies repository signing certificates and whether all packages are repository-signed. NuGet author/repository signatures can be verified with official tooling."
+    },
+    {
+      "id": "maven-central",
+      "name": "Maven Central Search / Central Repository",
+      "category": "Package Registry",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://search.maven.org",
+      "docsUrl": "https://central.sonatype.org/search/rest-api-guide/",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /solrsearch/select",
+        "GET /remotecontent?filepath=..."
+      ],
+      "auth": "Public search/artifact reads.",
+      "pagination": "rows/start style search pagination; query fields include groupId/artifactId/version/packaging/classifier.",
+      "rateLimits": "No numeric quota verified in reviewed docs; use bounded serial requests and provider backoff.",
+      "caching": "Artifact repositories are CDN/cache friendly; preserve provider HTTP cache headers.",
+      "webhooks": "Not required.",
+      "licenseTerms": "Sonatype/Central terms and each artifact's license apply. Redistribution beyond normal dependency retrieval requires package-specific review.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS"
+      ],
+      "targetCapabilities": [
+        "Packages",
+        "Marketplace"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "Central supports coordinate searches and checksum search. Prefer repository-native checksums/signatures when available; SHA-1 search support alone is not sufficient for modern trust."
+    },
+    {
+      "id": "crates-io",
+      "name": "crates.io",
+      "category": "Package Registry",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://crates.io",
+      "docsUrl": "https://crates.io/data-access",
+      "schemaUrls": [
+        "https://crates.io/api/openapi.json"
+      ],
+      "readEndpoints": [
+        "Sparse index at https://index.crates.io",
+        "GET /api/v1/crates...",
+        "static crate artifacts at https://static.crates.io"
+      ],
+      "auth": "Public reads; management/publish requires auth.",
+      "pagination": "API-specific pagination; prefer sparse index for small/targeted metadata lookups.",
+      "rateLimits": "Official policy: API maximum 1 request/second plus identifying User-Agent. Sparse index and static.crates.io currently state no rate limits.",
+      "caching": "Prefer sparse index/static artifacts; daily DB dumps exist for bulk use. Do not hammer JSON API.",
+      "webhooks": "RSS feeds available for recent crates/updates.",
+      "licenseTerms": "crates.io data-access/terms apply; each crate license varies.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS"
+      ],
+      "targetCapabilities": [
+        "Packages",
+        "Marketplace"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "Excellent example of provider-specific access strategy: KForge should choose sparse index for targeted metadata and never use the 1 req/s API as a bulk crawler."
+    },
+    {
+      "id": "go-module-services",
+      "name": "Go Module Proxy + Index + SumDB",
+      "category": "Package Registry",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://proxy.golang.org",
+      "docsUrl": "https://go.dev/ref/mod",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GOPROXY module list/info/mod/zip protocol",
+        "https://index.golang.org",
+        "https://sum.golang.org"
+      ],
+      "auth": "Public modules only. Private-module behavior must honor GOPRIVATE/GONOPROXY/GONOSUMDB and must not leak private module paths.",
+      "pagination": "index.golang.org supports incremental index access; proxy is path/version based.",
+      "rateLimits": "No numeric proxy quota verified. Separate pkg.go.dev JSON API is documented at 45 QPS per IP block.",
+      "caching": "proxy.golang.org is a module mirror; cached-only mode exists for bulk/static analysis. SumDB provides auditable checksums.",
+      "webhooks": "Not required.",
+      "licenseTerms": "Go service privacy/terms apply; individual module licenses vary.",
+      "capabilities": [
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS",
+        "DOCUMENTATION"
+      ],
+      "targetCapabilities": [
+        "Packages",
+        "Documentation",
+        "Marketplace"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "Do not send private module identifiers to public Go services. SumDB integrity is valuable but not publisher identity."
+    },
+    {
+      "id": "go-pkgsite",
+      "name": "pkg.go.dev JSON API",
+      "category": "Documentation / Package Metadata",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://pkg.go.dev/v1beta",
+      "docsUrl": "https://pkg.go.dev/v1beta/api",
+      "schemaUrls": [
+        "Machine-readable OpenAPI linked from official API docs"
+      ],
+      "readEndpoints": [
+        "GET /v1beta/package/{path}",
+        "GET /v1beta/module/{path}",
+        "search/versions/symbol routes"
+      ],
+      "auth": "Public read API.",
+      "pagination": "nextPageToken + token; page request must otherwise remain identical.",
+      "rateLimits": "45 QPS per IP block; exceeding returns 429.",
+      "caching": "Respect HTTP headers; use bounded KForge cache.",
+      "webhooks": "None required.",
+      "licenseTerms": "Documentation/API service terms and module-specific licenses apply.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "VERSIONS",
+        "DOCUMENTATION"
+      ],
+      "targetCapabilities": [
+        "Remote Documentation",
+        "Packages"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_READ_DISCOVERY",
+      "notes": "Can return docs/license metadata and build-context information. Keep distinct from artifact trust provided by module proxy/SumDB."
+    },
+    {
+      "id": "packagist",
+      "name": "Packagist.org",
+      "category": "Package Registry",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://packagist.org",
+      "docsUrl": "https://packagist.org/apidoc",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /packages/list.json",
+        "GET /search.json",
+        "package detail/update/security advisory endpoints per docs"
+      ],
+      "auth": "Many read endpoints anonymous; SAFE/MAIN tokens exist for operations that require authentication.",
+      "pagination": "Search/popular endpoints support pagination/per_page.",
+      "rateLimits": "No single numeric read quota in reviewed doc; official best practice: identify User-Agent, avoid synchronized bursts, <=10 parallel requests (<=20 for static files).",
+      "caching": "Use HTTP/2, provider cache headers, bounded cache.",
+      "webhooks": "Package update tracking endpoints exist.",
+      "licenseTerms": "Packagist service terms plus individual package licenses; redistribution needs package-specific review.",
+      "capabilities": [
+        "SEARCH",
+        "LIST",
+        "DETAIL",
+        "VERSIONS",
+        "SECURITY"
+      ],
+      "targetCapabilities": [
+        "Packages",
+        "Security",
+        "Marketplace"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "API can expose repository/type/abandoned status and security advisories. Do not automatically install abandoned/replacement packages."
+    },
+    {
+      "id": "rubygems",
+      "name": "RubyGems.org",
+      "category": "Package Registry",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://rubygems.org",
+      "docsUrl": "https://guides.rubygems.org/rubygems-org-api/",
+      "schemaUrls": [
+        "https://guides.rubygems.org/rubygems-org-compact-index-api/"
+      ],
+      "readEndpoints": [
+        "GET /api/v1/gems/{name}.json",
+        "GET /api/v1/search.json?query=...",
+        "GET /api/v1/versions/{name}.json",
+        "GET /versions",
+        "GET /info/{gem}"
+      ],
+      "auth": "Public read APIs; write/owner operations use API auth.",
+      "pagination": "Search returns 30 matches/page; use page until empty.",
+      "rateLimits": "General API/website guideline: 10 requests/sec; Dependency API: 15 requests/sec.",
+      "caching": "Compact Index is stable public API with ETag/If-None-Match, Range and Repr-Digest SHA-256.",
+      "webhooks": "RubyGems API includes webhook methods for package pushes.",
+      "licenseTerms": "RubyGems.org Terms: https://index.rubygems.org/policies/terms-of-service ; individual gem licenses vary.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS"
+      ],
+      "targetCapabilities": [
+        "Packages",
+        "Marketplace"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "For broad synchronization, public data dumps/compact index are preferred over hammering package endpoints."
+    },
+    {
+      "id": "hugging-face-hub",
+      "name": "Hugging Face Hub API",
+      "category": "Model Registry",
+      "priority": "P0",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://huggingface.co",
+      "docsUrl": "https://huggingface.co/.well-known/openapi.md",
+      "schemaUrls": [
+        "https://huggingface.co/.well-known/openapi.json"
+      ],
+      "readEndpoints": [
+        "GET /api/models",
+        "model detail/file/tree endpoints exposed by OpenAPI"
+      ],
+      "auth": "Open endpoints exist for public Hub information; bearer auth is needed for private/gated/user-specific actions and must remain server-side.",
+      "pagination": "Endpoint-specific cursor/limit parameters are described by OpenAPI. KForge must implement per-endpoint bounded pagination.",
+      "rateLimits": "No numeric public Hub quota verified in reviewed OpenAPI; obey 429/Retry-After and returned headers.",
+      "caching": "Respect ETag/Cache-Control where returned and retain revision/SHA as provenance.",
+      "webhooks": "Official Hub API advertises webhooks for incremental repository information.",
+      "licenseTerms": "Hugging Face Terms of Service apply; every model/repository can carry its own license/gating terms and must be evaluated individually.",
+      "capabilities": [
+        "SEARCH",
+        "LIST",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS",
+        "DOCUMENTATION"
+      ],
+      "targetCapabilities": [
+        "AI",
+        "Model Hub",
+        "Marketplace"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_READ_DISCOVERY",
+      "notes": "OpenAPI is machine-readable and suitable for adapter generation. Catalog metadata must never imply that a model is locally installed. Gated/private models remain NOT_CONFIGURED/BLOCKED until valid auth and terms are satisfied."
+    },
+    {
+      "id": "ollama-local",
+      "name": "Ollama Local API",
+      "category": "Local Model Runtime",
+      "priority": "P0",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "http://localhost:11434",
+      "docsUrl": "https://github.com/ollama/ollama/blob/main/docs/openapi.yaml",
+      "schemaUrls": [
+        "https://github.com/ollama/ollama/blob/main/docs/openapi.yaml"
+      ],
+      "readEndpoints": [
+        "GET /api/tags",
+        "POST /api/show",
+        "GET /api/ps"
+      ],
+      "auth": "Local API OpenAPI currently declares no required auth for loopback use; KForge must keep loopback/origin restrictions.",
+      "pagination": "Not relevant for local model list in the reviewed API.",
+      "rateLimits": "Local runtime; no provider network rate limit.",
+      "caching": "Short local inventory cache only; installed/running state must be refreshed from runtime when explicitly requested.",
+      "webhooks": "None required.",
+      "licenseTerms": "Ollama API OpenAPI declares MIT; installed model licenses are model-specific.",
+      "capabilities": [
+        "LIST",
+        "DETAIL",
+        "INSTALL_METADATA"
+      ],
+      "targetCapabilities": [
+        "AI",
+        "Models",
+        "Marketplace local runtime truth"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_LOCAL",
+      "notes": "Use for installed/running truth. Do not scrape ollama.com/library as a remote registry unless a documented official catalog API is separately verified."
+    },
+    {
+      "id": "openai-models",
+      "name": "OpenAI Models API",
+      "category": "Cloud Model Registry",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://api.openai.com/v1",
+      "docsUrl": "https://developers.openai.com/api/reference/resources/models/methods/list/",
+      "schemaUrls": [
+        "https://developers.openai.com/api/reference/llms-full.txt"
+      ],
+      "readEndpoints": [
+        "GET /models",
+        "GET /models/{model}"
+      ],
+      "auth": "Bearer OPENAI_API_KEY; secret must remain server-side.",
+      "pagination": "Reviewed list response is a model list; do not invent pagination parameters absent from current reference.",
+      "rateLimits": "Account/model-specific; inspect standard OpenAI rate-limit headers/docs rather than hardcoding one global quota.",
+      "caching": "Short-lived provider catalog cache; do not cache credentials.",
+      "webhooks": "Not required for model listing.",
+      "licenseTerms": "OpenAI service terms apply.",
+      "capabilities": [
+        "LIST",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "AI Provider Studio",
+        "Models"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_PROVIDER_METADATA",
+      "notes": "Current /v1/models response is intentionally basic: id, created, object, owned_by. Do not fabricate context/pricing/tool capability fields from this endpoint."
+    },
+    {
+      "id": "anthropic-models",
+      "name": "Anthropic Models API",
+      "category": "Cloud Model Registry",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://api.anthropic.com",
+      "docsUrl": "https://platform.claude.com/docs/en/api/models/list",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /v1/models"
+      ],
+      "auth": "Anthropic API authentication/version headers; credentials remain server-side.",
+      "pagination": "Cursor-style after_id/before_id; limit defaults 20 and supports 1..1000 in reviewed docs.",
+      "rateLimits": "Plan/account dependent; honor provider headers/current docs.",
+      "caching": "Short provider catalog cache.",
+      "webhooks": "Not required.",
+      "licenseTerms": "Anthropic commercial/service terms apply.",
+      "capabilities": [
+        "LIST",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "AI Provider Studio",
+        "Models"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_PROVIDER_METADATA",
+      "notes": "Current ModelInfo may include capability support fields. Persist only fields returned by provider and label unknown fields UNKNOWN."
+    },
+    {
+      "id": "gemini-models",
+      "name": "Gemini Models API",
+      "category": "Cloud Model Registry",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://generativelanguage.googleapis.com",
+      "docsUrl": "https://ai.google.dev/api/models",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /v1beta/models",
+        "GET /v1beta/{name=models/*}"
+      ],
+      "auth": "Gemini API key; keep server-side. OAuth may apply to other Google surfaces, but do not conflate them.",
+      "pagination": "pageSize default 50, max 1000; pageToken.",
+      "rateLimits": "Quota/project/model dependent; read current quota headers/docs.",
+      "caching": "Short provider catalog cache.",
+      "webhooks": "Not required for model listing.",
+      "licenseTerms": "Google Gemini API terms apply.",
+      "capabilities": [
+        "LIST",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "AI Provider Studio",
+        "Models"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_PROVIDER_METADATA",
+      "notes": "Model resource exposes version/token-limit/supported-action metadata. v1/v1beta have different stability semantics; adapter should pin API version explicitly."
+    },
+    {
+      "id": "openrouter-models",
+      "name": "OpenRouter Models API",
+      "category": "Cloud Model Aggregator",
+      "priority": "P2",
+      "official": true,
+      "authority": "FIRST_PARTY_PROVIDER",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "docsUrl": "https://openrouter.ai/docs/guides/overview/models",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /models",
+        "GET /model/{author}/{slug}",
+        "GET /models/count"
+      ],
+      "auth": "Public model browsing is documented; user-specific/provider-preference surfaces can require auth.",
+      "pagination": "Use documented filtering/sorting; verify any pagination behavior in current API before implementation.",
+      "rateLimits": "Plan/provider dependent; honor current headers/docs.",
+      "caching": "Short catalog cache; pricing/availability is time-sensitive.",
+      "webhooks": "RSS feed is documented for model updates; no webhook needed for P2.",
+      "licenseTerms": "OpenRouter service terms plus upstream model/provider terms.",
+      "capabilities": [
+        "SEARCH",
+        "LIST",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "AI",
+        "Model comparison"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "OPTIONAL_PROVIDER",
+      "notes": "Useful for pricing/context/supported-parameter comparison, but must not become authority for upstream model license or local install state."
+    },
+    {
+      "id": "lm-studio-local",
+      "name": "LM Studio Local API",
+      "category": "Local Model Runtime",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "http://localhost:1234/v1",
+      "docsUrl": "https://lmstudio.ai/docs/developer/openai-compat",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /v1/models",
+        "GET /api/v1/models (native REST)"
+      ],
+      "auth": "Local server configuration dependent; KForge must remain loopback-first and never expose it beyond intended origin.",
+      "pagination": "Not applicable for typical local inventory.",
+      "rateLimits": "Local runtime.",
+      "caching": "Short local runtime cache.",
+      "webhooks": "None.",
+      "licenseTerms": "LM Studio product/service terms; model licenses remain model-specific.",
+      "capabilities": [
+        "LIST",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "AI",
+        "Models local runtime"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_LOCAL",
+      "notes": "Existing KForge support should be enriched, not replaced."
+    },
+    {
+      "id": "llama-cpp-server",
+      "name": "llama.cpp Server",
+      "category": "Local Model Runtime",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL_PROJECT",
+      "baseUrl": "loopback user-configured",
+      "docsUrl": "https://github.com/ggml-org/llama.cpp",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "OpenAI-compatible server endpoints; exact current model/list contract must be re-read from official server README during implementation"
+      ],
+      "auth": "Local server configuration dependent.",
+      "pagination": "N/A for local runtime.",
+      "rateLimits": "Local runtime.",
+      "caching": "Short local cache.",
+      "webhooks": "None.",
+      "licenseTerms": "See official llama.cpp repository license; model files retain their own licenses.",
+      "capabilities": [
+        "LIST",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "AI",
+        "Models local runtime"
+      ],
+      "risk": "LOW",
+      "legalStatus": "VERIFY_AT_IMPLEMENTATION",
+      "notes": "Do not freeze an endpoint contract from memory. Read the current official server README/OpenAPI before coding."
+    },
+    {
+      "id": "winget-community",
+      "name": "Windows Package Manager Community Repository",
+      "category": "Windows Software Source",
+      "priority": "P1",
+      "official": true,
+      "authority": "MICROSOFT_COMMUNITY_REPOSITORY",
+      "baseUrl": "https://github.com/microsoft/winget-pkgs",
+      "docsUrl": "https://github.com/microsoft/winget-pkgs/blob/master/doc/manifest/schema/1.12.0/README.md",
+      "schemaUrls": [
+        "https://github.com/microsoft/winget-cli/tree/master/schemas/JSON/manifests"
+      ],
+      "readEndpoints": [
+        "Git repository manifest reads / winget CLI search-show workflow"
+      ],
+      "auth": "Public repository metadata. Microsoft Store is a separate source with different policy/auth.",
+      "pagination": "Git/CLI dependent.",
+      "rateLimits": "GitHub/WinGet source dependent.",
+      "caching": "Local manifest/CLI cache according to WinGet behavior; KForge can cache normalized metadata.",
+      "webhooks": "GitHub events available if needed.",
+      "licenseTerms": "Microsoft/winget-pkgs repository policy and package-specific publisher licenses apply.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS",
+        "INSTALL_METADATA",
+        "UPDATE_METADATA"
+      ],
+      "targetCapabilities": [
+        "Developer Tools",
+        "Windows software discovery"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_METADATA_ONLY",
+      "notes": "Installer manifests can expose InstallerUrl, InstallerSha256, optional SignatureSha256, architecture, installer type, scope, switches, dependencies and upgrade behavior. Community-manifest presence is not publisher authenticity."
+    },
+    {
+      "id": "winget-restsource",
+      "name": "WinGet REST Source Reference",
+      "category": "Windows Software Source",
+      "priority": "P2",
+      "official": true,
+      "authority": "MICROSOFT_REFERENCE",
+      "baseUrl": "provider-defined",
+      "docsUrl": "https://github.com/microsoft/winget-cli-restsource",
+      "schemaUrls": [
+        "https://github.com/microsoft/winget-cli-restsource/blob/main/documentation/WinGet-1.1.0.yaml"
+      ],
+      "readEndpoints": [
+        "/packageManifests and reference REST source operations per OpenAPI"
+      ],
+      "auth": "Source-specific.",
+      "pagination": "Continuation-token style in reference schema.",
+      "rateLimits": "Source-specific.",
+      "caching": "Source-specific.",
+      "webhooks": "N/A.",
+      "licenseTerms": "Microsoft open-source project license + source-specific terms.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "VERSIONS",
+        "INSTALL_METADATA"
+      ],
+      "targetCapabilities": [
+        "Developer Tools",
+        "Enterprise/private package sources"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "OPTIONAL_PROVIDER",
+      "notes": "Useful if KForge later supports organization-owned WinGet REST sources."
+    },
+    {
+      "id": "microsoft-store",
+      "name": "Microsoft Store Source",
+      "category": "Windows Software Source",
+      "priority": "P3",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "Microsoft-managed",
+      "docsUrl": "https://learn.microsoft.com/windows/package-manager/",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "Use supported WinGet/MS Store integration only"
+      ],
+      "auth": "May require Store/device/account context.",
+      "pagination": "Provider-specific.",
+      "rateLimits": "Not established for direct third-party API use.",
+      "caching": "Provider-controlled.",
+      "webhooks": "N/A.",
+      "licenseTerms": "Microsoft Store terms.",
+      "capabilities": [
+        "SEARCH",
+        "INSTALL_METADATA"
+      ],
+      "targetCapabilities": [
+        "Windows software discovery"
+      ],
+      "risk": "HIGH",
+      "legalStatus": "OWNER_LEGAL_REVIEW_REQUIRED",
+      "notes": "Do not reverse-engineer Store endpoints. Use only officially supported WinGet/Store contracts."
+    },
+    {
+      "id": "chocolatey-community",
+      "name": "Chocolatey Community Repository",
+      "category": "Windows Software Source",
+      "priority": "P2",
+      "official": false,
+      "authority": "COMMUNITY",
+      "baseUrl": "https://community.chocolatey.org",
+      "docsUrl": "https://docs.chocolatey.org/",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "NuGet-compatible/community feed surfaces; verify current public API before implementation"
+      ],
+      "auth": "Read/install policy varies.",
+      "pagination": "Provider-specific.",
+      "rateLimits": "Verify current community repository policy.",
+      "caching": "Provider-specific.",
+      "webhooks": "Not required.",
+      "licenseTerms": "Chocolatey/community package terms plus package-specific licenses.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "INSTALL_METADATA"
+      ],
+      "targetCapabilities": [
+        "Developer Tools"
+      ],
+      "risk": "HIGH",
+      "legalStatus": "SECONDARY_DISCOVERY_ONLY",
+      "notes": "Never prefer over official publisher/WinGet source when trustworthy official metadata exists."
+    },
+    {
+      "id": "scoop-buckets",
+      "name": "Scoop Buckets",
+      "category": "Windows Software Source",
+      "priority": "P2",
+      "official": false,
+      "authority": "COMMUNITY",
+      "baseUrl": "https://github.com/ScoopInstaller",
+      "docsUrl": "https://scoop.sh/",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "Git bucket manifest reads"
+      ],
+      "auth": "Public Git repositories.",
+      "pagination": "GitHub dependent.",
+      "rateLimits": "GitHub API limits if using API.",
+      "caching": "Git-backed manifests.",
+      "webhooks": "GitHub events optional.",
+      "licenseTerms": "Repository and package-specific terms.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "INSTALL_METADATA"
+      ],
+      "targetCapabilities": [
+        "Developer Tools"
+      ],
+      "risk": "HIGH",
+      "legalStatus": "SECONDARY_DISCOVERY_ONLY",
+      "notes": "Community manifest source, not a publisher identity root."
+    },
+    {
+      "id": "osv",
+      "name": "OSV.dev API",
+      "category": "Security Intelligence",
+      "priority": "P0",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://api.osv.dev",
+      "docsUrl": "https://google.github.io/osv.dev/api/",
+      "schemaUrls": [
+        "https://ossf.github.io/osv-schema/"
+      ],
+      "readEndpoints": [
+        "POST /v1/query",
+        "POST /v1/querybatch",
+        "GET /v1/vulns/{id}"
+      ],
+      "auth": "Public read API.",
+      "pagination": "Query can return page_token for large result sets; follow token exactly.",
+      "rateLimits": "Official docs currently state no API rate limits.",
+      "caching": "KForge should cache package-version results for a short security TTL and refresh explicitly; malformed refresh must not replace last-good evidence.",
+      "webhooks": "Not required.",
+      "licenseTerms": "OSV/OpenSSF project data licensing varies by upstream source; preserve source attribution/references from each vulnerability record.",
+      "capabilities": [
+        "SECURITY",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "Quality",
+        "Security",
+        "Dependency intelligence"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_READ_DISCOVERY",
+      "notes": "HTTP/1.1 responses are limited to 32 MiB; docs recommend HTTP/2 for potentially large queries. Package-native ranges/fixed versions make OSV the preferred P0 global vulnerability source."
+    },
+    {
+      "id": "github-dependabot-alerts",
+      "name": "GitHub Dependabot Alerts API",
+      "category": "Security Intelligence",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://api.github.com",
+      "docsUrl": "https://docs.github.com/en/rest/dependabot/alerts?apiVersion=2026-03-10",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "Repository/organization/enterprise Dependabot alert list endpoints"
+      ],
+      "auth": "Fine-grained token/GitHub App permissions depend on resource; use least privilege.",
+      "pagination": "Link/cursor parameters per endpoint.",
+      "rateLimits": "GitHub REST limits apply.",
+      "caching": "Authenticated conditional requests and ETag when supported.",
+      "webhooks": "Prefer security event/webhook surfaces where applicable instead of polling.",
+      "licenseTerms": "GitHub Terms/API terms.",
+      "capabilities": [
+        "SECURITY",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "Remote",
+        "Security"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_AUTHENTICATED_READ",
+      "notes": "Repository-specific evidence only; do not substitute for a package-global vulnerability database."
+    },
+    {
+      "id": "nvd",
+      "name": "NIST NVD CVE API 2.0",
+      "category": "Security Intelligence",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL_GOVERNMENT",
+      "baseUrl": "https://services.nvd.nist.gov/rest/json/cves/2.0",
+      "docsUrl": "https://nvd.nist.gov/developers/vulnerabilities",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /rest/json/cves/2.0"
+      ],
+      "auth": "Public; API key improves service limits.",
+      "pagination": "startIndex + resultsPerPage.",
+      "rateLimits": "NVD publishes API-key/non-key limits; verify current numbers immediately before implementation rather than freezing possibly changed values.",
+      "caching": "CVE data changes over time; cache with lastModified awareness and provider guidance.",
+      "webhooks": "No core requirement.",
+      "licenseTerms": "NVD/NIST data-use notices apply.",
+      "capabilities": [
+        "SECURITY",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "Security enrichment"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_READ_DISCOVERY",
+      "notes": "Use as CVE enrichment, not first-choice ecosystem range resolver when OSV has package-native affected ranges."
+    },
+    {
+      "id": "github-rest",
+      "name": "GitHub REST API",
+      "category": "Remote / CI",
+      "priority": "P0",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://api.github.com",
+      "docsUrl": "https://docs.github.com/en/rest?apiVersion=2026-03-10",
+      "schemaUrls": [
+        "GitHub REST OpenAPI descriptions in github/rest-api-description"
+      ],
+      "readEndpoints": [
+        "Repositories",
+        "commits",
+        "branches",
+        "tags",
+        "PRs",
+        "issues",
+        "contents",
+        "git data",
+        "checks",
+        "statuses",
+        "Actions",
+        "releases",
+        "deployments",
+        "security endpoints"
+      ],
+      "auth": "Prefer GitHub App or fine-grained PAT with endpoint-minimum permissions. Never recommend a broad classic PAT by default.",
+      "pagination": "Link header and per_page/page where supported; some newer endpoints use cursors.",
+      "rateLimits": "Public unauthenticated: 60/hour. Authenticated user tokens: 5,000/hour; GitHub App installation limits vary/scale. Search and secondary limits can be stricter.",
+      "caching": "Use authenticated conditional requests. GitHub recommends ETag/conditional requests and notes unchanged authenticated requests returning 304 do not consume primary rate budget.",
+      "webhooks": "GitHub explicitly recommends webhooks instead of polling when events are available.",
+      "licenseTerms": "GitHub Terms/API terms.",
+      "capabilities": [
+        "SEARCH",
+        "LIST",
+        "DETAIL",
+        "VERSIONS",
+        "ARTIFACTS",
+        "SECURITY",
+        "UPDATE_METADATA"
+      ],
+      "targetCapabilities": [
+        "Remote",
+        "GitHub",
+        "CI",
+        "Release",
+        "Updates",
+        "Remote Preview"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_AUTHENTICATED_READ",
+      "notes": "Pin X-GitHub-Api-Version: 2026-03-10 for new code. Respect Retry-After, X-RateLimit-* and x-poll-interval. Serialize/bound requests to avoid secondary limits."
+    },
+    {
+      "id": "github-releases-kforge",
+      "name": "GitHub Releases for KForge Update Discovery",
+      "category": "Product Updates",
+      "priority": "P0",
+      "official": true,
+      "authority": "OFFICIAL_PROJECT_RELEASE_CHANNEL",
+      "baseUrl": "https://api.github.com/repos/daynightae-cmyk/KForge",
+      "docsUrl": "https://docs.github.com/en/rest/releases/releases?apiVersion=2026-03-10",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /repos/daynightae-cmyk/KForge/releases",
+        "GET release/assets endpoints"
+      ],
+      "auth": "Published public releases readable anonymously; auth raises rate budget. Drafts require authorized access.",
+      "pagination": "per_page max 100; page.",
+      "rateLimits": "GitHub REST limits apply.",
+      "caching": "Strong candidate for conditional GET/ETag. Updates should be an explicit refresh or scheduled user-approved check, not an uncontrolled page-open network call.",
+      "webhooks": "Release webhook useful in CI/service contexts, not necessary for desktop client read path.",
+      "licenseTerms": "GitHub terms plus KForge release license.",
+      "capabilities": [
+        "LIST",
+        "DETAIL",
+        "ARTIFACTS",
+        "CHANGELOG",
+        "UPDATE_METADATA"
+      ],
+      "targetCapabilities": [
+        "System / Updates",
+        "Release & Distribution"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "APPROVED_READ_DISCOVERY",
+      "notes": "A release record is not trusted-installer evidence. KForge must resolve tag/commit, select expected Windows x64 NSIS asset, verify its checksum sidecar and Authenticode/trust state. Existing unsigned-release truth must remain blocking for TRUSTED_RELEASE."
+    },
+    {
+      "id": "github-deployments",
+      "name": "GitHub Deployments & Deployment Statuses",
+      "category": "Remote Preview",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL",
+      "baseUrl": "https://api.github.com",
+      "docsUrl": "https://docs.github.com/en/rest/deployments/deployments?apiVersion=2026-03-10",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /repos/{owner}/{repo}/deployments",
+        "GET /repos/{owner}/{repo}/deployments/{deployment_id}/statuses"
+      ],
+      "auth": "Public/private repository permissions; least privilege read.",
+      "pagination": "per_page/page.",
+      "rateLimits": "GitHub REST limits.",
+      "caching": "Conditional reads where available; status freshness short.",
+      "webhooks": "deployment/deployment_status webhooks preferred for event-driven systems.",
+      "licenseTerms": "GitHub terms.",
+      "capabilities": [
+        "LIST",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "Remote Preview",
+        "Remote"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_AUTHENTICATED_READ",
+      "notes": "Deployment status schema includes environment_url and log_url, enabling a truthful read-only remote-preview link when provider/GitHub integration publishes it."
+    },
+    {
+      "id": "vercel-deployments",
+      "name": "Vercel Deployments REST API",
+      "category": "Remote Preview",
+      "priority": "P1",
+      "official": true,
+      "authority": "OFFICIAL_PROVIDER",
+      "baseUrl": "https://api.vercel.com",
+      "docsUrl": "https://vercel.com/docs/rest-api/deployments/list-deployments",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /v7/deployments",
+        "GET /v13/deployments/{idOrUrl}"
+      ],
+      "auth": "Bearer token; team/project scoping parameters.",
+      "pagination": "List endpoint exposes limit/time/project/branch/SHA/state filters; use provider continuation fields if returned by current response.",
+      "rateLimits": "Plan/provider dependent; inspect response headers and current Vercel policy.",
+      "caching": "Remote-preview status should use short TTL and explicit refresh; never cache secrets/environment variables from owner-only detail.",
+      "webhooks": "Vercel webhooks/integrations can be evaluated later; read adapter does not require them.",
+      "licenseTerms": "Vercel API/service terms.",
+      "capabilities": [
+        "LIST",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "Remote Preview"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "OPTIONAL_PROVIDER",
+      "notes": "List API can filter projectId, branch, sha and state and returns deployment URL/state. Never expose private environment metadata to renderer."
+    },
+    {
+      "id": "remote-doc-openapi",
+      "name": "Official OpenAPI Documentation Sources",
+      "category": "Remote Documentation",
+      "priority": "P0",
+      "official": true,
+      "authority": "OFFICIAL_PER_PROVIDER",
+      "baseUrl": "allowlisted provider URLs",
+      "docsUrl": "Provider-specific official OpenAPI URL",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET official OpenAPI JSON/YAML/Markdown only from configured allowlist"
+      ],
+      "auth": "Provider-specific; public docs preferred. Never send project source to fetch docs.",
+      "pagination": "N/A; response-size limits mandatory.",
+      "rateLimits": "Provider-specific.",
+      "caching": "ETag/Last-Modified/Cache-Control when present; hash content; preserve canonical URL/version/retrievedAt.",
+      "webhooks": "Not required.",
+      "licenseTerms": "Provider documentation/API terms must be stored per source.",
+      "capabilities": [
+        "DOCUMENTATION",
+        "DETAIL"
+      ],
+      "targetCapabilities": [
+        "Online / Documentation",
+        "Global Search"
+      ],
+      "risk": "LOW",
+      "legalStatus": "APPROVED_FRAMEWORK",
+      "notes": "Highest-priority documentation ingestion method because schema/provenance is explicit. Do not accept arbitrary user/provider URLs without SSRF-safe allowlist policy."
+    },
+    {
+      "id": "llms-txt",
+      "name": "Official llms.txt / llms-full.txt when published by provider",
+      "category": "Remote Documentation",
+      "priority": "P1",
+      "official": false,
+      "authority": "OFFICIAL_ONLY_WHEN_SAME_PROVIDER_DOMAIN",
+      "baseUrl": "provider-defined",
+      "docsUrl": "https://llmstxt.org/",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "GET /llms.txt or provider-specific published path"
+      ],
+      "auth": "Usually public.",
+      "pagination": "N/A.",
+      "rateLimits": "Provider-specific.",
+      "caching": "Normal HTTP conditional caching.",
+      "webhooks": "None.",
+      "licenseTerms": "The convention does not grant content redistribution rights; provider docs terms still apply.",
+      "capabilities": [
+        "DOCUMENTATION"
+      ],
+      "targetCapabilities": [
+        "Remote Documentation"
+      ],
+      "risk": "MEDIUM",
+      "legalStatus": "SECONDARY_OFFICIAL_DISCOVERY",
+      "notes": "llms.txt is an emerging optional convention, not a universal trust standard. Use only when hosted by the official provider and never as the sole proof of documentation authority."
+    },
+    {
+      "id": "electron-updater",
+      "name": "electron-updater / electron-builder update metadata",
+      "category": "Product Updates",
+      "priority": "P2",
+      "official": true,
+      "authority": "OFFICIAL_PROJECT",
+      "baseUrl": "publish-provider dependent",
+      "docsUrl": "https://www.electron.build/docs/features/auto-update",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "Provider-specific update metadata such as latest.yml; GitHub Releases provider supported"
+      ],
+      "auth": "Provider-specific; public GitHub releases can be public.",
+      "pagination": "N/A.",
+      "rateLimits": "Hosting provider limits.",
+      "caching": "Updater/provider dependent.",
+      "webhooks": "Not required for desktop update checks.",
+      "licenseTerms": "electron-builder/electron-updater open-source license; hosting provider terms.",
+      "capabilities": [
+        "UPDATE_METADATA",
+        "ARTIFACTS"
+      ],
+      "targetCapabilities": [
+        "System / Updates"
+      ],
+      "risk": "HIGH",
+      "legalStatus": "BLOCK_AUTO_INSTALL_UNTIL_SIGNING_CLOSED",
+      "notes": "Windows NSIS auto-update is supported and electron-updater adds Windows code-signature validation. For KForge, do not enable automatic installation while trusted Windows publisher evidence is absent; start with read-only update discovery and explicit verified download."
+    },
+    {
+      "id": "microsoft-gallery-sdk",
+      "name": "Microsoft GalleryRestClient / Azure DevOps Extension API",
+      "category": "IDE Extensions",
+      "priority": "P2",
+      "official": true,
+      "authority": "MICROSOFT_SDK",
+      "baseUrl": "Microsoft Gallery/VSS service",
+      "docsUrl": "https://learn.microsoft.com/en-us/javascript/api/azure-devops-extension-api/galleryrestclient",
+      "schemaUrls": [],
+      "readEndpoints": [
+        "queryExtensions",
+        "getExtension",
+        "queryExtensionByVsixId via official SDK"
+      ],
+      "auth": "Varies by gallery operation/account context.",
+      "pagination": "SDK/query contract specific.",
+      "rateLimits": "Not established for KForge's intended third-party VS Code catalog use.",
+      "caching": "Provider specific.",
+      "webhooks": "Provider specific.",
+      "licenseTerms": "Microsoft Marketplace/Azure DevOps terms require explicit review for KForge's use.",
+      "capabilities": [
+        "SEARCH",
+        "DETAIL",
+        "ARTIFACTS"
+      ],
+      "targetCapabilities": [
+        "Extensions"
+      ],
+      "risk": "HIGH",
+      "legalStatus": "OWNER_LEGAL_REVIEW_REQUIRED",
+      "notes": "Official SDK existence is not the same as a blanket supported contract for third-party desktop mirroring/downloading of VS Code Marketplace content. Do not call undocumented raw Gallery endpoints until use/terms are confirmed."
+    }
+  ],
+  "developerTools": [
+    {
+      "name": "Git",
+      "officialSite": "https://git-scm.com/",
+      "officialRepository": "https://github.com/git/git",
+      "versionCommand": "git --version",
+      "acquisitionPolicy": "Official Git / Git for Windows release source; verify Windows publisher/signature",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "GitHub CLI",
+      "officialSite": "https://cli.github.com/",
+      "officialRepository": "https://github.com/cli/cli",
+      "versionCommand": "gh --version",
+      "acquisitionPolicy": "Official GitHub Releases + WinGet manifest where available",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Node.js",
+      "officialSite": "https://nodejs.org/",
+      "officialRepository": "https://github.com/nodejs/node",
+      "versionCommand": "node --version",
+      "acquisitionPolicy": "Official Node distributions; verify SHASUMS/signatures",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "npm",
+      "officialSite": "https://www.npmjs.com/",
+      "officialRepository": "https://github.com/npm/cli",
+      "versionCommand": "npm --version",
+      "acquisitionPolicy": "Bundled with Node or official npm package",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "pnpm",
+      "officialSite": "https://pnpm.io/",
+      "officialRepository": "https://github.com/pnpm/pnpm",
+      "versionCommand": "pnpm --version",
+      "acquisitionPolicy": "Official project install methods; Corepack where applicable",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Yarn",
+      "officialSite": "https://yarnpkg.com/",
+      "officialRepository": "https://github.com/yarnpkg/berry",
+      "versionCommand": "yarn --version",
+      "acquisitionPolicy": "Official project/Corepack; preserve project packageManager contract",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Bun",
+      "officialSite": "https://bun.sh/",
+      "officialRepository": "https://github.com/oven-sh/bun",
+      "versionCommand": "bun --version",
+      "acquisitionPolicy": "Official project installer/releases; verify artifact integrity",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Python",
+      "officialSite": "https://www.python.org/",
+      "officialRepository": "https://github.com/python/cpython",
+      "versionCommand": "python --version",
+      "acquisitionPolicy": "python.org signed installer / approved WinGet manifest",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "pip",
+      "officialSite": "https://pip.pypa.io/",
+      "officialRepository": "https://github.com/pypa/pip",
+      "versionCommand": "python -m pip --version",
+      "acquisitionPolicy": "Installed with Python/ensurepip; project-specific environments",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "uv",
+      "officialSite": "https://docs.astral.sh/uv/",
+      "officialRepository": "https://github.com/astral-sh/uv",
+      "versionCommand": "uv --version",
+      "acquisitionPolicy": "Official Astral release/install source",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Poetry",
+      "officialSite": "https://python-poetry.org/",
+      "officialRepository": "https://github.com/python-poetry/poetry",
+      "versionCommand": "poetry --version",
+      "acquisitionPolicy": "Official Poetry installer/pipx; explicit env scope",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Rust",
+      "officialSite": "https://www.rust-lang.org/tools/install",
+      "officialRepository": "https://github.com/rust-lang/rust",
+      "versionCommand": "rustc --version",
+      "acquisitionPolicy": "rustup official bootstrap; confirmation required",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Cargo",
+      "officialSite": "https://doc.rust-lang.org/cargo/",
+      "officialRepository": "https://github.com/rust-lang/cargo",
+      "versionCommand": "cargo --version",
+      "acquisitionPolicy": "Installed through Rust toolchain",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Go",
+      "officialSite": "https://go.dev/dl/",
+      "officialRepository": "https://github.com/golang/go",
+      "versionCommand": "go version",
+      "acquisitionPolicy": "Official Go distribution; checksum validation",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Java / JDK",
+      "officialSite": "https://openjdk.org/",
+      "officialRepository": "https://github.com/openjdk/jdk",
+      "versionCommand": "java -version",
+      "acquisitionPolicy": "Vendor MUST be explicit (OpenJDK/Temurin/Microsoft/Oracle/etc.); no generic auto-install",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Maven",
+      "officialSite": "https://maven.apache.org/",
+      "officialRepository": "https://github.com/apache/maven",
+      "versionCommand": "mvn -version",
+      "acquisitionPolicy": "Apache official releases/checksums/signatures",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Gradle",
+      "officialSite": "https://gradle.org/releases/",
+      "officialRepository": "https://github.com/gradle/gradle",
+      "versionCommand": "gradle --version",
+      "acquisitionPolicy": "Gradle official distribution/checksum",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": ".NET SDK",
+      "officialSite": "https://dotnet.microsoft.com/",
+      "officialRepository": "https://github.com/dotnet/sdk",
+      "versionCommand": "dotnet --info",
+      "acquisitionPolicy": "Microsoft official installer/WinGet",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "PowerShell",
+      "officialSite": "https://learn.microsoft.com/powershell/",
+      "officialRepository": "https://github.com/PowerShell/PowerShell",
+      "versionCommand": "pwsh --version",
+      "acquisitionPolicy": "Microsoft official release/WinGet",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Docker",
+      "officialSite": "https://docs.docker.com/",
+      "officialRepository": "https://github.com/docker/cli",
+      "versionCommand": "docker version",
+      "acquisitionPolicy": "Docker Desktop/Engine terms differ; explicit owner acceptance",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Docker Compose",
+      "officialSite": "https://docs.docker.com/compose/",
+      "officialRepository": "https://github.com/docker/compose",
+      "versionCommand": "docker compose version",
+      "acquisitionPolicy": "Docker plugin/bundled install",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "kubectl",
+      "officialSite": "https://kubernetes.io/docs/tasks/tools/",
+      "officialRepository": "https://github.com/kubernetes/kubernetes",
+      "versionCommand": "kubectl version --client",
+      "acquisitionPolicy": "Kubernetes official binaries/checksums",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Helm",
+      "officialSite": "https://helm.sh/",
+      "officialRepository": "https://github.com/helm/helm",
+      "versionCommand": "helm version",
+      "acquisitionPolicy": "Official releases/checksums",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Terraform",
+      "officialSite": "https://developer.hashicorp.com/terraform",
+      "officialRepository": "https://github.com/hashicorp/terraform",
+      "versionCommand": "terraform version",
+      "acquisitionPolicy": "HashiCorp official distribution; newer Terraform licensing must be displayed, not assumed OSS",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "OpenTofu",
+      "officialSite": "https://opentofu.org/",
+      "officialRepository": "https://github.com/opentofu/opentofu",
+      "versionCommand": "tofu version",
+      "acquisitionPolicy": "Official releases; license evidence from repo",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Ansible",
+      "officialSite": "https://docs.ansible.com/",
+      "officialRepository": "https://github.com/ansible/ansible",
+      "versionCommand": "ansible --version",
+      "acquisitionPolicy": "Python package/control-node platform constraints; avoid false Windows-native claim",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "CMake",
+      "officialSite": "https://cmake.org/",
+      "officialRepository": "https://github.com/Kitware/CMake",
+      "versionCommand": "cmake --version",
+      "acquisitionPolicy": "Kitware official release / WinGet",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Ninja",
+      "officialSite": "https://ninja-build.org/",
+      "officialRepository": "https://github.com/ninja-build/ninja",
+      "versionCommand": "ninja --version",
+      "acquisitionPolicy": "Official GitHub release / package manager",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "GNU Make",
+      "officialSite": "https://www.gnu.org/software/make/",
+      "officialRepository": "https://git.savannah.gnu.org/cgit/make.git",
+      "versionCommand": "make --version",
+      "acquisitionPolicy": "Windows distribution authority varies; discovery yes, generic auto-install no",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Gitleaks",
+      "officialSite": "https://gitleaks.io/",
+      "officialRepository": "https://github.com/gitleaks/gitleaks",
+      "versionCommand": "gitleaks version",
+      "acquisitionPolicy": "Official GitHub release; verify checksum/signing evidence when provided",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Semgrep",
+      "officialSite": "https://semgrep.dev/",
+      "officialRepository": "https://github.com/semgrep/semgrep",
+      "versionCommand": "semgrep --version",
+      "acquisitionPolicy": "Official package; remote rules/server contact remains disclosure-gated",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "SonarScanner",
+      "officialSite": "https://docs.sonarsource.com/",
+      "officialRepository": "https://github.com/SonarSource/sonar-scanner-cli",
+      "versionCommand": "sonar-scanner --version",
+      "acquisitionPolicy": "Official Sonar distribution; server connection explicit",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "ESLint",
+      "officialSite": "https://eslint.org/",
+      "officialRepository": "https://github.com/eslint/eslint",
+      "versionCommand": "eslint --version",
+      "acquisitionPolicy": "Project package manager preferred",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Prettier",
+      "officialSite": "https://prettier.io/",
+      "officialRepository": "https://github.com/prettier/prettier",
+      "versionCommand": "prettier --version",
+      "acquisitionPolicy": "Project package manager preferred",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Biome",
+      "officialSite": "https://biomejs.dev/",
+      "officialRepository": "https://github.com/biomejs/biome",
+      "versionCommand": "biome --version",
+      "acquisitionPolicy": "Official npm/binary source; project pin preferred",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "TypeScript",
+      "officialSite": "https://www.typescriptlang.org/",
+      "officialRepository": "https://github.com/microsoft/TypeScript",
+      "versionCommand": "tsc --version",
+      "acquisitionPolicy": "Project package manager preferred",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Playwright",
+      "officialSite": "https://playwright.dev/",
+      "officialRepository": "https://github.com/microsoft/playwright",
+      "versionCommand": "playwright --version",
+      "acquisitionPolicy": "Project dependency + browser binary policy; large downloads require confirmation",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Vitest",
+      "officialSite": "https://vitest.dev/",
+      "officialRepository": "https://github.com/vitest-dev/vitest",
+      "versionCommand": "vitest --version",
+      "acquisitionPolicy": "Project dependency preferred",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Jest",
+      "officialSite": "https://jestjs.io/",
+      "officialRepository": "https://github.com/jestjs/jest",
+      "versionCommand": "jest --version",
+      "acquisitionPolicy": "Project dependency preferred",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "pytest",
+      "officialSite": "https://pytest.org/",
+      "officialRepository": "https://github.com/pytest-dev/pytest",
+      "versionCommand": "pytest --version",
+      "acquisitionPolicy": "Python environment/project dependency",
+      "priority": "P0",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "ripgrep",
+      "officialSite": "https://github.com/BurntSushi/ripgrep",
+      "officialRepository": "https://github.com/BurntSushi/ripgrep",
+      "versionCommand": "rg --version",
+      "acquisitionPolicy": "Official releases / approved package manager",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "fd",
+      "officialSite": "https://github.com/sharkdp/fd",
+      "officialRepository": "https://github.com/sharkdp/fd",
+      "versionCommand": "fd --version",
+      "acquisitionPolicy": "Official releases / approved package manager",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "jq",
+      "officialSite": "https://jqlang.org/",
+      "officialRepository": "https://github.com/jqlang/jq",
+      "versionCommand": "jq --version",
+      "acquisitionPolicy": "Official releases / package manager",
+      "priority": "P2",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    },
+    {
+      "name": "Git LFS",
+      "officialSite": "https://git-lfs.com/",
+      "officialRepository": "https://github.com/git-lfs/git-lfs",
+      "versionCommand": "git lfs version",
+      "acquisitionPolicy": "Official release / Git for Windows integration",
+      "priority": "P1",
+      "licenseUsageClassification": "VERIFY_OFFICIAL_REPO_AND_ARTIFACT_TERMS_AT_IMPLEMENTATION"
+    }
+  ],
+  "trustLadder": [
+    {
+      "state": "CATALOG_DISCOVERED",
+      "meaning": "Provider returned metadata. Nothing about local presence or trust is implied."
+    },
+    {
+      "state": "SOURCE_IDENTIFIED",
+      "meaning": "Canonical provider/repository/publisher references are known."
+    },
+    {
+      "state": "LICENSE_CLASSIFIED",
+      "meaning": "License/terms evidence captured; unknown terms remain LEGAL_REVIEW_REQUIRED."
+    },
+    {
+      "state": "ARTIFACT_IDENTIFIED",
+      "meaning": "Specific immutable version/artifact URL selected."
+    },
+    {
+      "state": "INTEGRITY_EXPECTED",
+      "meaning": "Expected hash/digest obtained from an authority distinct from downloaded bytes when possible."
+    },
+    {
+      "state": "ARTIFACT_VERIFIED",
+      "meaning": "Downloaded/staged bytes match expected integrity metadata."
+    },
+    {
+      "state": "SIGNATURE_VERIFIED",
+      "meaning": "Cryptographic signature/certificate verified where supported."
+    },
+    {
+      "state": "PROVENANCE_VERIFIED",
+      "meaning": "Build/source provenance attestation verified where available."
+    },
+    {
+      "state": "COMPATIBILITY_VERIFIED",
+      "meaning": "OS/arch/runtime/project compatibility checked."
+    },
+    {
+      "state": "USER_CONFIRMED",
+      "meaning": "Required disclosure and explicit action approval recorded."
+    },
+    {
+      "state": "INSTALLED",
+      "meaning": "Filesystem/package-manager transaction completed durably."
+    },
+    {
+      "state": "RUNTIME_VERIFIED",
+      "meaning": "Post-install version/health/runtime evidence passed."
+    }
+  ],
+  "p0ImplementationOrder": [
+    "1. Canonical RemoteSource/Fetch/Cache contracts mapped onto existing OnlineAuthorityEvidence and Marketplace evidence.",
+    "2. Official MCP Registry adapter: search/detail/versions only; no auto-run.",
+    "3. Open VSX adapter: search/detail/version/artifact/integrity metadata; existing lifecycle handles install authority.",
+    "4. OSV adapter: batch package/version vulnerability intelligence into existing Security Quality.",
+    "5. Hugging Face Hub model catalog adapter: public metadata/revision/files/license/gating; never mark catalog item installed.",
+    "6. GitHub Releases KForge update discovery: stable/prerelease channels, tag/commit/asset/checksum/signing evidence separation.",
+    "7. Remote Documentation framework: official OpenAPI → official docs repo/sitemap → same-domain official llms.txt; global search integration.",
+    "8. Harden existing GitHub read adapters with current API version, conditional requests, least privilege and rate-limit evidence."
+  ],
+  "databaseVerdict": {
+    "requiredForP0": false,
+    "recommendedNow": "Keep existing bounded atomic .kforge stores behind a RemoteCatalogStore/RemoteCacheStore abstraction.",
+    "embeddedDbTrigger": "Consider SQLite/FTS only when retained normalized catalogs become large enough to require indexed offline cross-provider queries, frequent incremental updates or high concurrency (e.g. tens/hundreds of thousands of records or cache sizes around/above 100 MB). These are engineering thresholds, not provider requirements.",
+    "cloudDb": "Optional only for user-approved account/team/cross-device sync. Supabase must not become startup, local-project, Git, runtime or install-truth authority."
+  }
+}
