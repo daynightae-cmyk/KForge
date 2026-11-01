@@ -221,15 +221,15 @@ if (!app.requestSingleInstanceLock()) {
     ["kforge:github-start", () => githubConnect.start()],
     ["kforge:github-status", () => githubConnect.status()],
     ["kforge:github-disconnect", () => githubConnect.disconnect()],
-    ["kforge:github-installations", () => githubConnect.installations()],
-    ["kforge:github-repositories", (installationId) => githubConnect.repositories(installationId)],
+    ["kforge:github-installations", (page) => githubConnect.installations(page)],
+    ["kforge:github-repositories", (installationId, page) => githubConnect.repositories(installationId, page)],
   ];
   for (const [channel, action] of githubHandlers) {
-    ipcMain.handle(channel, (event, installationId) => {
+    ipcMain.handle(channel, (event, ...args) => {
       if (!DESKTOP_CHANNELS.has(event.channel) || !productionServer) throw new Error("Desktop IPC is not available.");
       const senderUrl = event.senderFrame && typeof event.senderFrame.url === "string" ? event.senderFrame.url : "";
       if (!isTrustedKForgeOrigin(senderUrl, productionServer.url)) throw new Error("Untrusted desktop sender.");
-      return action(installationId);
+      return action(...args);
     });
   }
 

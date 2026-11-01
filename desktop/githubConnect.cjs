@@ -54,10 +54,12 @@ function createGitHubConnect({ safeStorage, userDataRoot, workspaceRoot, externa
       if(!permitted(workspaceRoot)) return {state:"OFFLINE",account:null};
       try {return await call("/api/auth/github/status",s);} catch{return {state:"UNKNOWN",account:null,message:"GitHub Connect service unavailable or session invalid."};}
     },
-    async installations(){requireOnline();return call("/api/github/installations",credentials());},
-    async repositories(installationId){
+    async installations(page){requireOnline();const s=credentials();return call("/api/github/installations",page&&page>1?{...s,page}:s);},
+    async repositories(installationId,page){
       requireOnline();if(!Number.isSafeInteger(installationId)||installationId<1) throw Error("Invalid installation");
-      return call("/api/github/repositories",{...credentials(),installation_id:installationId});
+      const body={...credentials(),installation_id:installationId};
+      if(Number.isSafeInteger(page)&&page>1) body.page=page;
+      return call("/api/github/repositories",body);
     },
     async disconnect() {
       const s=read();if(!s)return {disconnected:true,remote_revocation:"NOT_REQUIRED"};

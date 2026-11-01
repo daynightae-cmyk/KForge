@@ -10,14 +10,22 @@ export async function githubToken(params,env,transport=fetch) {
   if(data.error || typeof data.access_token!=="string" || !data.access_token) throw new Error("GitHub authorization rejected");
   return data;
 }
-export async function githubGet(token,pathname,transport=fetch) {
+export async function githubGetPage(token,pathname,transport=fetch) {
   if(typeof token!=="string" || !token || !/^\/[\w\-./?=&%]+$/.test(pathname) || pathname.includes("..")) throw new Error("Invalid GitHub path");
   const response=await transport(API+pathname,{
     headers:{"authorization":`Bearer ${token}`,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"KNOuX-Forge-Connect"},
     signal:AbortSignal.timeout(10000)
   });
-  if(!response.ok) throw new Error(`GitHub request failed (${response.status})`);
-  return response.json();
+  let data=null;
+  if(typeof response.json==="function") { try { data=await response.json(); } catch { data=null; } }
+  const retryRaw=Number(response.headers.get("retry-after"));
+  return { status:response.status, data,
+    retryAfter:Number.isSafeInteger(retryRaw)&&retryRaw>=0&&retryRaw<=3600?retryRaw:null };
+}
+export async function githubGet(token,pathname,transport=fetch) {
+  const page=await githubGetPage(token,pathname,transport);
+  if(page.status!==200) throw new Error(`GitHub request failed (${page.status})`);
+  return page.data;
 }
 export function publicAccount(u) {
   return {id:u.id,login:u.login,

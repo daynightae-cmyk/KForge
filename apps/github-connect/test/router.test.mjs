@@ -46,11 +46,17 @@ function fixture() {
   const apiGet=async(token,path)=>{
     calls.push({type:"api",token,path});
     if(path==="/user") return account;
-    if(path==="/user/installations?per_page=50" || path==="/user/installations?per_page=100")return {installations:[{id:900,account:{login:"engineer"},target_type:"User",repository_selection:"selected"}],total_count:1};
-    if(path==="/user/installations/900/repositories?per_page=50")return {repositories:[{id:2,full_name:"engineer/disposable-repo",private:true,default_branch:"main",html_url:"https://github.com/engineer/disposable-repo",permissions:{contents:"write"}}],total_count:1};
     throw Error("Unexpected path "+path);
   };
-  const handler=makeHandler({env,store,exchange,apiGet,revoke:async()=>true,now:()=>epoch});
+  const apiPage=async(token,path)=>{
+    calls.push({type:"api-page",token,path});
+    if(path==="/user/installations?per_page=50&page=1") return {status:200,data:{installations:[{id:900,account:{login:"engineer"},target_type:"User",repository_selection:"selected"}],total_count:1}};
+    if(path==="/user/installations/900/repositories?per_page=50&page=1") return {status:200,data:{repositories:[{id:2,full_name:"engineer/disposable-repo",private:true,default_branch:"main",html_url:"https://github.com/engineer/disposable-repo",permissions:{contents:"write"}}],total_count:1}};
+    if(path.startsWith("/user/installations/")) return {status:404,data:null};
+    if(path.startsWith("/user/installations?")) return {status:404,data:null};
+    throw Error("Unexpected paged path "+path);
+  };
+  const handler=makeHandler({env,store,exchange,apiGet,apiPage,revoke:async()=>true,now:()=>epoch});
   async function send(path, body={},headers={}) {
     const res=await handler(new Request("https://connect.knoux.store"+path,{method:"POST",headers:{"content-type":"application/json",...headers},body:JSON.stringify(body)}));
     return {res,value:await res.json()};
@@ -127,8 +133,134 @@ test("available installations and repositories are bound to authorized session",
   const f=fixture(),{start}=await f.startAndAuthorize(),auth={session_id:start.session_id,session_proof:start.session_proof};
   const installs=await f.send("/api/github/installations",auth);
   assert.equal(installs.value.installations[0].id,900);
-  assert.equal((await f.send("/api/github/repositories",{...auth,installation_id:777})).res.status,403);
+  assert.equal(installs.value.pagination.status,"COMPLETE");
+  const denied=await f.send("/api/github/repositories",{...auth,installation_id:777});
+  assert.equal(denied.res.status,200);
+  assert.equal(denied.value.pagination.status,"DENIED");
+  assert.equal(denied.value.pagination.reason,"INSTALLATION_NOT_ACCESSIBLE");
   assert.equal((await f.send("/api/github/repositories",{...auth,installation_id:900})).value.repositories[0].full_name,"engineer/disposable-repo");
+});
+test("listing pagination stays bounded and reports page provenance",async()=>{
+  const f=fixture(),{start}=await f.startAndAuthorize(),auth={session_id:start.session_id,session_proof:start.session_proof};
+  for (const invalid of [0,-3,1.5,21,50,"abc"]) {
+    const bad=await f.send("/api/github/installations",{...auth,page:invalid});
+    assert.equal(bad.res.status,400);
+    assert.equal(bad.value.code,"INVALID_PAGE");
+    const badRepos=await f.send("/api/github/repositories",{...auth,installation_id:900,page:invalid});
+    assert.equal(badRepos.res.status,400);
+    assert.equal(badRepos.value.code,"INVALID_PAGE");
+  }
+  const first=await f.send("/api/github/installations",auth);
+  assert.equal(first.value.pagination.page,1);
+  assert.equal(first.value.pagination.per_page,50);
+  assert.equal(first.value.pagination.status,"COMPLETE");
+  const repos=await f.send("/api/github/repositories",{...auth,installation_id:900});
+  assert.equal(repos.value.pagination.page,1);
+  assert.equal(repos.value.pagination.status,"COMPLETE");
+});
+test("late-page installations authorize through the installation endpoint itself",async()=>{
+  const f=fixture(),{start}=await f.startAndAuthorize(),auth={session_id:start.session_id,session_proof:start.session_proof};
+  // Installation 901 was never on the first installations page. Access is decided
+  // upstream per installation endpoint, not by page-1 membership.
+  const res=await f.send("/api/github/repositories",{...auth,installation_id:901});
+  assert.equal(res.res.status,200);
+  assert.equal(res.value.pagination.status,"DENIED");
+});
+test("multi-page upstream returns partial truth with a validated next page",async()=>{
+  const store=new MemoryStore();
+  const account={ id:12345, login:"engineer", avatar_url:"https://avatars.githubusercontent.com/u/12345", html_url:"https://github.com/engineer" };
+  let epoch=Date.now();
+  const exchange=async()=>{
+    return {access_token:"top-secret-token",refresh_token:"top-secret-refresh",expires_in:28800,refresh_token_expires_in:14000000};
+  };
+  const apiPage=async(token,path)=>{
+    if(path==="/user/installations?per_page=50&page=1") {
+      return {status:200,data:{installations:Array.from({length:50},(_,i)=>({id:i+1,account:{login:"org"+i},target_type:"Organization",repository_selection:"all"})),total_count:52}};
+    }
+    if(path==="/user/installations?per_page=50&page=2") {
+      return {status:200,data:{installations:[{id:51,account:{login:"late-org"},target_type:"Organization",repository_selection:"all"},{id:51,account:{login:"duplicate"},target_type:"Organization",repository_selection:"all"},{id:52,account:{login:"late-org2"},target_type:"Organization",repository_selection:"all"}],total_count:52}};
+    }
+    throw Error("Unexpected "+path);
+  };
+  const apiGet=async(token,path)=>{ if(path==="/user") return account; throw Error("Unexpected "+path); };
+const handler=makeHandler({env,store,exchange,apiGet,apiPage,revoke:async()=>true,now:()=>epoch});
+  const start=await handler(new Request("https://connect.knoux.store/api/auth/github/start",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
+  const startValue=await start.json(); epoch=Date.now();
+  await handler(new Request("https://connect.knoux.store/auth/github/callback?code=valid-code&state="+new URL(startValue.authorization_url).searchParams.get("state")));
+  const auth={session_id:startValue.session_id,session_proof:startValue.session_proof};
+   const send=async (body)=>{ const r=await handler(new Request("https://connect.knoux.store/api/github/installations",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...auth,...body})})); return r.json(); };
+  const first=await send({});
+  assert.equal(first.pagination.status,"PARTIAL");
+  assert.equal(first.pagination.reason,"MORE_PAGES");
+  assert.equal(first.pagination.next_page,2);
+  assert.equal(first.total_count,52);
+  assert.equal(first.installations.length,50);
+  const second=await send({page:2});
+  assert.equal(second.pagination.status,"COMPLETE");
+  assert.equal(second.pagination.next_page,null);
+  assert.equal(second.installations.length,2);
+  assert.equal(second.installations.some(i=>i.id===51),true);
+});
+test("rate limited listing preserves retry metadata without partial claims",async()=>{
+  const store=new MemoryStore();
+  let epoch=Date.now();
+  const exchange=async()=>({access_token:"top-secret-token",refresh_token:"top-secret-refresh",expires_in:28800,refresh_token_expires_in:14000000});
+  const apiGet=async(token,path)=>{ if(path==="/user") return account; throw Error("Unexpected "+path); };
+  const apiPage=async()=> new Response(null,{status:429,headers:{"retry-after":"7"}});
+  const handler=makeHandler({env,store,exchange,apiGet,apiPage,revoke:async()=>true,now:()=>epoch});
+  const start=await handler(new Request("https://connect.knoux.store/api/auth/github/start",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
+  const startValue=await start.json(); epoch=Date.now();
+  await handler(new Request("https://connect.knoux.store/auth/github/callback?code=valid-code&state="+new URL(startValue.authorization_url).searchParams.get("state")));
+  const auth={session_id:startValue.session_id,session_proof:startValue.session_proof};
+  const installations=await handler(new Request("https://connect.knoux.store/api/github/installations",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(auth)}));
+  const value=await installations.json();
+  assert.equal(installations.status,200);
+  assert.equal(value.pagination.status,"RATE_LIMITED");
+  assert.equal(value.pagination.retry_after_seconds,7);
+  assert.equal(value.installations.length,0);
+  const repos=await handler(new Request("https://connect.knoux.store/api/github/repositories",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...auth,installation_id:900})}));
+  const reposValue=await repos.json();
+  assert.equal(reposValue.pagination.status,"RATE_LIMITED");
+  assert.equal(reposValue.pagination.reason,"GITHUB_RATE_LIMITED");
+});
+test("malformed and unavailable upstream pages stay partial, never invented",async()=>{
+  const f=fixture(),{start}=await f.startAndAuthorize(),auth={session_id:start.session_id,session_proof:start.session_proof};
+  const failingStore=new MemoryStore();
+  let epoch=Date.now();
+  const exchange=async()=>({access_token:"top-secret-token",refresh_token:"top-secret-refresh",expires_in:28800,refresh_token_expires_in:14000000});
+  const apiGet=async(token,path)=>{ if(path==="/user") return account; throw Error("Unexpected "+path); };
+  const handler500=makeHandler({env:{...env},store:failingStore,exchange,apiGet,apiPage:async()=>({status:500,data:null,retryAfter:null}),revoke:async()=>true,now:()=>epoch});
+  assert.equal((await handler500(new Request("https://connect.knoux.store/api/auth/github/start",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}))).status,201);
+  const partialRes=await handler500(new Request("https://connect.knoux.store/api/github/installations",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({session_id:"placeholder",session_proof:"placeholder"})}));
+  void partialRes;
+  const handlerMalformed=makeHandler({env,store:new MemoryStore(),exchange,apiGet,
+    apiPage:async()=>({status:200,data:{unexpected:"shape"},retryAfter:null}),
+    revoke:async()=>true,now:()=>epoch});
+  const s2=await handlerMalformed(new Request("https://connect.knoux.store/api/auth/github/start",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
+  const s2Value=await s2.json(); epoch=Date.now();
+  await handlerMalformed(new Request("https://connect.knoux.store/auth/github/callback?code=valid-code&state="+new URL(s2Value.authorization_url).searchParams.get("state")));
+  const auth2={session_id:s2Value.session_id,session_proof:s2Value.session_proof};
+  const malformed=await handlerMalformed(new Request("https://connect.knoux.store/api/github/installations",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(auth2)}));
+  const malformedValue=await malformed.json();
+  assert.equal(malformed.status,200);
+  assert.equal(malformedValue.pagination.status,"PARTIAL");
+  assert.equal(malformedValue.pagination.reason,"MALFORMED_RESPONSE");
+  assert.equal(malformedValue.installations.length,0);
+});
+test("upstream transport failure fails closed without leaking detail",async()=>{
+  const store=new MemoryStore();
+  let epoch=Date.now();
+  const exchange=async()=>({access_token:"top-secret-token",refresh_token:"top-secret-refresh",expires_in:28800,refresh_token_expires_in:14000000});
+  const apiGet=async(token,path)=>{ if(path==="/user") return account; throw Error("Unexpected "+path); };
+  const apiPage=async()=>{ const abort=new Error("The operation was aborted"); abort.name="AbortError"; throw abort; };
+  const handler=makeHandler({env,store,exchange,apiGet,apiPage,revoke:async()=>true,now:()=>epoch});
+  const start=await handler(new Request("https://connect.knoux.store/api/auth/github/start",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
+  const startValue=await start.json(); epoch=Date.now();
+  await handler(new Request("https://connect.knoux.store/auth/github/callback?code=valid-code&state="+new URL(startValue.authorization_url).searchParams.get("state")));
+  const auth={session_id:startValue.session_id,session_proof:startValue.session_proof};
+  const res=await handler(new Request("https://connect.knoux.store/api/github/installations",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(auth)}));
+  assert.equal(res.status,503);
+  assert.equal(JSON.stringify(await res.json()).includes("aborted"),false);
 });
 test("token refresh rotates confidential state and preserves session",async()=>{
   const f=fixture(),{start}=await f.startAndAuthorize(),auth={session_id:start.session_id,session_proof:start.session_proof};
@@ -164,3 +296,4 @@ test("oversized untrusted payload fails closed",async()=>{
   const r=await f.handler(new Request("https://connect.knoux.store/api/github/webhook",{method:"POST",body:"x".repeat(1024*1024+1)}));
   assert.equal(r.status,413);
 });
+

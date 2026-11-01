@@ -1,11 +1,59 @@
 import { encryptionKey, pkceChallenge, randomToken, safeEquals, seal, sha256, unseal, verifyWebhook } from "./crypto.mjs";
 import { RedisStore } from "./store.mjs";
-import { githubGet, githubToken, githubRevoke, publicAccount } from "./github.mjs";
+import { githubGet, githubGetPage, githubToken, githubRevoke, publicAccount } from "./github.mjs";
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
 const PENDING_TTL = 600;
 const MAX_JSON = 4096;
 const MAX_WEBHOOK = 1024 * 1024;
+const PAGE_SIZE_INSTALLATIONS = 50;
+const PAGE_SIZE_REPOSITORIES = 50;
+const MAX_INSTALLATIONS_PAGE = 20;
+const MAX_REPOSITORIES_PAGE = 20;
+
+function grantedTotal(data) {
+  return data && typeof data === "object" && Number.isSafeInteger(data.total_count) && data.total_count >= 0 ? data.total_count : null;
+}
+
+function mapInstallations(data) {
+  const raw = data && typeof data === "object" && Array.isArray(data.installations) ? data.installations : null;
+  if (!raw) return null;
+  const seen = new Set();
+  const mapped = [];
+  for (const item of raw) {
+    const id = item && typeof item === "object" ? item.id : null;
+    if (!Number.isSafeInteger(id) || id < 1 || seen.has(id)) continue;
+    seen.add(id);
+    mapped.push({
+      id,
+      account: item.account && typeof item.account.login === "string" ? item.account.login.slice(0, 120) : null,
+      target_type: typeof item.target_type === "string" ? item.target_type.slice(0, 40) : null,
+      repository_selection: typeof item.repository_selection === "string" ? item.repository_selection.slice(0, 40) : null,
+    });
+  }
+  return mapped;
+}
+
+function mapRepositories(data) {
+  const raw = data && typeof data === "object" && Array.isArray(data.repositories) ? data.repositories : null;
+  if (!raw) return null;
+  const seen = new Set();
+  const mapped = [];
+  for (const item of raw) {
+    const id = item && typeof item === "object" ? item.id : null;
+    if (!Number.isSafeInteger(id) || id < 1 || seen.has(id)) continue;
+    seen.add(id);
+    mapped.push({
+      id,
+      full_name: typeof item.full_name === "string" ? item.full_name.slice(0, 200) : null,
+      private: item.private === true,
+      default_branch: typeof item.default_branch === "string" ? item.default_branch.slice(0, 120) : null,
+      html_url: typeof item.html_url === "string" && item.html_url.startsWith("https://github.com/") ? item.html_url : null,
+      permissions: item.permissions && typeof item.permissions === "object" && !Array.isArray(item.permissions) ? item.permissions : {},
+    });
+  }
+  return mapped;
+}
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" },
@@ -16,6 +64,19 @@ const html = (content, status = 200) => new Response(`<!doctype html><html lang=
 });
 const validSessionId = (id) => typeof id === "string" && /^[a-zA-Z0-9_-]{32,96}$/.test(id);
 const validProof = (proof) => typeof proof === "string" && /^[a-zA-Z0-9_-]{40,128}$/.test(proof);
+const pageNumber = (raw, max) => {
+  if (raw === undefined || raw === null || raw === "") return 1;
+  const page = Number(raw);
+  return Number.isSafeInteger(page) && page >= 1 && page <= max ? page : null;
+};
+const upstreamRetryAfter = (upstream) => {
+  if (Number.isSafeInteger(upstream && upstream.retryAfter) && upstream.retryAfter >= 0 && upstream.retryAfter <= 3600) return upstream.retryAfter;
+  if (upstream && typeof upstream.headers?.get === "function") {
+    const raw = Number(upstream.headers.get("retry-after"));
+    return Number.isSafeInteger(raw) && raw >= 0 && raw <= 3600 ? raw : null;
+  }
+  return null;
+};
 const sessionKey = (id) => `kforge:gh:session:${id}`;
 const hasKeys = (env) => env.KFORGE_GITHUB_APP_ID === "5488053"
   && env.KFORGE_GITHUB_CLIENT_ID === "Iv23litajK8fn7sEhMPf"
@@ -54,7 +115,7 @@ async function bodyJson(request) {
   return parsed;
 }
 
-export function makeHandler({ env = process.env, store: providedStore, exchange = githubToken, apiGet = githubGet, revoke = githubRevoke, now = () => Date.now() } = {}) {
+export function makeHandler({ env = process.env, store: providedStore, exchange = githubToken, apiGet = githubGet, apiPage = githubGetPage, revoke = githubRevoke, now = () => Date.now() } = {}) {
   const setupKey = () => encryptionKey(env.KFORGE_SESSION_ENCRYPTION_KEY);
   const store = () => providedStore || new RedisStore(env);
   const clientInfo = (req) => sha256((req.headers.get("x-vercel-forwarded-for") || "unknown").slice(0, 130));
@@ -208,23 +269,33 @@ export function makeHandler({ env = process.env, store: providedStore, exchange 
       }
       if (pathname === "/api/github/installations") {
         const token = await usableToken(connection);
-        const result = await apiGet(token, "/user/installations?per_page=50");
-        return json({ installations: (result.installations || []).slice(0, 50).map(i => ({
-          id: i.id, account: i.account?.login || null, target_type: i.target_type || null,
-          repository_selection: i.repository_selection || null,
-        })), total_count: result.total_count, pagination: "FIRST_PAGE_ONLY" });
+        const page = pageNumber(body.page, MAX_INSTALLATIONS_PAGE);
+        if (!page) return reject("INVALID_PAGE", 400);
+        const upstream = await apiPage(token, `/user/installations?per_page=${PAGE_SIZE_INSTALLATIONS}&page=${page}`);
+        const meta = { page, per_page: PAGE_SIZE_INSTALLATIONS };
+        if (upstream.status === 429) return json({ installations: [], total_count: null, pagination: { ...meta, status: "RATE_LIMITED", reason: "GITHUB_RATE_LIMITED", next_page: null, retry_after_seconds: upstreamRetryAfter(upstream) } });
+        if (upstream.status !== 200) return json({ installations: [], total_count: null, pagination: { ...meta, status: "PARTIAL", reason: `UPSTREAM_${upstream.status}`, next_page: null } });
+        const installations = mapInstallations(upstream.data);
+        if (!installations) return json({ installations: [], total_count: null, pagination: { ...meta, status: "PARTIAL", reason: "MALFORMED_RESPONSE", next_page: null } });
+        const complete = installations.length < PAGE_SIZE_INSTALLATIONS;
+        return json({ installations, total_count: grantedTotal(upstream.data), pagination: { ...meta, status: complete ? "COMPLETE" : "PARTIAL", reason: complete ? null : "MORE_PAGES", next_page: complete ? null : page + 1 } });
       }
       if (pathname === "/api/github/repositories") {
         const id = Number(body.installation_id);
-        if (!Number.isSafeInteger(id) || id < 1) return reject("INVALID_INSTALLATION");
+        if (!Number.isSafeInteger(id) || id < 1) return reject("INVALID_INSTALLATION", 400);
+        const page = pageNumber(body.page, MAX_REPOSITORIES_PAGE);
+        if (!page) return reject("INVALID_PAGE", 400);
         const token = await usableToken(connection);
-        const access = await apiGet(token, "/user/installations?per_page=100");
-        if (!(access.installations || []).some(i => i.id === id)) return reject("INSTALLATION_NOT_ALLOWED", 403);
-        const result = await apiGet(token, `/user/installations/${id}/repositories?per_page=50`);
-        return json({ installation_id: id, repositories: (result.repositories || []).slice(0, 50).map(r => ({
-          id: r.id, full_name: r.full_name, private: r.private, default_branch: r.default_branch,
-          html_url: r.html_url, permissions: r.permissions || {},
-        })), total_count: result.total_count, pagination: "FIRST_PAGE_ONLY" });
+        const upstream = await apiPage(token, `/user/installations/${id}/repositories?per_page=${PAGE_SIZE_REPOSITORIES}&page=${page}`);
+        const meta = { page, per_page: PAGE_SIZE_REPOSITORIES };
+        const base = { installation_id: id, repositories: [], total_count: null };
+        if (upstream.status === 429) return json({ ...base, pagination: { ...meta, status: "RATE_LIMITED", reason: "GITHUB_RATE_LIMITED", next_page: null, retry_after_seconds: upstreamRetryAfter(upstream) } });
+        if (upstream.status === 404 || upstream.status === 403) return json({ ...base, pagination: { ...meta, status: "DENIED", reason: "INSTALLATION_NOT_ACCESSIBLE", next_page: null } });
+        if (upstream.status !== 200) return json({ ...base, pagination: { ...meta, status: "PARTIAL", reason: `UPSTREAM_${upstream.status}`, next_page: null } });
+        const repositories = mapRepositories(upstream.data);
+        if (!repositories) return json({ ...base, pagination: { ...meta, status: "PARTIAL", reason: "MALFORMED_RESPONSE", next_page: null } });
+        const complete = repositories.length < PAGE_SIZE_REPOSITORIES;
+        return json({ ...base, repositories, total_count: grantedTotal(upstream.data), pagination: { ...meta, status: complete ? "COMPLETE" : "PARTIAL", reason: complete ? null : "MORE_PAGES", next_page: complete ? null : page + 1 } });
       }
       return reject("NOT_FOUND", 404);
     } catch (error) {

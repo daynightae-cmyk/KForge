@@ -32,11 +32,24 @@ interface KForgeGitHubInstallation {
   target_type: string | null;
   repository_selection: string | null;
 }
+interface KForgeGitHubPageMeta {
+  page: number;
+  per_page: number;
+  status: "COMPLETE" | "PARTIAL" | "RATE_LIMITED" | "DENIED";
+  reason: string | null;
+  next_page: number | null;
+  retry_after_seconds?: number | null;
+}
+interface KForgeGitHubInstallations {
+  installations: KForgeGitHubInstallation[];
+  total_count: number | null;
+  pagination: KForgeGitHubPageMeta;
+}
 interface KForgeGitHubRepositories {
   installation_id: number;
-  total_count: number;
-  pagination: string;
-  repositories: Array<{id:number;full_name:string;private:boolean;default_branch:string;html_url:string;permissions?:Record<string,string>}>;
+  total_count: number | null;
+  pagination: KForgeGitHubPageMeta;
+  repositories: Array<{id:number;full_name:string|null;private:boolean;default_branch:string|null;html_url:string|null;permissions?:Record<string,string>}>;
 }
 interface Window {
   kforgeDesktop?: {
@@ -44,7 +57,7 @@ interface Window {
     githubStart: () => Promise<KForgeGitHubConnection>;
     githubStatus: () => Promise<KForgeGitHubConnection>;
     githubDisconnect: () => Promise<KForgeGitHubConnection>;
-    githubInstallations: () => Promise<{installations:KForgeGitHubInstallation[];total_count:number;pagination:string}>;
-    githubRepositories: (installationId: number) => Promise<KForgeGitHubRepositories>;
+    githubInstallations: (page?: number) => Promise<KForgeGitHubInstallations>;
+    githubRepositories: (installationId: number, page?: number) => Promise<KForgeGitHubRepositories>;
   };
 }

@@ -4,6 +4,6 @@ contextBridge.exposeInMainWorld("kforgeDesktop", Object.freeze({
   githubStart: () => ipcRenderer.invoke("kforge:github-start"),
   githubStatus: () => ipcRenderer.invoke("kforge:github-status"),
   githubDisconnect: () => ipcRenderer.invoke("kforge:github-disconnect"),
-  githubInstallations: () => ipcRenderer.invoke("kforge:github-installations"),
-  githubRepositories: (installationId) => ipcRenderer.invoke("kforge:github-repositories", installationId),
+  githubInstallations: (page) => ipcRenderer.invoke("kforge:github-installations", page),
+  githubRepositories: (installationId, page) => ipcRenderer.invoke("kforge:github-repositories", installationId, page),
 }));
