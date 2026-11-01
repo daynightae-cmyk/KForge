@@ -1,11 +1,24 @@
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { containsPlaintextSecret, maskApiKey, normalizeModelRecord, normalizeProviderError, redactSensitiveHeaders } from "../../shared/providerCommandCenter";
 import { isTrustedKForgeOrigin } from "../../shared/trustOrigin";
 import { createProviderSession, discoverProviderModels, listDiscoveredModels, listProviderSummaries, refreshProviderModels, revealProviderKey, testProviderConnection, upsertCustomProvider } from "./providerCommandCenter";
+import { __injectCredentialVaultRuntimeForTests, type VaultRuntime } from "./credentialVault";
 import { setLocalPlatformMode } from "./localPlatform";
+
+function deterministicVaultRuntime(): VaultRuntime {
+  const prefix = "DPAPIv1::";
+  return {
+    platform: "win32",
+    protect: (plaintext) => prefix + Buffer.from(plaintext, "utf8").toString("base64"),
+    unprotect: (protectedValue) => {
+      if (!protectedValue.startsWith(prefix)) throw new Error("Credential protection did not produce a valid protected payload.");
+      return Buffer.from(protectedValue.slice(prefix.length), "base64").toString("utf8");
+    },
+  };
+}
 
 async function workspaceRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), "kforge-provider-cc-"));
@@ -18,6 +31,13 @@ async function onlineWorkspaceRoot() {
 }
 
 describe("provider command center secret boundary", () => {
+  beforeEach(() => {
+    __injectCredentialVaultRuntimeForTests(deterministicVaultRuntime());
+  });
+  afterAll(() => {
+    __injectCredentialVaultRuntimeForTests(null);
+  });
+
   it("masks credentials and never leaks plaintext in summaries", { timeout: 30_000 }, async () => {
     const root = await workspaceRoot();
     try {

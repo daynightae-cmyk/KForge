@@ -48,7 +48,7 @@ export interface CredentialVault {
   metadata(providerId: string): Promise<CredentialDisplay>;
 }
 
-interface VaultRuntime {
+export interface VaultRuntime {
   platform: NodeJS.Platform;
   protect?: (plaintext: string) => string;
   unprotect?: (protectedValue: string) => string;
@@ -144,7 +144,14 @@ function unprotectWithDpapi(protectedValue: string) {
   });
 }
 
+let injectedRuntimeForTests: VaultRuntime | null = null;
+
+export function __injectCredentialVaultRuntimeForTests(runtime: VaultRuntime | null) {
+  injectedRuntimeForTests = runtime;
+}
+
 function runtimeDefaults(): VaultRuntime {
+  if (injectedRuntimeForTests) return injectedRuntimeForTests;
   return process.platform === "win32"
     ? { platform: process.platform, protect: protectWithDpapi, unprotect: unprotectWithDpapi }
     : { platform: process.platform };
