@@ -71,7 +71,7 @@ export interface ProjectPerformanceStrategy {
 }
 
 export interface BoundedEvidenceCoverage {
-  state: "COMPLETE" | "LIMIT_REACHED";
+  state: "COMPLETE" | "PARTIAL" | "LIMIT_REACHED";
   scannedCount: number;
   totalOrUnknown: number | null;
   limit: number;

@@ -74,9 +74,13 @@ const typeScriptExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cj
 async function sourceFiles(root: string, limit = 2_000) {
   const files: string[] = [];
   let limitReached = false;
+  let unreadableDirectories = 0;
   async function visit(directory: string): Promise<void> {
     if (limitReached) return;
-    const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => [] as Dirent[]);
+    const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => {
+      unreadableDirectories += 1;
+      return [] as Dirent[];
+    });
     for (const entry of entries) {
       if (limitReached) return;
       if (entry.isDirectory() && ignored.has(entry.name)) continue;
@@ -90,12 +94,17 @@ async function sourceFiles(root: string, limit = 2_000) {
     }
   }
   await visit(root);
+  const partiallyUnreadable = !limitReached && unreadableDirectories > 0;
   const coverage: BoundedEvidenceCoverage = {
-    state: limitReached ? "LIMIT_REACHED" : "COMPLETE",
+    state: limitReached ? "LIMIT_REACHED" : partiallyUnreadable ? "PARTIAL" : "COMPLETE",
     scannedCount: files.length,
-    totalOrUnknown: limitReached ? null : files.length,
+    totalOrUnknown: limitReached || partiallyUnreadable ? null : files.length,
     limit,
-    reason: limitReached ? `The ${limit.toLocaleString()}-source-file graph limit was reached; the graph excludes additional source files.` : "All detected source files were indexed within the graph safety limit.",
+    reason: limitReached
+      ? `The ${limit.toLocaleString()}-source-file graph limit was reached; the graph excludes additional source files.`
+      : partiallyUnreadable
+        ? `${unreadableDirectories} directory read(s) failed below the project root; source files inside them were not indexed.`
+        : "All detected source files were indexed within the graph safety limit.",
     source: "Local project graph source traversal",
   };
   return { files, coverage };
@@ -324,7 +333,7 @@ async function buildProjectGraphEvidence(projectPath: string): Promise<ProjectGr
   nodes.filter((node) => node.type === "symbol" && node.exported && node.label !== "default").forEach((node) => { const key = `${node.symbolKind || "symbol"}:${node.label}`; symbolGroups.set(key, [...(symbolGroups.get(key) || []), node]); });
   const duplicatedResponsibilities = [...symbolGroups.values()].filter((group) => new Set(group.map((node) => node.path)).size > 1).map((group) => ({ symbol: group[0].label, kind: group[0].symbolKind || "symbol", files: [...new Set(group.map((node) => node.path!).filter(Boolean))].sort(), evidence: `The same exported ${group[0].symbolKind || "symbol"} name is owned by ${new Set(group.map((node) => node.path)).size} files; semantic responsibility overlap requires human review.` })).sort((left, right) => right.files.length - left.files.length || left.symbol.localeCompare(right.symbol));
   const adapters = languageAdapters(files);
-  const limitations = ["Unresolved relative imports and undeclared path aliases are omitted instead of being guessed as package dependencies.", ...(discovery.coverage.state === "LIMIT_REACHED" ? [discovery.coverage.reason] : []), ...adapters.filter((adapter) => adapter.state === "UNAVAILABLE").map((adapter) => `${adapter.language} symbol analysis is UNAVAILABLE: ${adapter.reason}`)];
+  const limitations = ["Unresolved relative imports and undeclared path aliases are omitted instead of being guessed as package dependencies.", ...(discovery.coverage.state === "LIMIT_REACHED" || discovery.coverage.state === "PARTIAL" ? [discovery.coverage.reason] : []), ...adapters.filter((adapter) => adapter.state === "UNAVAILABLE").map((adapter) => `${adapter.language} symbol analysis is UNAVAILABLE: ${adapter.reason}`)];
   const summary = { files: files.length, imports: edges.filter((edge) => edge.type === "imports").length, exports: edges.filter((edge) => edge.type === "exports").length, symbols: nodes.filter((node) => node.type === "symbol").length, dependencies: nodes.filter((node) => node.type === "dependency").length, routes: nodes.filter((node) => node.type === "route").length, apis: nodes.filter((node) => node.type === "api").length, tests: nodes.filter((node) => node.type === "test").length, cycles: cycles.length, duplicatedResponsibilities: duplicatedResponsibilities.length };
   const generatedAt = new Date().toISOString();
   return writeCache(cacheKey, fingerprint, { generatedAt, coverage: discovery.coverage, cache: { state: "LIVE", fingerprint, generatedAt, servedAt: generatedAt }, nodes, edges, summary, analysis: { cycles, duplicatedResponsibilities, languageAdapters: adapters, limitations } });

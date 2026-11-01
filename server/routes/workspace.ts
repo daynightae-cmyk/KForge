@@ -41,7 +41,7 @@ import { checkForModelUpdates, deleteOllamaModel, detectLocalAIProvider, generat
 import { createProviderSession, discoverProviderModels, listDiscoveredModels, listProviderSessions, listProviderSummaries, replaceProviderKey, revealProviderKey, testProviderConnection, upsertCustomProvider } from "../services/providerCommandCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
 import { listCachedDocumentation, type CachedDocRecord } from "../services/remoteSources/documentationService";
-import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
+import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, contextScanSummary, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
 import { executeAgentTool, isAgentToolName, listAgentTools, type ProjectToolHandlers } from "../services/agentTools";
 import { appendTaskLog, attachMission, cancelTask, completeMission, getTask, initializeTaskStore, listTasks, retryTask, startTask, updateMissionStep, type KForgeMission, type KForgeTask, type TaskKind, type MissionType } from "../services/tasks";
@@ -242,12 +242,14 @@ function asString(value: unknown) {
 async function findFilesWithEvidence(root: string, predicate: (relativePath: string, entry: Dirent) => boolean, limit = 5_000, source = "Local bounded filesystem traversal") {
   const found: string[] = [];
   let limitReached = false;
+  let unreadableDirectories = 0;
   async function visit(current: string) {
     if (limitReached) return;
     let entries: Dirent[] = [];
     try {
       entries = await fs.readdir(current, { withFileTypes: true });
     } catch {
+      unreadableDirectories += 1;
       return;
     }
     for (const entry of entries) {
@@ -264,12 +266,17 @@ async function findFilesWithEvidence(root: string, predicate: (relativePath: str
     }
   }
   await visit(root);
+  const partiallyUnreadable = !limitReached && unreadableDirectories > 0;
   const coverage: BoundedEvidenceCoverage = {
-    state: limitReached ? "LIMIT_REACHED" : "COMPLETE",
+    state: limitReached ? "LIMIT_REACHED" : partiallyUnreadable ? "PARTIAL" : "COMPLETE",
     scannedCount: found.length,
-    totalOrUnknown: limitReached ? null : found.length,
+    totalOrUnknown: limitReached || partiallyUnreadable ? null : found.length,
     limit,
-    reason: limitReached ? `The ${limit.toLocaleString()}-file safety limit was reached; additional matching files were not scanned.` : "Traversal completed within the configured safety limit.",
+    reason: limitReached
+      ? `The ${limit.toLocaleString()}-file safety limit was reached; additional matching files were not scanned.`
+      : partiallyUnreadable
+        ? `${unreadableDirectories} directory read(s) could not complete below the project root, so matching files inside them are missing; coverage is partial.`
+        : "Traversal completed within the configured safety limit.",
     source,
   };
   return { files: found, coverage };
@@ -978,7 +985,7 @@ export async function executeKForgeSelfAudit(project: ProjectSummary): Promise<S
     scan ||= await scanProject(project);
     const context = await buildAgentContext(project, scan);
     const plan = buildRulePlan(context);
-    return { evidence: { mode: plan.mode, summary: plan.summary, steps: plan.steps, risks: plan.risks, contextFiles: context.files.map((file) => file.path), totalCharacters: context.totalCharacters, mutationPermission: "NONE — observational plan only" } };
+    return { evidence: { mode: plan.mode, summary: plan.summary, steps: plan.steps, risks: plan.risks, contextFiles: context.files.map((file) => file.path), totalCharacters: context.totalCharacters, contextCoverage: contextScanSummary(context), mutationPermission: "NONE - observational plan only" } };
   });
 
   for (const [id, action] of [["tests", "test"], ["build", "build"], ["runtime", "runtime"]] as const) {
@@ -1040,7 +1047,7 @@ export async function executePreviewFixVerify(project: ProjectSummary, issueId: 
   if (!issue) return { ok: false, rolledBack: false, error: "The selected problem is not present in the current scan.", stages, previewBefore: before };
 
   const context = await buildAgentContext(project, scan, issue.id);
-  record("ask-kforge", "Ask KForge evidence context", "PASSED", { issue: issue.title, files: context.files.map((entry) => entry.path), totalCharacters: context.totalCharacters });
+  record("ask-kforge", "Ask KForge evidence context", "PASSED", { issue: issue.title, files: context.files.map((entry) => entry.path), totalCharacters: context.totalCharacters, contextCoverage: contextScanSummary(context) });
   const plan = buildRulePlan(context);
   record("agent-plan", "Agent plan", "PASSED", plan);
   const patch = await generateVerifiedPatch(project, issue);
@@ -2220,7 +2227,7 @@ router.post("/projects/:id/agent/runs", async (req, res) => {
     if (!scanResult.ok) return { ok: false, message: "Agent scan failed; task is blocked.", output: JSON.stringify({ goal, records }, null, 2) };
     const scan = scanResult.output as ProjectScan;
     const context = await buildAgentContext(project, scan, issueId);
-    log(`Selected ${context.files.length} redacted context file(s), ${context.totalCharacters} characters.`, 24);
+    log(`Selected ${context.files.length} redacted context file(s), ${context.totalCharacters} characters (context scan: ${context.contextScan?.status || "SKIPPED"}).`, 24);
     let plan: unknown;
     try { plan = await buildLocalAIPlan(getWorkspaceRoot(), context, goal); log("Local AI plan generated from the active model.", 36); }
     catch { plan = buildRulePlan(context); log("No active local model; using deterministic evidence plan.", 36); }
@@ -2305,11 +2312,11 @@ router.post("/projects/:id/problems/:problemId/explain", async (req, res) => {
   try {
     const generated = await generateWithLocalAI(getWorkspaceRoot(), "You explain a deterministic KForge Sonar diagnostic. Do not invent diagnostics, edits, test results, or secret values. Explain impact, risk, and a safe verification path using only the supplied evidence.", JSON.stringify({ diagnostic: problem, context }));
     const completedAt = new Date().toISOString();
-    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, explanation: generated.content, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT", "SOURCE_CODE"], provider: generated.provider.name, destination: generated.provider.endpoint, purpose: "Explain the selected diagnostic using bounded redacted project context in the active local model.", startedAt, completedAt, result: "SUCCEEDED" }) });
+    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, explanation: generated.content, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path), contextCoverage: contextScanSummary(context), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT", "SOURCE_CODE"], provider: generated.provider.name, destination: generated.provider.endpoint, purpose: "Explain the selected diagnostic using bounded redacted project context in the active local model.", startedAt, completedAt, result: "SUCCEEDED" }) });
   } catch {
     const explanation = { mode: "evidence-based", finding: problem.title, severity: problem.severity, source: problem.source, rule: problem.rule, file: problem.file, line: problem.line, impact: problem.description, risk: problem.risk, proposedAction: problem.suggestion || "Review the diagnostic evidence and run the relevant project check.", verification: problem.category === "typecheck" ? ["typecheck", "test", "build"] : problem.category === "security" ? ["review scanner evidence", "scan", "test"] : ["scan", "test", "build"] };
     const completedAt = new Date().toISOString();
-    return res.json({ mode: "rules", provider: "none", explanation, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path), notice: "No active local model is available. This is deterministic diagnostic evidence, not AI-generated explanation.", transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], provider: "KForge deterministic rules", destination: project.path, purpose: "Explain the selected diagnostic from local normalized evidence.", startedAt, completedAt, result: "SUCCEEDED" }) });
+    return res.json({ mode: "rules", provider: "none", explanation, diagnostic: problem, contextFiles: context.files.map((entry) => entry.path), contextCoverage: contextScanSummary(context), notice: "No active local model is available. This is deterministic diagnostic evidence, not AI-generated explanation.", transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], provider: "KForge deterministic rules", destination: project.path, purpose: "Explain the selected diagnostic from local normalized evidence.", startedAt, completedAt, result: "SUCCEEDED" }) });
   }
 });
 
@@ -2324,12 +2331,12 @@ router.post("/projects/:id/ask", async (req, res) => {
   try {
     const generated = await generateWithLocalAI(getWorkspaceRoot(), "You are Ask KForge. Answer only from the redacted project context. Cite specific diagnostic titles, files, or verification evidence. Do not invent results or expose secrets.", `Question: ${question}\n\nContext:\n${JSON.stringify(context)}`);
     const completedAt = new Date().toISOString();
-    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, answer: generated.content, contextFiles: context.files.map((entry) => entry.path), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT", "SOURCE_CODE"], provider: generated.provider.name, destination: generated.provider.endpoint, purpose: "Answer the explicit project question using bounded redacted context in the active local model.", startedAt, completedAt, result: "SUCCEEDED" }) });
+    return res.json({ mode: "local-ai", provider: generated.provider.id, model: generated.model, answer: generated.content, contextFiles: context.files.map((entry) => entry.path), contextCoverage: contextScanSummary(context), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT", "SOURCE_CODE"], provider: generated.provider.name, destination: generated.provider.endpoint, purpose: "Answer the explicit project question using bounded redacted context in the active local model.", startedAt, completedAt, result: "SUCCEEDED" }) });
   } catch {
     const top = [...scan.issues].sort((left, right) => ({ critical: 4, high: 3, medium: 2, low: 1, info: 0 }[right.severity] - { critical: 4, high: 3, medium: 2, low: 1, info: 0 }[left.severity])).slice(0, 5);
     const answer = { notice: "No active local model is available; this is a deterministic answer from the current scan and project graph context, not generated AI.", question, project: project.name, health: scan.health.score, topRisks: top.map((entry) => ({ title: entry.title, severity: entry.severity, file: entry.file, source: entry.source, suggestion: entry.suggestion })), verification: scan.health.metrics.filter((entry) => entry.status !== "unknown").map((entry) => ({ check: entry.label, status: entry.status, evidence: entry.evidence })) };
     const completedAt = new Date().toISOString();
-    return res.json({ mode: "rules", provider: "none", answer, contextFiles: context.files.map((entry) => entry.path), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], provider: "KForge deterministic rules", destination: project.path, purpose: "Answer the explicit project question from current local scan evidence.", startedAt, completedAt, result: "SUCCEEDED" }) });
+    return res.json({ mode: "rules", provider: "none", answer, contextFiles: context.files.map((entry) => entry.path), contextCoverage: contextScanSummary(context), transparency: createOperationTransparency({ execution: "LOCAL", network: "NOT_REQUIRED", dataClasses: ["PROJECT_CONTEXT"], provider: "KForge deterministic rules", destination: project.path, purpose: "Answer the explicit project question from current local scan evidence.", startedAt, completedAt, result: "SUCCEEDED" }) });
   }
 });
 

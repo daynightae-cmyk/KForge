@@ -26,6 +26,7 @@ export interface AgentContext {
   files: AgentContextFile[];
   totalCharacters: number;
   contextScan?: {
+    status: ContextScanStatus;
     complete: boolean;
     truncated: boolean;
     filesScanned: number;
@@ -35,7 +36,58 @@ export interface AgentContext {
     timeBudgetMs: number;
     elapsedMs: number;
     excludedDirectories: string[];
+    stopReasons: string[];
+    unreadable: ContextScanUnreadableEntry[];
+    unreadableTruncated: boolean;
+    skippedLinks: number;
+    skippedOutsideRoot: string[];
   };
+}
+
+export function contextScanSummary(context: AgentContext) {
+  const scan = context.contextScan;
+  return {
+    status: scan?.status ?? "SKIPPED",
+    complete: scan?.complete ?? false,
+    truncated: scan?.truncated ?? false,
+    filesScanned: scan?.filesScanned ?? 0,
+    filesMatched: scan?.filesMatched ?? 0,
+    unreadableCount: scan?.unreadable.length ?? 0,
+    unreadableEntries: (scan?.unreadable ?? []).slice(0, 5).map((entry) => `${entry.path}:${entry.reason}`),
+    unreadableTruncated: scan?.unreadableTruncated ?? false,
+    skippedLinks: scan?.skippedLinks ?? 0,
+    skippedOutsideRootCount: scan?.skippedOutsideRoot.length ?? 0,
+    elapsedMs: scan?.elapsedMs ?? 0,
+  };
+}
+
+export type ContextScanStatus = "COMPLETE" | "PARTIAL" | "FAILED" | "SKIPPED";
+
+export interface ContextScanUnreadableEntry {
+  path: string;
+  reason: string;
+}
+
+export interface ContextScanResult {
+  files: string[];
+  filesScanned: number;
+  complete: boolean;
+  truncated: boolean;
+  elapsedMs: number;
+  excluded: string[];
+  status: "COMPLETE" | "PARTIAL" | "FAILED";
+  stopReasons: string[];
+  unreadable: ContextScanUnreadableEntry[];
+  unreadableTruncated: boolean;
+  skippedLinks: number;
+  skippedOutsideRoot: string[];
+}
+
+export interface CollectProjectFilesOptions {
+  maxFiles: number;
+  maxDepth: number;
+  timeBudgetMs: number;
+  injectedWalkFailure?: { directory: string; code: string };
 }
 
 export interface AgentPatch {
@@ -95,7 +147,7 @@ export async function readContextFile(projectPath: string, relative: string, rea
   if (!textExtensions.has(path.extname(safe.relative).toLowerCase()) && path.basename(safe.relative) !== "package.json") return null;
   const raw = await fs.readFile(safe.resolved, "utf8").catch(() => "");
   if (!raw) return null;
-  const normalized = raw.length > limit ? `${raw.slice(0, limit)}\\n/* KForge context truncated */` : raw;
+  const normalized = raw.length > limit ? `${raw.slice(0, limit)}\n/* KForge context truncated */` : raw;
   const redacted = redactProjectText(safe.relative, normalized);
   return { path: safe.relative, reason, ...redacted } as AgentContextFile;
 }
@@ -124,31 +176,63 @@ const CONTEXT_SCAN_EXCLUDED = new Set([
   ".cache", ".turbo", ".vite", "target", "vendor", ".pnpm-store", "release",
 ]);
 
-export async function collectProjectFiles(projectPath: string, options: { maxFiles: number; maxDepth: number; timeBudgetMs: number }) {
+const UNREADABLE_RECORD_LIMIT = 50;
+const SKIPPED_OUTSIDE_ROOT_LIMIT = 20;
+
+function contextFailureCode(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return typeof code === "string" && code.length > 0 ? code : "UNKNOWN";
+}
+
+export async function collectProjectFiles(projectPath: string, options: CollectProjectFilesOptions): Promise<ContextScanResult> {
   const start = Date.now();
   const results: string[] = [];
   let filesScanned = 0;
-  let complete = true;
   let truncated = false;
   const excluded: string[] = [];
+  const stopReasons = new Set<string>();
+  const unreadable: ContextScanUnreadableEntry[] = [];
+  let unreadableTruncated = false;
+  let skippedLinks = 0;
+  const skippedOutsideRoot: string[] = [];
+  let rootReadable = false;
+
+  const markBoundary = (reason: string) => {
+    truncated = true;
+    stopReasons.add(reason);
+  };
+  const recordUnreadable = (relativeDirectory: string, error: unknown) => {
+    if (unreadable.length >= UNREADABLE_RECORD_LIMIT) { unreadableTruncated = true; return; }
+    unreadable.push({ path: relativeDirectory || ".", reason: contextFailureCode(error) });
+  };
+
+  let realRoot: string | null = null;
+  try { realRoot = await fs.realpath(projectPath); } catch { realRoot = null; }
 
   async function walk(directory: string, depth: number, relativePrefix: string) {
-    if (depth > options.maxDepth) { truncated = true; complete = false; return; }
-    if (Date.now() - start > options.timeBudgetMs) { truncated = true; complete = false; return; }
-    if (results.length >= options.maxFiles) { truncated = true; complete = false; return; }
+    if (depth > options.maxDepth) { markBoundary("max-depth"); return; }
+    if (Date.now() - start > options.timeBudgetMs) { markBoundary("time-budget"); return; }
+    if (results.length >= options.maxFiles) { markBoundary("max-files"); return; }
+    if (options.injectedWalkFailure && options.injectedWalkFailure.directory === relativePrefix) {
+      recordUnreadable(relativePrefix, Object.assign(new Error("Injected context scan read failure"), { code: options.injectedWalkFailure.code }));
+      return;
+    }
     let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean; isSymbolicLink: () => boolean }>;
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      recordUnreadable(relativePrefix, error);
       return;
     }
+    if (relativePrefix === "") rootReadable = true;
     for (const entry of entries) {
-      if (Date.now() - start > options.timeBudgetMs) { truncated = true; complete = false; return; }
-      if (results.length >= options.maxFiles) { truncated = true; complete = false; return; }
+      if (Date.now() - start > options.timeBudgetMs) { markBoundary("time-budget"); return; }
+      if (results.length >= options.maxFiles) { markBoundary("max-files"); return; }
       const name = entry.name;
       const childRelative = relativePrefix ? `${relativePrefix}/${name}` : name;
       if (entry.isSymbolicLink()) {
-        // Do not follow links during context enumeration.
+        // Policy: do not follow links/junctions during context enumeration.
+        skippedLinks += 1;
         continue;
       }
       if (entry.isDirectory()) {
@@ -156,7 +240,16 @@ export async function collectProjectFiles(projectPath: string, options: { maxFil
           if (!excluded.includes(name)) excluded.push(name);
           continue;
         }
-        await walk(path.join(directory, name), depth + 1, childRelative);
+        const childDirectory = path.join(directory, name);
+        if (realRoot) {
+          let childReal: string | null = null;
+          try { childReal = await fs.realpath(childDirectory); } catch { childReal = null; }
+          if (childReal && !isInsideRealPath(realRoot, childReal)) {
+            if (skippedOutsideRoot.length < SKIPPED_OUTSIDE_ROOT_LIMIT) skippedOutsideRoot.push(childRelative);
+            continue;
+          }
+        }
+        await walk(childDirectory, depth + 1, childRelative);
       } else if (entry.isFile()) {
         filesScanned += 1;
         results.push(childRelative.split(path.sep).join("/"));
@@ -167,27 +260,38 @@ export async function collectProjectFiles(projectPath: string, options: { maxFil
   try {
     await walk(projectPath, 0, "");
   } catch {
-    complete = false;
+    stopReasons.add("walk-error");
     truncated = true;
   }
-  if (filesScanned >= options.maxFiles || Date.now() - start > options.timeBudgetMs) {
-    truncated = true;
-    complete = false;
-  }
+  if (filesScanned >= options.maxFiles) markBoundary("max-files");
+  if (Date.now() - start > options.timeBudgetMs) markBoundary("time-budget");
+
+  const rootUnreadable = !rootReadable && unreadable.some((entry) => entry.path === ".");
+  const status: ContextScanResult["status"] = rootUnreadable
+    ? "FAILED"
+    : truncated || unreadable.length > 0
+      ? "PARTIAL"
+      : "COMPLETE";
   return {
     files: results,
     filesScanned,
-    complete,
+    complete: status === "COMPLETE",
     truncated,
     elapsedMs: Date.now() - start,
     excluded,
+    status,
+    stopReasons: [...stopReasons],
+    unreadable,
+    unreadableTruncated,
+    skippedLinks,
+    skippedOutsideRoot,
   };
 }
 
 export async function buildAgentContext(project: ProjectSummary, scan: ProjectScan, issueId?: string): Promise<AgentContext> {
   const issue = issueId ? scan.issues.find((entry) => entry.id === issueId) : undefined;
   const files: AgentContextFile[] = [];
-  let scanResult: { files: string[]; filesScanned: number; complete: boolean; truncated: boolean; elapsedMs: number; excluded: string[] } | null = null;
+  let scanResult: ContextScanResult | null = null;
   const seen = new Set<string>();
   const add = async (relative: string, reason: AgentContextFile["reason"]) => {
     if (seen.has(relative) || files.length >= 10) return;
@@ -198,10 +302,10 @@ export async function buildAgentContext(project: ProjectSummary, scan: ProjectSc
     await add(issue.file, "active-problem");
     const active = files.find((entry) => entry.reason === "active-problem");
     if (active) for (const candidate of importCandidates(active.path, active.content).slice(0, 4)) await add(candidate, "import");
-    const basename = path.posix.basename(issue.file).replace(/\\.[^.]+$/, "");
+    const basename = path.posix.basename(issue.file).replace(/\.[^.]+$/, "");
     scanResult = await collectProjectFiles(project.path, { maxFiles: 5000, maxDepth: 8, timeBudgetMs: 2000 });
     const rootEntries = scanResult.files;
-    for (const entry of rootEntries.filter((value) => /(?:\\.test|\\.spec)\\.[cm]?[jt]sx?$/.test(value) && value.toLowerCase().includes(basename.toLowerCase())).slice(0, 2)) await add(entry.split(path.sep).join("/"), "related-test");
+    for (const entry of rootEntries.filter((value) => /(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(value) && value.toLowerCase().includes(basename.toLowerCase())).slice(0, 2)) await add(entry.split(path.sep).join("/"), "related-test");
   }
   for (const config of ["package.json", "tsconfig.json", "vite.config.ts", "README.md"]) await add(config, "configuration");
   const status = await gitStatus(project.path);
@@ -216,7 +320,8 @@ export async function buildAgentContext(project: ProjectSummary, scan: ProjectSc
     files,
     totalCharacters,
     contextScan: {
-      complete: scanResult ? scanResult.complete : true,
+      status: scanResult ? scanResult.status : "SKIPPED",
+      complete: scanResult ? scanResult.complete : false,
       truncated: scanResult ? scanResult.truncated : false,
       filesScanned: scanResult ? scanResult.filesScanned : 0,
       filesMatched: scanResult ? scanResult.files.length : 0,
@@ -225,6 +330,11 @@ export async function buildAgentContext(project: ProjectSummary, scan: ProjectSc
       timeBudgetMs: 2000,
       elapsedMs: scanResult ? scanResult.elapsedMs : 0,
       excludedDirectories: scanResult ? scanResult.excluded : [],
+      stopReasons: scanResult ? scanResult.stopReasons : [],
+      unreadable: scanResult ? scanResult.unreadable : [],
+      unreadableTruncated: scanResult ? scanResult.unreadableTruncated : false,
+      skippedLinks: scanResult ? scanResult.skippedLinks : 0,
+      skippedOutsideRoot: scanResult ? scanResult.skippedOutsideRoot : [],
     },
   };
 }
@@ -350,6 +460,7 @@ export async function validateAndApplyPatch(projectPath: string, patch: AgentPat
   const safe = await safeFile(projectPath, patch.file);
   await assertRealPathContained(projectPath, safe.resolved);
   const source = await fs.readFile(safe.resolved, "utf8");
+  await assertRealPathContained(projectPath, safe.resolved);
   await fs.writeFile(safe.resolved, source.replace(patch.oldText, patch.newText), "utf8");
   return { file: safe.relative, changed: true, qualityGate: gate };
 }
