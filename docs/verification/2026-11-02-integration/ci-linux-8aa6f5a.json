@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 2,
+  "source": "KForge verification gate",
+  "platform": "linux",
+  "node": "v24.22.1",
+  "testedSha": "8aa6f5a5559a24b0a4822a0bd8b63bdcc1722d41",
+  "event": "push",
+  "runId": "41348620003",
+  "startedAt": "2026-11-01T20:47:13.278Z",
+  "finishedAt": "2026-11-01T20:55:23.970Z",
+  "gate": "PASS",
+  "steps": [
+    {
+      "id": "workflow-pins",
+      "command": "/opt/hostedtoolcache/node/24.22.1/x64/bin/node scripts/verify-workflow-pins.mjs",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 31
+    },
+    {
+      "id": "asset-budget",
+      "command": "/opt/hostedtoolcache/node/24.22.1/x64/bin/node scripts/verify-asset-budget.mjs",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 32
+    },
+    {
+      "id": "npm-ci",
+      "command": "npm ci",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 7465
+    },
+    {
+      "id": "npm-audit",
+      "command": "npm audit --omit=dev --audit-level=moderate",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 462
+    },
+    {
+      "id": "typecheck",
+      "command": "npm run typecheck",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 9665
+    },
+    {
+      "id": "lint",
+      "command": "npm run lint",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 902
+    },
+    {
+      "id": "tests",
+      "command": "npm run test",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 18240
+    },
+    {
+      "id": "build",
+      "command": "npm run build",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 7134
+    },
+    {
+      "id": "playwright-browser",
+      "command": "npx playwright install --with-deps chromium",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 19616
+    },
+    {
+      "id": "e2e",
+      "command": "npm run test:e2e",
+      "state": "PASS",
+      "exitCode": 0,
+      "durationMs": 427145
+    }
+  ]
+}

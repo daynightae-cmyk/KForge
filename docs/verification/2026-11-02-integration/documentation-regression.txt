@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 K:/Knoux Projects/KForge/Base
+
+
+ Test Files  2 passed (2)
+      Tests  14 passed (14)
+   Start at  00:41:48
+   Duration  2.61s (transform 69ms, setup 0ms, import 110ms, tests 1.55s, environment 0ms)
+

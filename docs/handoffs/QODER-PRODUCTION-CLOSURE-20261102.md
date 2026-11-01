@@ -60,6 +60,8 @@ Online له Explorer scoped داخل المجال. لا تفرد الأبناء 
 
 ## 6. أولوية P1: صدق تغطية agent context
 
+أضف قبل الإغلاق تشخيص Windows الفعلي: اختبار provider command-center فشل مرتين، إحداهما isolated مع maxWorkers=1، بسبب `protectWithDpapi` وPowerShell ETIMEDOUT عند 10 ثوانٍ. Preview وTopology نجحوا في الإعادة المعزولة (28 passed، وفشل vault واحد). فحص Electron source smoke فشل بمهلة 120 ثانية. لا تعتبر ده نقص test فقط ولا تحوّل vault إلى plaintext أو fake backend للإنتاج. افصل deterministic unit seam عن اختبار DPAPI الفعلي، وشخّص startup/process/log evidence وأصلح السبب، وبعدها أعد native acceptance.
+
 العيب المثبت في `server/services/agent.ts` داخل `collectProjectFiles`: catch بتاع `fs.readdir` بيرجع من غير complete=false، فـmissing/unreadable subtree ممكن يظهر complete.
 
 نفّذ أصغر تعديل كامل:
@@ -176,6 +178,8 @@ Online له Explorer scoped داخل المجال. لا تفرد الأبناء 
 كل button إما handler حقيقي بنتيجة مثبتة أو disabled واضح بسبب متطلب حقيقي. لا بيانات fake، لا fixed hardware metrics، لا empty success toast، ولا automatic network contact يخالف policy.
 
 ## 13. DAY/NIGHT وvisual quality
+
+ملاحظات visual جديدة مثبتة: لقطة `verification/preview-workbench-light-mobile.png` أبعادها الفعلية 1440×900، والـmobile مجرد viewport simulation جوه Preview. اللقطة اتاخدت وهي ما زالت Reconciling، وInspector بيعرض Activity = Invalid Date. أصلح parsing/fallback في CanonicalInspector، واثبت settled screenshot قبل اعتمادها. راجع مساحة header/connected services والدّوك المفتوح عشان controls الفعلية ما تختفيش تحت أول viewport. لا تغيّر الهوية أو التصميم من غير سبب وقبول مناسب.
 
 حافظ على cinematic installation/entry والـLiving Mark والأصول والشعار والـmotion المتفق عليهم. تصميم الداخل الحالي مش تصريح لإعادة تصميم مدخل المنتج. نفس structure/behavior في DAY/NIGHT، واختلاف presentation فقط.
 

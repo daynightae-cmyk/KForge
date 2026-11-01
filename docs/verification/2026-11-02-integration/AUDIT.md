@@ -64,6 +64,17 @@ Do not report zero dirt or reclaimed space. Approval already covers those four p
 
 ## VERIFIED PRODUCTION GAPS
 
+### P1: Windows vault and Electron verification fail on this host
+
+The isolated Preview/Topology/provider rerun completed: 28 passed, one failed.
+Preview and Topology passed in isolation; provider credential masking still
+failed at the real Windows `protectWithDpapi` PowerShell call with ETIMEDOUT.
+This repeats the original failure and is not dismissed as parallel-test load.
+Source Electron smoke over the fresh build also failed at its 120 s spawn
+budget. Neither final native startup nor credential persistence is accepted.
+Diagnose real Windows process/log/DPAPI behavior; do not introduce a plaintext
+fallback or fake production vault to force tests green.
+
 ### P1: Context scan can claim complete after read failure
 
 `server/services/agent.ts`, `collectProjectFiles`, catches `fs.readdir` failure and returns without setting complete=false or recording an unreadable path. A missing root, permissions error or disappearing subtree can yield success-shaped incomplete context. The outer catch cannot see the swallowed error. A read-only tsx invocation against a random nonexistent OS-temp path reproduced files=[], complete=true, truncated=false. See `agent-missing-root.json`. Permission/disappearing-subtree variants remain untested.
@@ -84,6 +95,16 @@ Package final accepted main; verify bytes/signature and install/upgrade/restart/
 
 ### P2: Development/packaging dependency audit nonzero
 
+Post-push GitHub alert inventory returned 68 open alerts: two in the root
+lockfile, 61 in the newly preserved historical OpenSumi lockfile, four in the
+PHP detection fixture, and one in the clean-workspace fixture. These are
+different graphs from root npm audit. Importing the inactive experiment's
+manifest expanded the repository dependency graph; removal of that historical
+source directory from the active main tree was proposed for explicit approval,
+while preserving its complete source in commit e2c5a14 and the original Recovery.
+No alerts were dismissed, ignored or falsely marked fixed. See
+`dependabot-alerts.json` for the observed manifest-specific inventory.
+
 Fresh full npm audit: 14 moderate, zero high/critical. Runtime-only audit: zero. Findings include electron-builder/asar/universal/glob/minimatch, Tailwind typography/postcss-selector-parser and sucrase. Some npm suggestions downgrade electron-builder to 20.23.1 or typography to 0.5.4 with major-breaking labels. Review compatibility and packaging proof; do not force automatic graph changes. Complete advisory details: `npm-audit.json`.
 
 ### P2: Pagination and webhook execution incomplete
@@ -97,6 +118,19 @@ Webhook validates signature/replay and records receipt; it does not synchronize 
 Remote adapters explicitly retain catalog-only/read-only states and NOT_CONFIGURED updates. Open VSX install needs immutable artifact, integrity, compatibility and confirmation. WinGet/npm/PyPI/NuGet presence is not execution proof. Map advertised actions to real lifecycle support or truthful unavailable reasons. No live provider, package install, trusted update or paid AI acceptance occurred here.
 
 ### P2: Visual acceptance remains evidence-specific
+
+Two fresh Preview PNGs were inspected. Both are actually 1440x900 according to
+their PNG IHDR, including the file named light-mobile: its mobile selector is
+embedded viewport simulation, not a mobile-sized application capture. The light
+capture still shows “Reconciling Preview Studio runtime evidence...” and the
+Inspector renders Activity as “Invalid Date”. It cannot establish a settled
+DAY visual acceptance result. `CanonicalInspector.tsx` directly formats truthy
+lastActivity values without validating the parsed date. Add a real missing/
+invalid timestamp state and capture only after the relevant surface settles.
+The dark capture's large header/service deck and open dock consume the initial
+viewport; review accessibility of actual Preview controls at bounded heights
+with owner-approved composition rather than declaring fidelity from a test pass.
+See `fresh-preview-image-dimensions.json`; original PNGs are in local verification.
 
 Mission queue/PENDING_TRANSFER references are historical requirements, not a current completion ledger. Preserve cinematic entry and identity. Check current DAY/NIGHT across 68 views and real actions, realistic data, desktop sizes, supported RTL/LTR, keyboard, reduced motion, focus and failures. Settling only proves leaving loading; it does not prove visual fidelity or owner approval. Existing screenshots remain historical unless freshly captured.
 

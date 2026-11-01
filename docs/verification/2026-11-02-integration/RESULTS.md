@@ -49,6 +49,29 @@ verification before claiming the OS-temp fixture relocation fully accepted.
 
 ## Checks running at snapshot
 
+Subsequent observations before final delivery: isolated runtime rerun finished
+with 28 passed / 1 failed (Windows DPAPI PowerShell timeout). Preview and
+Topology passed in that isolated run. Electron smoke failed with a 120 s
+spawnSync timeout. Unit discovery after exclusions listed 72 canonical files.
+These results supersede the pending state for those three checks below.
+
+The two workspace cases were rerun in isolation after the OS-temp relocation:
+Golden Matrix and Preview Fix & Verify both passed (2 passed, 23 unrelated cases
+filtered out). This verifies those focused cases, not an aggregate clean gate.
+
+Push to origin/main succeeded at 8aa6f5a5559a24b0a4822a0bd8b63bdcc1722d41.
+GitHub reported the owner permission path bypassed two expected status checks;
+no protection setting was edited. Exact-SHA verification started in
+[run 41348620003](https://github.com/daynightae-cmyk/KForge/actions/runs/41348620003).
+Both required jobs were still running at this observation. Later commits and
+results must be refreshed; this is not a CI-success claim.
+
+Later CI observation: the Linux aggregate verification gate on the same
+8aa6f5a SHA completed successfully. Downloaded `ci-linux-8aa6f5a.json` records
+gate=PASS and all required steps passed. The Windows NSIS job was still running.
+This certifies the specified commit/platform only, not subsequent report edits
+or this host's failing native DPAPI/Electron checks.
+
 - The original authoritative local gate continued after unit failure to build
   and execute 85 Playwright tests serially on Windows Edge. Its overall result
   cannot become PASS while its recorded initial unit step failed.
@@ -73,6 +96,18 @@ Unique ignored auth/config/state and historical evidence remain private/local.
 Packaging a replacement installer, installed final-main lifecycle, live OAuth,
 live providers, signed trusted release and production health are **UNVERIFIED**
 or **BLOCKED**, as detailed in AUDIT.md. No deployment was performed.
+
+## Acceptance gates at this snapshot
+
+| Gate | Status | Boundary |
+|---|---|---|
+| A — Scope | VERIFIED | Canonical repository, refs/worktrees/recovery and 68 registered views identified |
+| B — Preservation | PARTIALLY VERIFIED | Historical objects and unique source retained; private ignored evidence retained, not exhaustively classified for deletion |
+| C — Implementation | VERIFIED for bounded integration | README merge, mission preservation, OS-temp fixtures and unit-discovery fix; production gaps remain open |
+| D — Quality | PARTIALLY VERIFIED | Type/lint/build and focused checks pass; original aggregate unit step failed, full audit nonzero |
+| E — Runtime | PARTIALLY VERIFIED | Browser run in progress; DPAPI and Electron source smoke failed; installed final-main unverified |
+| F — Integration | PARTIALLY VERIFIED | Main pushed at observed SHA; exact-SHA CI running; no deployment |
+| G — Evidence | VERIFIED for recorded observations | Raw local logs and committed inventories; no unsupported production claim |
 
 ## Local evidence paths
 
