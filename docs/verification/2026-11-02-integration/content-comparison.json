@@ -1,0 +1,737 @@
+[
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-0f7e1e3b",
+    "changed": 1,
+    "identical": [],
+    "different": [
+      "package.json"
+    ]
+  },
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-1e4e27b8",
+    "changed": 0,
+    "identical": [],
+    "different": []
+  },
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-290b9894",
+    "changed": 10,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "client/workbench/providerStudio.css",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-3a5e64e1",
+    "changed": 2,
+    "identical": [],
+    "different": [
+      "client/components/knoux/KnouxClipAIControls.tsx",
+      "client/components/knoux/KnouxInspectorPanel.tsx"
+    ]
+  },
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-fb8a8d1e",
+    "changed": 0,
+    "identical": [],
+    "different": []
+  },
+  {
+    "ref": "refs/heads/backup/superseded-final-audit-hardening-20261001",
+    "changed": 56,
+    "identical": [
+      "client/pages/KForgeWorkbench.spec.ts",
+      "client/workbench/ProjectCollectionsWorkbench.tsx",
+      "client/workbench/surfaceShared.tsx",
+      "client/workbench/surfaceTypes.ts",
+      "desktop/trustOrigin.cjs",
+      "desktop/trustOrigin.spec.ts",
+      "server/index.spec.ts",
+      "server/index.ts",
+      "server/routes/providerCommandRouter.ts",
+      "server/services/aiCenter.spec.ts",
+      "server/services/onlineControlCenter.spec.ts",
+      "server/services/onlineControlCenter.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerNetworkPolicy.spec.ts",
+      "server/services/providerNetworkPolicy.ts",
+      "server/services/redaction.spec.ts",
+      "server/services/redaction.ts",
+      "server/services/remoteSources/adapters/mcpRegistry.ts",
+      "server/services/remoteSources/cacheStore.spec.ts",
+      "server/services/remoteSources/cacheStore.ts",
+      "server/services/remoteSources/documentationService.ts",
+      "server/services/remoteSources/fetchPolicy.spec.ts",
+      "server/services/remoteSources/fetchPolicy.ts",
+      "server/services/remoteSources/huggingFaceService.ts",
+      "server/services/remoteSources/kforgeUpdatesService.ts",
+      "server/services/remoteSources/npmService.ts",
+      "server/services/remoteSources/nugetService.ts",
+      "server/services/remoteSources/openVsxService.spec.ts",
+      "server/services/remoteSources/openVsxService.ts",
+      "server/services/remoteSources/osvService.ts",
+      "server/services/remoteSources/pypiService.ts",
+      "server/services/remoteSources/wingetService.ts",
+      "server/services/snapshots.spec.ts",
+      "server/services/snapshots.ts",
+      "server/services/topologyRuntime.ts"
+    ],
+    "different": [
+      ".github/workflows/kforge-verification.yml",
+      "client/components/ui/KForgeServiceCard.tsx",
+      "client/components/ui/chart.tsx",
+      "client/workbench/KForgeWorkbench.tsx",
+      "client/workbench/PersistentPreviewDock.tsx",
+      "client/workbench/intelligenceSurface.tsx",
+      "desktop/main.cjs",
+      "installer/verify-installer.ps1",
+      "package-lock.json",
+      "package.json",
+      "server/productionServer.ts",
+      "server/routes/workspace.spec.ts",
+      "server/routes/workspace.ts",
+      "server/services/agent.ts",
+      "server/services/previewRuntime.spec.ts",
+      "server/services/previewRuntime.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/remoteSources/adapters/npm.ts",
+      "server/services/remoteSources/mcpService.ts",
+      "server/services/securityTools.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/feat/knoux-living-mark",
+    "changed": 9,
+    "identical": [
+      "client/assets/helvetiker_bold.typeface.json",
+      "client/components/brand/KnouxLivingMark.css",
+      "client/components/brand/KnouxLivingMark.spec.ts"
+    ],
+    "different": [
+      "client/components/brand/KnouxLivingMark.tsx",
+      "client/workbench/KForgeWorkbench.tsx",
+      "package-lock.json",
+      "package.json",
+      "server/services/repositoryDocumentationTruth.spec.ts",
+      "vite.config.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/feat/remote-source-winget",
+    "changed": 10,
+    "identical": [
+      "server/services/remoteSources/contracts.ts"
+    ],
+    "different": [
+      "client/workbench/onlineSurface.tsx",
+      "server/routes/remoteSources.spec.ts",
+      "server/routes/remoteSources.ts",
+      "server/services/remoteSources/adapters/fixtures/wingetFixtures.ts",
+      "server/services/remoteSources/adapters/winget.spec.ts",
+      "server/services/remoteSources/adapters/winget.ts",
+      "server/services/remoteSources/registry.ts",
+      "server/services/remoteSources/wingetService.spec.ts",
+      "server/services/remoteSources/wingetService.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/fix/mcp-namespaced-server-names",
+    "changed": 8,
+    "identical": [
+      "client/components/brand/LivingMarkGate.css",
+      "client/components/brand/LivingMarkGate.tsx",
+      "client/global.css",
+      "server/services/remoteSources/mcpService.spec.ts",
+      "server/services/remoteSources/mcpService.ts",
+      "tests/e2e/remote-source-truth-contracts.spec.ts"
+    ],
+    "different": [
+      "client/workbench/workbench.css",
+      "tests/e2e/brand-theme-accuracy.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-cosmic-crane",
+    "changed": 10,
+    "identical": [
+      "server/services/remoteSources/contracts.ts"
+    ],
+    "different": [
+      "client/workbench/onlineSurface.tsx",
+      "server/routes/remoteSources.spec.ts",
+      "server/routes/remoteSources.ts",
+      "server/services/remoteSources/adapters/fixtures/wingetFixtures.ts",
+      "server/services/remoteSources/adapters/winget.spec.ts",
+      "server/services/remoteSources/adapters/winget.ts",
+      "server/services/remoteSources/registry.ts",
+      "server/services/remoteSources/wingetService.spec.ts",
+      "server/services/remoteSources/wingetService.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-gentle-ocelot",
+    "changed": 10,
+    "identical": [
+      "server/services/remoteSources/contracts.ts"
+    ],
+    "different": [
+      "client/workbench/onlineSurface.tsx",
+      "server/routes/remoteSources.spec.ts",
+      "server/routes/remoteSources.ts",
+      "server/services/remoteSources/adapters/fixtures/wingetFixtures.ts",
+      "server/services/remoteSources/adapters/winget.spec.ts",
+      "server/services/remoteSources/adapters/winget.ts",
+      "server/services/remoteSources/registry.ts",
+      "server/services/remoteSources/wingetService.spec.ts",
+      "server/services/remoteSources/wingetService.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-nimble-robin",
+    "changed": 10,
+    "identical": [
+      "server/services/remoteSources/contracts.ts"
+    ],
+    "different": [
+      "client/workbench/onlineSurface.tsx",
+      "server/routes/remoteSources.spec.ts",
+      "server/routes/remoteSources.ts",
+      "server/services/remoteSources/adapters/fixtures/wingetFixtures.ts",
+      "server/services/remoteSources/adapters/winget.spec.ts",
+      "server/services/remoteSources/adapters/winget.ts",
+      "server/services/remoteSources/registry.ts",
+      "server/services/remoteSources/wingetService.spec.ts",
+      "server/services/remoteSources/wingetService.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-plucky-wolf",
+    "changed": 10,
+    "identical": [
+      "server/services/remoteSources/contracts.ts"
+    ],
+    "different": [
+      "client/workbench/onlineSurface.tsx",
+      "server/routes/remoteSources.spec.ts",
+      "server/routes/remoteSources.ts",
+      "server/services/remoteSources/adapters/fixtures/wingetFixtures.ts",
+      "server/services/remoteSources/adapters/winget.spec.ts",
+      "server/services/remoteSources/adapters/winget.ts",
+      "server/services/remoteSources/registry.ts",
+      "server/services/remoteSources/wingetService.spec.ts",
+      "server/services/remoteSources/wingetService.ts"
+    ]
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-wild-wolf",
+    "changed": 10,
+    "identical": [
+      "server/services/remoteSources/contracts.ts"
+    ],
+    "different": [
+      "client/workbench/onlineSurface.tsx",
+      "server/routes/remoteSources.spec.ts",
+      "server/routes/remoteSources.ts",
+      "server/services/remoteSources/adapters/fixtures/wingetFixtures.ts",
+      "server/services/remoteSources/adapters/winget.spec.ts",
+      "server/services/remoteSources/adapters/winget.ts",
+      "server/services/remoteSources/registry.ts",
+      "server/services/remoteSources/wingetService.spec.ts",
+      "server/services/remoteSources/wingetService.ts"
+    ]
+  },
+  {
+    "ref": "refs/remotes/origin/backup/superseded-final-audit-hardening-20261001",
+    "changed": 56,
+    "identical": [
+      "client/pages/KForgeWorkbench.spec.ts",
+      "client/workbench/ProjectCollectionsWorkbench.tsx",
+      "client/workbench/surfaceShared.tsx",
+      "client/workbench/surfaceTypes.ts",
+      "desktop/trustOrigin.cjs",
+      "desktop/trustOrigin.spec.ts",
+      "server/index.spec.ts",
+      "server/index.ts",
+      "server/routes/providerCommandRouter.ts",
+      "server/services/aiCenter.spec.ts",
+      "server/services/onlineControlCenter.spec.ts",
+      "server/services/onlineControlCenter.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerNetworkPolicy.spec.ts",
+      "server/services/providerNetworkPolicy.ts",
+      "server/services/redaction.spec.ts",
+      "server/services/redaction.ts",
+      "server/services/remoteSources/adapters/mcpRegistry.ts",
+      "server/services/remoteSources/cacheStore.spec.ts",
+      "server/services/remoteSources/cacheStore.ts",
+      "server/services/remoteSources/documentationService.ts",
+      "server/services/remoteSources/fetchPolicy.spec.ts",
+      "server/services/remoteSources/fetchPolicy.ts",
+      "server/services/remoteSources/huggingFaceService.ts",
+      "server/services/remoteSources/kforgeUpdatesService.ts",
+      "server/services/remoteSources/npmService.ts",
+      "server/services/remoteSources/nugetService.ts",
+      "server/services/remoteSources/openVsxService.spec.ts",
+      "server/services/remoteSources/openVsxService.ts",
+      "server/services/remoteSources/osvService.ts",
+      "server/services/remoteSources/pypiService.ts",
+      "server/services/remoteSources/wingetService.ts",
+      "server/services/snapshots.spec.ts",
+      "server/services/snapshots.ts",
+      "server/services/topologyRuntime.ts"
+    ],
+    "different": [
+      ".github/workflows/kforge-verification.yml",
+      "client/components/ui/KForgeServiceCard.tsx",
+      "client/components/ui/chart.tsx",
+      "client/workbench/KForgeWorkbench.tsx",
+      "client/workbench/PersistentPreviewDock.tsx",
+      "client/workbench/intelligenceSurface.tsx",
+      "desktop/main.cjs",
+      "installer/verify-installer.ps1",
+      "package-lock.json",
+      "package.json",
+      "server/productionServer.ts",
+      "server/routes/workspace.spec.ts",
+      "server/routes/workspace.ts",
+      "server/services/agent.ts",
+      "server/services/previewRuntime.spec.ts",
+      "server/services/previewRuntime.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/remoteSources/adapters/npm.ts",
+      "server/services/remoteSources/mcpService.ts",
+      "server/services/securityTools.ts"
+    ]
+  },
+  {
+    "ref": "refs/remotes/origin/docs/kforge-ultimate-readme-20261027",
+    "changed": 3,
+    "identical": [],
+    "different": [
+      "README.md",
+      "docs/readme/kforge-hero.svg",
+      "docs/readme/kforge-nine-domains.svg"
+    ]
+  },
+  {
+    "ref": "refs/remotes/origin/feat/coherent-service-navigation-20261021",
+    "changed": 22,
+    "identical": [
+      "client/components/ui/KForgeCapabilityCard.tsx",
+      "client/components/ui/KForgeServiceCard.tsx",
+      "client/pages/KForgeWorkbench.css",
+      "client/workbench/ServiceCatalogue.tsx",
+      "client/workbench/navigation.ts",
+      "client/workbench/serviceAvailability.ts",
+      "client/workbench/serviceDirectory.spec.ts",
+      "client/workbench/serviceDirectory.ts",
+      "docs/KFORGE-CAPABILITY-MATRIX.md",
+      "docs/KFORGE-SERVICE-DIRECTORY.md",
+      "tests/e2e/accessibility-keyboard-evidence.spec.ts",
+      "tests/e2e/coherent-service-navigation.spec.ts",
+      "tests/e2e/global-search-evidence.spec.ts"
+    ],
+    "different": [
+      "client/components/ui/serviceCard.css",
+      "client/workbench/KForgeWorkbench.tsx",
+      "client/workbench/ProjectToolGrid.tsx",
+      "client/workbench/aiSurface.tsx",
+      "client/workbench/online.css",
+      "client/workbench/projectsSurface.tsx",
+      "client/workbench/providerStudio.css",
+      "client/workbench/workbench.css",
+      "tests/e2e/preview-workbench-evidence.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/remotes/origin/feat/knoux-living-mark",
+    "changed": 9,
+    "identical": [
+      "client/assets/helvetiker_bold.typeface.json",
+      "client/components/brand/KnouxLivingMark.css",
+      "client/components/brand/KnouxLivingMark.spec.ts"
+    ],
+    "different": [
+      "client/components/brand/KnouxLivingMark.tsx",
+      "client/workbench/KForgeWorkbench.tsx",
+      "package-lock.json",
+      "package.json",
+      "server/services/repositoryDocumentationTruth.spec.ts",
+      "vite.config.ts"
+    ]
+  },
+  {
+    "ref": "refs/remotes/origin/feat/remote-source-winget",
+    "changed": 10,
+    "identical": [
+      "server/services/remoteSources/contracts.ts"
+    ],
+    "different": [
+      "client/workbench/onlineSurface.tsx",
+      "server/routes/remoteSources.spec.ts",
+      "server/routes/remoteSources.ts",
+      "server/services/remoteSources/adapters/fixtures/wingetFixtures.ts",
+      "server/services/remoteSources/adapters/winget.spec.ts",
+      "server/services/remoteSources/adapters/winget.ts",
+      "server/services/remoteSources/registry.ts",
+      "server/services/remoteSources/wingetService.spec.ts",
+      "server/services/remoteSources/wingetService.ts"
+    ]
+  },
+  {
+    "ref": "refs/remotes/origin/fix/installer-verification-restart-window",
+    "changed": 1,
+    "identical": [
+      "installer/verify-installer.ps1"
+    ],
+    "different": []
+  },
+  {
+    "ref": "refs/remotes/origin/fix/mcp-namespaced-server-names",
+    "changed": 8,
+    "identical": [
+      "client/components/brand/LivingMarkGate.css",
+      "client/components/brand/LivingMarkGate.tsx",
+      "client/global.css",
+      "server/services/remoteSources/mcpService.spec.ts",
+      "server/services/remoteSources/mcpService.ts",
+      "tests/e2e/remote-source-truth-contracts.spec.ts"
+    ],
+    "different": [
+      "client/workbench/workbench.css",
+      "tests/e2e/brand-theme-accuracy.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260825-132620-main-pre-sync",
+    "changed": 1,
+    "identical": [],
+    "different": [
+      "package.json"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260903-022551-codex-workbench-handoff",
+    "changed": 0,
+    "identical": [],
+    "different": []
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260914-065904-real-media-functional-closure",
+    "changed": 10,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "client/workbench/providerStudio.css",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260914-082827-traycer-kforge-merry-crane",
+    "changed": 2,
+    "identical": [],
+    "different": [
+      "client/components/knoux/KnouxClipAIControls.tsx",
+      "client/components/knoux/KnouxInspectorPanel.tsx"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260914-082827-traycer-lucky-leopard",
+    "changed": 0,
+    "identical": [],
+    "different": []
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-kforge-kforge-silent-leopard",
+    "changed": 9,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-nimble-yak",
+    "changed": 9,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-soft-penguin",
+    "changed": 9,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-spry-turtle",
+    "changed": 9,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-stellar-moose",
+    "changed": 9,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-zealous-lynx",
+    "changed": 9,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/local-backup-pre-sync-20260914-065904",
+    "changed": 9,
+    "identical": [],
+    "different": [
+      "client/workbench/SessionWorkspace.tsx",
+      "docs/FINAL_CLOSURE_EVIDENCE.md",
+      "server/routes/workspace.ts",
+      "server/services/credentialVault.ts",
+      "server/services/providerAdapters.ts",
+      "server/services/providerCommandCenter.spec.ts",
+      "server/services/providerCommandCenter.ts",
+      "server/services/providerSessions.ts",
+      "shared/providerCommandCenter.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-029e1001",
+    "changed": 15,
+    "identical": [
+      "client/assets/helvetiker_bold.typeface.json",
+      "client/components/brand/KnouxLivingMark.css",
+      "client/components/brand/KnouxLivingMark.spec.ts",
+      "client/components/brand/KnouxLivingMark.tsx",
+      "scripts/verify-gate.mjs",
+      "server/services/securityTools.ts",
+      "vite.config.ts"
+    ],
+    "different": [
+      "client/components/brand/LivingMarkGate.css",
+      "client/components/brand/LivingMarkGate.tsx",
+      "client/workbench/KForgeWorkbench.tsx",
+      "package-lock.json",
+      "package.json",
+      "server/routes/workspace.ts",
+      "server/services/repositoryDocumentationTruth.spec.ts",
+      "server/services/securityTools.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-1a86cafa",
+    "changed": 1,
+    "identical": [],
+    "different": [
+      ".github/workflows/kforge-verification.yml"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-34b6a7db",
+    "changed": 3,
+    "identical": [
+      "server/services/securityTools.ts"
+    ],
+    "different": [
+      "server/routes/workspace.ts",
+      "server/services/securityTools.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-480dfc85",
+    "changed": 4,
+    "identical": [
+      "scripts/verify-gate.mjs",
+      "server/services/securityTools.ts"
+    ],
+    "different": [
+      "server/routes/workspace.ts",
+      "server/services/securityTools.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-67ffa838",
+    "changed": 2,
+    "identical": [
+      "package-lock.json"
+    ],
+    "different": [
+      "package.json"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-6e62d094",
+    "changed": 14,
+    "identical": [
+      "client/assets/helvetiker_bold.typeface.json",
+      "client/components/brand/KnouxLivingMark.css",
+      "client/components/brand/KnouxLivingMark.spec.ts",
+      "client/components/brand/KnouxLivingMark.tsx",
+      "server/services/securityTools.ts",
+      "vite.config.ts"
+    ],
+    "different": [
+      "client/components/brand/LivingMarkGate.css",
+      "client/components/brand/LivingMarkGate.tsx",
+      "client/workbench/KForgeWorkbench.tsx",
+      "package-lock.json",
+      "package.json",
+      "server/routes/workspace.ts",
+      "server/services/repositoryDocumentationTruth.spec.ts",
+      "server/services/securityTools.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-9303390e",
+    "changed": 2,
+    "identical": [],
+    "different": [
+      "package-lock.json",
+      "package.json"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-9b33b2ef",
+    "changed": 2,
+    "identical": [
+      "server/services/securityTools.ts"
+    ],
+    "different": [
+      "server/services/securityTools.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-c1b8aaf3",
+    "changed": 13,
+    "identical": [
+      "client/assets/helvetiker_bold.typeface.json",
+      "client/components/brand/KnouxLivingMark.css",
+      "client/components/brand/KnouxLivingMark.spec.ts",
+      "client/components/brand/KnouxLivingMark.tsx",
+      "server/services/securityTools.ts",
+      "vite.config.ts"
+    ],
+    "different": [
+      "client/components/brand/LivingMarkGate.css",
+      "client/components/brand/LivingMarkGate.tsx",
+      "client/workbench/KForgeWorkbench.tsx",
+      "package-lock.json",
+      "package.json",
+      "server/services/repositoryDocumentationTruth.spec.ts",
+      "server/services/securityTools.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-dd0481d6",
+    "changed": 2,
+    "identical": [],
+    "different": [
+      "package-lock.json",
+      "package.json"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-dd2904ca",
+    "changed": 11,
+    "identical": [
+      "client/assets/helvetiker_bold.typeface.json",
+      "client/components/brand/KnouxLivingMark.css",
+      "client/components/brand/KnouxLivingMark.spec.ts",
+      "client/components/brand/KnouxLivingMark.tsx",
+      "vite.config.ts"
+    ],
+    "different": [
+      "client/components/brand/LivingMarkGate.css",
+      "client/components/brand/LivingMarkGate.tsx",
+      "client/workbench/KForgeWorkbench.tsx",
+      "package-lock.json",
+      "package.json",
+      "server/services/repositoryDocumentationTruth.spec.ts"
+    ]
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-e898e0c2",
+    "changed": 2,
+    "identical": [],
+    "different": [
+      "package-lock.json",
+      "package.json"
+    ]
+  }
+]

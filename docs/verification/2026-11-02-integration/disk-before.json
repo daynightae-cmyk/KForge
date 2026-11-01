@@ -1,0 +1,482 @@
+{
+  "Forensic_Audit_Report_2026-10-22.md": [
+    29702,
+    1
+  ],
+  ".kforge/local-platform.json": [
+    28,
+    1
+  ],
+  ".kforge/platform-settings.json": [
+    501,
+    1
+  ],
+  ".kforge/project-collections.json": [
+    13155,
+    1
+  ],
+  ".kforge/project-trust.json": [
+    115,
+    1
+  ],
+  ".kforge/tasks.json": [
+    17,
+    1
+  ],
+  "Base/.env.example": [
+    1382,
+    1
+  ],
+  "Base/.gitattributes": [
+    254,
+    1
+  ],
+  "Base/.gitignore": [
+    1287,
+    1
+  ],
+  "Base/.hermes.md": [
+    3554,
+    1
+  ],
+  "Base/.npmrc": [
+    50,
+    1
+  ],
+  "Base/.prettierrc": [
+    71,
+    1
+  ],
+  "Base/AGENTS.md": [
+    6300,
+    1
+  ],
+  "Base/CLAUDE.md": [
+    2039,
+    1
+  ],
+  "Base/COMPETITIVE_ROADMAP_AR.md": [
+    3408,
+    1
+  ],
+  "Base/components.json": [
+    417,
+    1
+  ],
+  "Base/index.html": [
+    395,
+    1
+  ],
+  "Base/LICENSE": [
+    1083,
+    1
+  ],
+  "Base/netlify.toml": [
+    284,
+    1
+  ],
+  "Base/package-lock.json": [
+    356103,
+    1
+  ],
+  "Base/package.json": [
+    6269,
+    1
+  ],
+  "Base/playwright.config.ts": [
+    1514,
+    1
+  ],
+  "Base/postcss.config.js": [
+    432,
+    1
+  ],
+  "Base/PROJECT_EVALUATION_AR.md": [
+    2889,
+    1
+  ],
+  "Base/PROJECT_STATUS.md": [
+    11930,
+    1
+  ],
+  "Base/README.md": [
+    12540,
+    1
+  ],
+  "Base/RUN.md": [
+    3864,
+    1
+  ],
+  "Base/SECURITY.md": [
+    5845,
+    1
+  ],
+  "Base/tailwind.config.ts": [
+    2631,
+    1
+  ],
+  "Base/tsconfig.json": [
+    985,
+    1
+  ],
+  "Base/vite.config.server.ts": [
+    1190,
+    1
+  ],
+  "Base/vite.config.ts": [
+    1494,
+    1
+  ],
+  "Base/vitest.config.ts": [
+    532,
+    1
+  ],
+  "Base/.claude": [
+    50849,
+    10
+  ],
+  "Base/.ctrlnode": [
+    90034,
+    30
+  ],
+  "Base/.cursor": [
+    1960,
+    1
+  ],
+  "Base/.git": [
+    10376607,
+    176
+  ],
+  "Base/.github": [
+    6081,
+    2
+  ],
+  "Base/.kforge": [
+    4617,
+    2
+  ],
+  "Base/.vscode": [
+    27333,
+    6
+  ],
+  "Base/apps": [
+    45162,
+    10
+  ],
+  "Base/client": [
+    3102863,
+    137
+  ],
+  "Base/desktop": [
+    20520,
+    5
+  ],
+  "Base/dist": [
+    6498306,
+    58
+  ],
+  "Base/docs": [
+    120446,
+    27
+  ],
+  "Base/fixtures": [
+    136744,
+    380
+  ],
+  "Base/installer": [
+    141402,
+    4
+  ],
+  "Base/kforge-push-confirmation-oljKnL": [
+    32,
+    1
+  ],
+  "Base/kforge-security-17qX4N": [
+    54,
+    1
+  ],
+  "Base/kforge-security-1jmRHl": [
+    54,
+    1
+  ],
+  "Base/missions": [
+    25854,
+    18
+  ],
+  "Base/netlify": [
+    140,
+    1
+  ],
+  "Base/node_modules": [
+    303059599,
+    25537
+  ],
+  "Base/public": [
+    295216,
+    3
+  ],
+  "Base/release": [
+    557446648,
+    87
+  ],
+  "Base/scripts": [
+    49334,
+    10
+  ],
+  "Base/server": [
+    1770006,
+    142
+  ],
+  "Base/shared": [
+    51464,
+    6
+  ],
+  "Base/test-results": [
+    45,
+    1
+  ],
+  "Base/tests": [
+    301078,
+    55
+  ],
+  "Base/verification": [
+    237828299,
+    369
+  ],
+  "Evidence/2026-10-21-baseline-build.log": [
+    5008,
+    1
+  ],
+  "Evidence/2026-10-20": [
+    2147960,
+    22
+  ],
+  "Evidence/2026-10-21": [
+    6882812,
+    35
+  ],
+  "Evidence/integration-audit-20261102": [
+    27961,
+    1
+  ],
+  "Evidence/REFRENCES": [
+    16563702,
+    10
+  ],
+  "Worktrees/KForge-Codex-Handoff.zip": [
+    20844,
+    1
+  ],
+  "Worktrees/.kforge/project-collections.json": [
+    22992,
+    1
+  ],
+  "Worktrees/.kforge/project-trust.json": [
+    571,
+    1
+  ],
+  "Worktrees/.kforge/tasks.json": [
+    17,
+    1
+  ],
+  "Worktrees/KForge-Recovery-20261017/MANIFEST.json": [
+    56948,
+    1
+  ],
+  "Worktrees/KForge-Recovery-20261017/MANIFEST.sha256": [
+    39079,
+    1
+  ],
+  "Worktrees/KForge-Recovery-20261017/README.md": [
+    3272,
+    1
+  ],
+  "Worktrees/KForge-Recovery-20261017/base-untracked": [
+    156466,
+    4
+  ],
+  "Worktrees/KForge-Recovery-20261017/git": [
+    27294454,
+    48
+  ],
+  "Worktrees/KForge-Recovery-20261017/ignored-unique": [
+    374844,
+    54
+  ],
+  "Worktrees/KForge-Recovery-20261017/opensumi-labs": [
+    50541232,
+    190
+  ],
+  "Worktrees/KForge-Recovery-20261017/traycer-worktree-untracked": [
+    12489,
+    7
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/.env.example": [
+    1382,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/.git": [
+    82,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/.gitattributes": [
+    257,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/.gitignore": [
+    1287,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/.npmrc": [
+    50,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/.prettierrc": [
+    71,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/AGENTS.md": [
+    6300,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/COMPETITIVE_ROADMAP_AR.md": [
+    3408,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/components.json": [
+    437,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/index.html": [
+    410,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/LICENSE": [
+    1103,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/netlify.toml": [
+    299,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/package-lock.json": [
+    356251,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/package.json": [
+    6269,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/playwright.config.ts": [
+    1514,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/postcss.config.js": [
+    432,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/PROJECT_EVALUATION_AR.md": [
+    2889,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/PROJECT_STATUS.md": [
+    11930,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/README.md": [
+    12540,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/RUN.md": [
+    3864,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/SECURITY.md": [
+    5845,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/tailwind.config.ts": [
+    2722,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/tsconfig.json": [
+    1027,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/vite.config.server.ts": [
+    1244,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/vite.config.ts": [
+    1494,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/vitest.config.ts": [
+    532,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/.cursor": [
+    1960,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/.github": [
+    6081,
+    2
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/apps": [
+    45162,
+    10
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/client": [
+    3107545,
+    137
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/desktop": [
+    20520,
+    5
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/dist": [
+    6500345,
+    56
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/docs": [
+    99993,
+    14
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/fixtures": [
+    14268,
+    54
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/installer": [
+    141435,
+    4
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/netlify": [
+    145,
+    1
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/node_modules": [
+    288119065,
+    25488
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/public": [
+    295230,
+    3
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/scripts": [
+    49334,
+    10
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/server": [
+    1771894,
+    142
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/shared": [
+    51464,
+    6
+  ],
+  "Worktrees/KForge-SwcAllowlist-20261027/tests": [
+    301079,
+    55
+  ]
+}

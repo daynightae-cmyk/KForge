@@ -1,0 +1,25 @@
+{
+  "observedDateDubai": "2026-11-02",
+  "project": "knoux-forge-connect",
+  "id": "prj_Hm9ggaDtieAqANwsuNAjdy3L4PWF",
+  "team": "team_0WLXGubG98so1G3Hm7dhu6mL",
+  "nodeVersion": "24.x",
+  "live": false,
+  "latestDeployment": null,
+  "deploymentList": [],
+  "projectDomains": [
+    {
+      "name": "connect.knoux.store",
+      "verified": true
+    },
+    {
+      "name": "knoux-forge-connect.vercel.app",
+      "verified": true
+    }
+  ],
+  "publicHealth": {
+    "url": "https://connect.knoux.store/health",
+    "result": "DNS resolution failed from this Windows host; no HTTP status observed"
+  },
+  "limitation": "get_project embedded domains were empty; dedicated list_project_domains returned two verified entries. Domain attachment is not DNS/TLS/HTTP or deployment proof."
+}

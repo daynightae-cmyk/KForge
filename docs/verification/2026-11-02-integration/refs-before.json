@@ -1,0 +1,434 @@
+[
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-0f7e1e3b",
+    "counts": "486\t3",
+    "commits": "0f7e1e3 On main: pre-main-sync-2026-08-25\n5a12665 index on main: 288c2d9 Revert \"feat: core release preparation - gap matrix, first-party registry, E2E tests\"\nfe61daa untracked files on main: 288c2d9 Revert \"feat: core release preparation - gap matrix, first-party registry, E2E tests\"",
+    "patches": "+ fe61daa7c35658426994a26f58732bc3f1c4a19b\n+ 5a126655ea4002ff3b03f5bf5eb5b9ffae0108fd"
+  },
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-1e4e27b8",
+    "counts": "394\t3",
+    "commits": "1e4e27b On wip/codex-workbench-handoff: kforge-local-sync-20260903-022551\n9d81475 index on wip/codex-workbench-handoff: 853bd46 fix: harden workbench selection and collection mutations\n645753a untracked files on wip/codex-workbench-handoff: 853bd46 fix: harden workbench selection and collection mutations",
+    "patches": "+ 645753afe156c8afaa61d250343c6ecf8a66c91d\n+ 9d8147534e38198fc499c7cf7b61416ec842b439"
+  },
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-290b9894",
+    "counts": "140\t6",
+    "commits": "290b989 On safety/real-media-functional-closure-20260910-101007: KForge pre-final-sync 20260914-065904\n9ed6922 index on safety/real-media-functional-closure-20260910-101007: 4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n227849a untracked files on safety/real-media-functional-closure-20260910-101007: 4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a\n+ 227849a190233ee159ac5b5d731c7ae4f9687699\n+ 9ed692231e1512043bbdce5066f5477c2718f4de"
+  },
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-3a5e64e1",
+    "counts": "566\t3",
+    "commits": "3a5e64e On traycer/kforge-merry-crane: KForge worktree cleanup 20260914-082827 [traycer/kforge-merry-crane]\n77a4a08 index on traycer/kforge-merry-crane: f7efe0e Initial KForge project upload\neceb4ee untracked files on traycer/kforge-merry-crane: f7efe0e Initial KForge project upload",
+    "patches": "+ eceb4ee850a9757571b40f5b0525cef27b84c595\n+ 77a4a08ad7342d4be124285cb086e73f2e9cddcf"
+  },
+  {
+    "ref": "refs/heads/archive/stash-preserve-kforge-fb8a8d1e",
+    "counts": "396\t3",
+    "commits": "fb8a8d1 On traycer/lucky-leopard: KForge worktree cleanup 20260914-082827 [traycer/lucky-leopard]\n9b8c7c4 index on traycer/lucky-leopard: 5d6e4e4 fix: complete modular workbench ownership and wiring (forward fix from 9c4005f)\neefef6f untracked files on traycer/lucky-leopard: 5d6e4e4 fix: complete modular workbench ownership and wiring (forward fix from 9c4005f)",
+    "patches": "+ eefef6fb0e42419eafe8ed3a7bada7980b94eff2\n+ 9b8c7c4576dd98d505f8e70116187900ccd64bd1"
+  },
+  {
+    "ref": "refs/heads/backup/superseded-final-audit-hardening-20261001",
+    "counts": "63\t3",
+    "commits": "9719bc0 fix: apply the request allowance before the caller boundary\n80dd4ef fix: bound local API request volume at the caller boundary\n1cd08c1 fix: close audited security, evidence and packaging gaps",
+    "patches": "+ 1cd08c142e2a10d63cd43be2e6b58012befc56a4\n+ 80dd4ef01d9b80d26d3e7bd84b7428b17a998504\n+ 9719bc001aec99a00c3a720ab3077746c8e31a2b"
+  },
+  {
+    "ref": "refs/heads/chore/approve-swc-1.16.20-20261027",
+    "counts": "1\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/heads/feat/knoux-living-mark",
+    "counts": "57\t1",
+    "commits": "b5cb4d0 feat: add official KNOuX Living Mark",
+    "patches": "+ b5cb4d063e3eb6825d744e746a7de408ee0752e9"
+  },
+  {
+    "ref": "refs/heads/feat/remote-source-winget",
+    "counts": "85\t2",
+    "commits": "38e3504 fix(security): harden WinGet package id validation against ReDoS\naef9cbc feat(remote-sources): WinGet community repository read adapter (search/manifest)",
+    "patches": "+ aef9cbc3081b9ea134a35fcb06c3060cbf34cae7\n+ 38e350468464be255c7309ba98e3169a2da38eab"
+  },
+  {
+    "ref": "refs/heads/fix/mcp-namespaced-server-names",
+    "counts": "31\t2",
+    "commits": "8a7519f fix(workbench): make the brand layer and native controls follow the product theme\nd7de534 fix(remote-sources): accept namespaced MCP server names and lock remote-source truth contracts",
+    "patches": "+ d7de534dd213580f72c15723b594de9adee695e2\n+ 8a7519f89d4ac191bf0680b8dfbe32ea535b6b2c"
+  },
+  {
+    "ref": "refs/heads/main",
+    "counts": "3\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-cosmic-crane",
+    "counts": "85\t2",
+    "commits": "38e3504 fix(security): harden WinGet package id validation against ReDoS\naef9cbc feat(remote-sources): WinGet community repository read adapter (search/manifest)",
+    "patches": "+ aef9cbc3081b9ea134a35fcb06c3060cbf34cae7\n+ 38e350468464be255c7309ba98e3169a2da38eab"
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-gentle-ocelot",
+    "counts": "85\t2",
+    "commits": "38e3504 fix(security): harden WinGet package id validation against ReDoS\naef9cbc feat(remote-sources): WinGet community repository read adapter (search/manifest)",
+    "patches": "+ aef9cbc3081b9ea134a35fcb06c3060cbf34cae7\n+ 38e350468464be255c7309ba98e3169a2da38eab"
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-nimble-robin",
+    "counts": "85\t2",
+    "commits": "38e3504 fix(security): harden WinGet package id validation against ReDoS\naef9cbc feat(remote-sources): WinGet community repository read adapter (search/manifest)",
+    "patches": "+ aef9cbc3081b9ea134a35fcb06c3060cbf34cae7\n+ 38e350468464be255c7309ba98e3169a2da38eab"
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-plucky-wolf",
+    "counts": "85\t2",
+    "commits": "38e3504 fix(security): harden WinGet package id validation against ReDoS\naef9cbc feat(remote-sources): WinGet community repository read adapter (search/manifest)",
+    "patches": "+ aef9cbc3081b9ea134a35fcb06c3060cbf34cae7\n+ 38e350468464be255c7309ba98e3169a2da38eab"
+  },
+  {
+    "ref": "refs/heads/traycer/kforge-wild-wolf",
+    "counts": "85\t2",
+    "commits": "38e3504 fix(security): harden WinGet package id validation against ReDoS\naef9cbc feat(remote-sources): WinGet community repository read adapter (search/manifest)",
+    "patches": "+ aef9cbc3081b9ea134a35fcb06c3060cbf34cae7\n+ 38e350468464be255c7309ba98e3169a2da38eab"
+  },
+  {
+    "ref": "refs/remotes/origin/HEAD",
+    "counts": "0\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/backup/superseded-final-audit-hardening-20261001",
+    "counts": "63\t3",
+    "commits": "9719bc0 fix: apply the request allowance before the caller boundary\n80dd4ef fix: bound local API request volume at the caller boundary\n1cd08c1 fix: close audited security, evidence and packaging gaps",
+    "patches": "+ 1cd08c142e2a10d63cd43be2e6b58012befc56a4\n+ 80dd4ef01d9b80d26d3e7bd84b7428b17a998504\n+ 9719bc001aec99a00c3a720ab3077746c8e31a2b"
+  },
+  {
+    "ref": "refs/remotes/origin/chore/approve-swc-1.16.20-20261027",
+    "counts": "1\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/chore/dependency-maintenance-20261020",
+    "counts": "32\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/chore/dependency-maintenance-20261027",
+    "counts": "24\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/dependabot/npm_and_yarn/development-minor-patch-65971deb8e",
+    "counts": "2\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/docs/kforge-ultimate-readme-20261027",
+    "counts": "18\t3",
+    "commits": "5bac6ba docs(readme): publish comprehensive KNOuX Forge visual and evidence-led engineering guide\nd8052df docs(readme): add truthful nine-domain workbench map\nef888d1 docs(readme): add official-brand-aligned pearlescent hero artwork",
+    "patches": "+ ef888d1547e8c42a0cabf6e86a68ee3168c16bdd\n+ d8052df05fcaf1159ec69dc53c5d9354a1411cd9\n+ 5bac6baa959fb6c04e2a3e0f2a01b4090e9ec654"
+  },
+  {
+    "ref": "refs/remotes/origin/feat/coherent-service-navigation-20261021",
+    "counts": "29\t1",
+    "commits": "b76a90d feat(workbench): make the service map explicit, coherent and truthful",
+    "patches": "- b76a90dd1ee72c8c51c6ca5e36e119dd99bde9fe"
+  },
+  {
+    "ref": "refs/remotes/origin/feat/developer-environments-20261027",
+    "counts": "16\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/feat/github-connect-20261027",
+    "counts": "4\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/feat/knoux-living-mark",
+    "counts": "57\t1",
+    "commits": "b5cb4d0 feat: add official KNOuX Living Mark",
+    "patches": "+ b5cb4d063e3eb6825d744e746a7de408ee0752e9"
+  },
+  {
+    "ref": "refs/remotes/origin/feat/knoux-luminous-glass-20261027",
+    "counts": "19\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/feat/preview-command-deck-20261027",
+    "counts": "12\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/feat/preview-sections-20261027",
+    "counts": "8\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/feat/remote-source-winget",
+    "counts": "85\t2",
+    "commits": "38e3504 fix(security): harden WinGet package id validation against ReDoS\naef9cbc feat(remote-sources): WinGet community repository read adapter (search/manifest)",
+    "patches": "+ aef9cbc3081b9ea134a35fcb06c3060cbf34cae7\n+ 38e350468464be255c7309ba98e3169a2da38eab"
+  },
+  {
+    "ref": "refs/remotes/origin/fix/installer-verification-restart-window",
+    "counts": "30\t1",
+    "commits": "1888b02 fix(installer): give the restarted desktop a real evidence window",
+    "patches": "- 1888b028652234712659962b58621b6fabc65a5f"
+  },
+  {
+    "ref": "refs/remotes/origin/fix/kforge-final-closure-20260926",
+    "counts": "54\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/fix/kforge-quality-truth-and-windows-preview-20261018",
+    "counts": "51\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/fix/mcp-namespaced-server-names",
+    "counts": "31\t2",
+    "commits": "8a7519f fix(workbench): make the brand layer and native controls follow the product theme\nd7de534 fix(remote-sources): accept namespaced MCP server names and lock remote-source truth contracts",
+    "patches": "+ d7de534dd213580f72c15723b594de9adee695e2\n+ 8a7519f89d4ac191bf0680b8dfbe32ea535b6b2c"
+  },
+  {
+    "ref": "refs/remotes/origin/integration/kforge-unified-closure-20261019",
+    "counts": "41\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/remotes/origin/main",
+    "counts": "0\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260825-132620-main-pre-sync",
+    "counts": "486\t3",
+    "commits": "0f7e1e3 On main: pre-main-sync-2026-08-25\n5a12665 index on main: 288c2d9 Revert \"feat: core release preparation - gap matrix, first-party registry, E2E tests\"\nfe61daa untracked files on main: 288c2d9 Revert \"feat: core release preparation - gap matrix, first-party registry, E2E tests\"",
+    "patches": "+ fe61daa7c35658426994a26f58732bc3f1c4a19b\n+ 5a126655ea4002ff3b03f5bf5eb5b9ffae0108fd"
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260903-022551-codex-workbench-handoff",
+    "counts": "394\t3",
+    "commits": "1e4e27b On wip/codex-workbench-handoff: kforge-local-sync-20260903-022551\n9d81475 index on wip/codex-workbench-handoff: 853bd46 fix: harden workbench selection and collection mutations\n645753a untracked files on wip/codex-workbench-handoff: 853bd46 fix: harden workbench selection and collection mutations",
+    "patches": "+ 645753afe156c8afaa61d250343c6ecf8a66c91d\n+ 9d8147534e38198fc499c7cf7b61416ec842b439"
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260914-065904-real-media-functional-closure",
+    "counts": "140\t6",
+    "commits": "290b989 On safety/real-media-functional-closure-20260910-101007: KForge pre-final-sync 20260914-065904\n9ed6922 index on safety/real-media-functional-closure-20260910-101007: 4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n227849a untracked files on safety/real-media-functional-closure-20260910-101007: 4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a\n+ 227849a190233ee159ac5b5d731c7ae4f9687699\n+ 9ed692231e1512043bbdce5066f5477c2718f4de"
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260914-082827-traycer-kforge-merry-crane",
+    "counts": "566\t3",
+    "commits": "3a5e64e On traycer/kforge-merry-crane: KForge worktree cleanup 20260914-082827 [traycer/kforge-merry-crane]\n77a4a08 index on traycer/kforge-merry-crane: f7efe0e Initial KForge project upload\neceb4ee untracked files on traycer/kforge-merry-crane: f7efe0e Initial KForge project upload",
+    "patches": "+ eceb4ee850a9757571b40f5b0525cef27b84c595\n+ 77a4a08ad7342d4be124285cb086e73f2e9cddcf"
+  },
+  {
+    "ref": "refs/tags/backup-stash-20260914-082827-traycer-lucky-leopard",
+    "counts": "396\t3",
+    "commits": "fb8a8d1 On traycer/lucky-leopard: KForge worktree cleanup 20260914-082827 [traycer/lucky-leopard]\n9b8c7c4 index on traycer/lucky-leopard: 5d6e4e4 fix: complete modular workbench ownership and wiring (forward fix from 9c4005f)\neefef6f untracked files on traycer/lucky-leopard: 5d6e4e4 fix: complete modular workbench ownership and wiring (forward fix from 9c4005f)",
+    "patches": "+ eefef6fb0e42419eafe8ed3a7bada7980b94eff2\n+ 9b8c7c4576dd98d505f8e70116187900ccd64bd1"
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-fresh-verify",
+    "counts": "393\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-kforge-kforge-silent-leopard",
+    "counts": "140\t3",
+    "commits": "4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a"
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-recovery-world-class-hardening-679c85b",
+    "counts": "397\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-eager-lemur",
+    "counts": "477\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-happy-weasel",
+    "counts": "566\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-merry-crane",
+    "counts": "566\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-nimble-platypus",
+    "counts": "566\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-nimble-yak",
+    "counts": "140\t3",
+    "commits": "4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a"
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-ripe-lion",
+    "counts": "566\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-soft-penguin",
+    "counts": "140\t3",
+    "commits": "4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a"
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-spry-turtle",
+    "counts": "140\t3",
+    "commits": "4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a"
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-stellar-moose",
+    "counts": "140\t3",
+    "commits": "4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a"
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-kforge-zealous-lynx",
+    "counts": "140\t3",
+    "commits": "4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a"
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-traycer-lucky-leopard",
+    "counts": "396\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-verify-8497ef4",
+    "counts": "399\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-verify-b95dd99",
+    "counts": "400\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/backup-worktree-20260914-082827-verify-typecheck",
+    "counts": "402\t0",
+    "commits": "",
+    "patches": ""
+  },
+  {
+    "ref": "refs/tags/local-backup-pre-sync-20260914-065904",
+    "counts": "140\t3",
+    "commits": "4ea964c docs(release): record truthful final closure evidence with exact CI references, security state, adapter contracts, session execution, and clearly labeled external blockers (cert, docs-SHA rerun cycle, stale patch-1 authorization, protected-branch exact-SHA gate)\n9c26502 fix(security): separate DPAPI production storage from deterministic InMemoryCredentialBackend test contract; add CredentialBackendContract; preserve zero-plaintext fallback; close DPAPI timeout blocker in provider tests\n40b5a0b chore(safety): preserve in-progress real media functional closure",
+    "patches": "+ 40b5a0b8d2f36a53bb0aa98fb828f51f0d9fe023\n+ 9c26502dcb8d785774d028e736cd50fec95b2e97\n+ 4ea964c9429660b01fd436e8c806ce926560dd1a"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-029e1001",
+    "counts": "51\t4",
+    "commits": "029e100 fix(verify-gate): scope npm audit to production dependencies only\n6e62d09 fix(workspace): add GET /api/workspace/projects/:id/tasks/:taskId endpoint for task status polling\nc1b8aaf fix(securityTools): handle version-probe timeout under load with truthful evidence\ndd2904c feat(brand): mount the Living Mark behind a lazy, accessibility-aware gate",
+    "patches": "- dd2904cab6fdcb0159629d77a620423b65da68cb\n- c1b8aaf3d1d549bdb031b28f81e835e60a663022\n- 6e62d0940c95f4b916ee569d3d28861edc6831af\n- 029e10014c3bb82a5fa84d00275f19d2d6eddb45"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-1a86cafa",
+    "counts": "53\t1",
+    "commits": "1a86caf chore(ci): bump the github-actions group with 2 updates",
+    "patches": "- 1a86cafa58282adbb16db11307a9e3482d8cb9aa"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-34b6a7db",
+    "counts": "51\t2",
+    "commits": "34b6a7d fix(workspace): add GET /api/workspace/projects/:id/tasks/:taskId endpoint for task status polling\n9b33b2e fix(securityTools): handle version-probe timeout under load with truthful evidence",
+    "patches": "- 9b33b2ef822dc46d5a44ca089873565dac29d0f7\n- 34b6a7db2dde70a271450d97ece995867df096a9"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-480dfc85",
+    "counts": "51\t3",
+    "commits": "480dfc8 fix(verify-gate): scope npm audit to production dependencies only\n34b6a7d fix(workspace): add GET /api/workspace/projects/:id/tasks/:taskId endpoint for task status polling\n9b33b2e fix(securityTools): handle version-probe timeout under load with truthful evidence",
+    "patches": "- 9b33b2ef822dc46d5a44ca089873565dac29d0f7\n- 34b6a7db2dde70a271450d97ece995867df096a9\n- 480dfc85dcd8053fb8424289b9c6c17902984db3"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-67ffa838",
+    "counts": "23\t1",
+    "commits": "67ffa83 chore(deps)(deps-dev): bump the development-minor-patch group across 1 directory with 6 updates",
+    "patches": "- 67ffa838bd1daf9ac46448bf9cc17df351819d84"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-6e62d094",
+    "counts": "51\t3",
+    "commits": "6e62d09 fix(workspace): add GET /api/workspace/projects/:id/tasks/:taskId endpoint for task status polling\nc1b8aaf fix(securityTools): handle version-probe timeout under load with truthful evidence\ndd2904c feat(brand): mount the Living Mark behind a lazy, accessibility-aware gate",
+    "patches": "- dd2904cab6fdcb0159629d77a620423b65da68cb\n- c1b8aaf3d1d549bdb031b28f81e835e60a663022\n- 6e62d0940c95f4b916ee569d3d28861edc6831af"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-9303390e",
+    "counts": "53\t1",
+    "commits": "9303390 chore(deps)(deps-dev): bump the development-minor-patch group across 1 directory with 36 updates",
+    "patches": "+ 9303390e74352d14b46c83cca921dc484969835c"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-9b33b2ef",
+    "counts": "51\t1",
+    "commits": "9b33b2e fix(securityTools): handle version-probe timeout under load with truthful evidence",
+    "patches": "- 9b33b2ef822dc46d5a44ca089873565dac29d0f7"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-c1b8aaf3",
+    "counts": "51\t2",
+    "commits": "c1b8aaf fix(securityTools): handle version-probe timeout under load with truthful evidence\ndd2904c feat(brand): mount the Living Mark behind a lazy, accessibility-aware gate",
+    "patches": "- dd2904cab6fdcb0159629d77a620423b65da68cb\n- c1b8aaf3d1d549bdb031b28f81e835e60a663022"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-dd0481d6",
+    "counts": "53\t1",
+    "commits": "dd0481d chore(deps)(deps): bump express-rate-limit",
+    "patches": "+ dd0481d6898d1ff1f83c7031ecb62cb49929e4c5"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-dd2904ca",
+    "counts": "51\t1",
+    "commits": "dd2904c feat(brand): mount the Living Mark behind a lazy, accessibility-aware gate",
+    "patches": "- dd2904cab6fdcb0159629d77a620423b65da68cb"
+  },
+  {
+    "ref": "refs/tags/preserve/orphan-e898e0c2",
+    "counts": "25\t1",
+    "commits": "e898e0c chore(deps)(deps-dev): bump the development-minor-patch group with 6 updates",
+    "patches": "+ e898e0c2139110784f6f38223a1823a1d19fa74e"
+  }
+]

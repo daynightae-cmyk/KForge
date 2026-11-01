@@ -5,7 +5,9 @@ export default defineConfig({
   test: {
     // apps/ is a separately deployed Node 24 service that runs on node:test via
     // `npm run test:github-connect`; Vitest would load it and report "No test suite found".
-    exclude: ['apps/**', 'tests/e2e/**', 'node_modules/**', '**/*.e2e.spec.ts'],
+    // Local browser probes and historical research are evidence inputs, not
+    // Vitest suites. Keep generated evidence from changing unit discovery.
+    exclude: ['apps/**', 'tests/e2e/**', 'node_modules/**', '**/*.e2e.spec.ts', 'verification/**', 'release/**', 'test-results/**', 'docs/research/**'],
   },
   resolve: {
     alias: {

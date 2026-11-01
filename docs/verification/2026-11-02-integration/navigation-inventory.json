@@ -1,0 +1,328 @@
+[
+  {
+    "id": "projects",
+    "label": "Projects",
+    "views": [
+      {
+        "id": "workspace",
+        "label": "Workspace"
+      },
+      {
+        "id": "health",
+        "label": "Project Health"
+      },
+      {
+        "id": "recent",
+        "label": "Recent"
+      },
+      {
+        "id": "favorites",
+        "label": "Favorites"
+      },
+      {
+        "id": "pinned",
+        "label": "Pinned"
+      },
+      {
+        "id": "archive",
+        "label": "Archive"
+      },
+      {
+        "id": "open-project",
+        "label": "Open Project"
+      },
+      {
+        "id": "import-project",
+        "label": "Import Project"
+      }
+    ]
+  },
+  {
+    "id": "ai",
+    "label": "AI",
+    "views": [
+      {
+        "id": "providers",
+        "label": "Providers"
+      },
+      {
+        "id": "models",
+        "label": "Models"
+      },
+      {
+        "id": "agents",
+        "label": "Agents"
+      },
+      {
+        "id": "tasks",
+        "label": "Tasks"
+      }
+    ]
+  },
+  {
+    "id": "online",
+    "label": "Online",
+    "views": [
+      {
+        "id": "discover",
+        "label": "Discover"
+      },
+      {
+        "id": "marketplace",
+        "label": "Marketplace"
+      },
+      {
+        "id": "extensions",
+        "label": "Extensions"
+      },
+      {
+        "id": "models",
+        "label": "Models"
+      },
+      {
+        "id": "agents",
+        "label": "Agents"
+      },
+      {
+        "id": "tools",
+        "label": "Tools"
+      },
+      {
+        "id": "integrations",
+        "label": "Integrations"
+      },
+      {
+        "id": "installed",
+        "label": "Installed"
+      },
+      {
+        "id": "updates",
+        "label": "Updates"
+      },
+      {
+        "id": "downloads",
+        "label": "Downloads"
+      },
+      {
+        "id": "providers",
+        "label": "Providers"
+      },
+      {
+        "id": "remote-sources",
+        "label": "Remote Sources"
+      },
+      {
+        "id": "documentation",
+        "label": "Documentation"
+      },
+      {
+        "id": "security",
+        "label": "Security"
+      },
+      {
+        "id": "activity",
+        "label": "Activity"
+      }
+    ]
+  },
+  {
+    "id": "intelligence",
+    "label": "Intelligence",
+    "views": [
+      {
+        "id": "project-graph",
+        "label": "Project Graph"
+      },
+      {
+        "id": "dependencies",
+        "label": "Dependencies"
+      },
+      {
+        "id": "impact-analysis",
+        "label": "Impact Analysis"
+      },
+      {
+        "id": "code-understanding",
+        "label": "Code Understanding"
+      },
+      {
+        "id": "ask-kforge",
+        "label": "Ask KForge"
+      },
+      {
+        "id": "architecture",
+        "label": "Architecture"
+      }
+    ]
+  },
+  {
+    "id": "quality",
+    "label": "Quality",
+    "views": [
+      {
+        "id": "sonar",
+        "label": "KForge Sonar"
+      },
+      {
+        "id": "problems",
+        "label": "Problems"
+      },
+      {
+        "id": "solutions",
+        "label": "Solutions"
+      },
+      {
+        "id": "security",
+        "label": "Security"
+      },
+      {
+        "id": "performance",
+        "label": "Performance"
+      },
+      {
+        "id": "technical-debt",
+        "label": "Technical Debt"
+      },
+      {
+        "id": "documentation",
+        "label": "Documentation"
+      },
+      {
+        "id": "snapshots",
+        "label": "Snapshots"
+      }
+    ]
+  },
+  {
+    "id": "developer-tools",
+    "label": "Developer Tools",
+    "views": [
+      {
+        "id": "terminal",
+        "label": "Terminal"
+      },
+      {
+        "id": "tests",
+        "label": "Tests"
+      },
+      {
+        "id": "build",
+        "label": "Build"
+      },
+      {
+        "id": "runtime",
+        "label": "Runtime"
+      },
+      {
+        "id": "lint",
+        "label": "Lint"
+      },
+      {
+        "id": "logs",
+        "label": "Logs"
+      },
+      {
+        "id": "diagnostics",
+        "label": "Diagnostics"
+      },
+      {
+        "id": "preview",
+        "label": "Preview"
+      }
+    ]
+  },
+  {
+    "id": "remote",
+    "label": "Remote / Git",
+    "views": [
+      {
+        "id": "git",
+        "label": "Git"
+      },
+      {
+        "id": "branches",
+        "label": "Branches"
+      },
+      {
+        "id": "commits",
+        "label": "Commits"
+      },
+      {
+        "id": "github",
+        "label": "GitHub"
+      },
+      {
+        "id": "pull-requests",
+        "label": "Pull Requests"
+      },
+      {
+        "id": "issues",
+        "label": "Issues"
+      },
+      {
+        "id": "actions",
+        "label": "Actions"
+      },
+      {
+        "id": "releases",
+        "label": "Releases"
+      }
+    ]
+  },
+  {
+    "id": "release",
+    "label": "Release",
+    "views": [
+      {
+        "id": "release-gate",
+        "label": "Release Gate"
+      },
+      {
+        "id": "release-preparation",
+        "label": "Release Preparation"
+      },
+      {
+        "id": "artifacts",
+        "label": "Artifacts"
+      },
+      {
+        "id": "versioning",
+        "label": "Versioning"
+      }
+    ]
+  },
+  {
+    "id": "system",
+    "label": "System",
+    "views": [
+      {
+        "id": "settings",
+        "label": "Settings"
+      },
+      {
+        "id": "trust",
+        "label": "Trust"
+      },
+      {
+        "id": "permissions",
+        "label": "Permissions"
+      },
+      {
+        "id": "storage",
+        "label": "Storage"
+      },
+      {
+        "id": "online-offline",
+        "label": "Online / Offline"
+      },
+      {
+        "id": "self-audit",
+        "label": "Self Audit"
+      },
+      {
+        "id": "system-diagnostics",
+        "label": "System Diagnostics"
+      }
+    ]
+  }
+]

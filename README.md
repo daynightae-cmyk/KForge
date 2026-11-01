@@ -1,3 +1,21 @@
+# KNOuX Forge
+
+## Reference verification baseline
+
+Historical reference: Run #271 at SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`
+recorded Playwright browser acceptance, cross-platform verification and Windows
+packaging. These are dated results, not a claim about the current HEAD. The
+current dependency policy still requires `strict-allow-scripts=true`; use the
+exact current lockfile and allowlist. Read [the integration audit](docs/verification/2026-11-02-integration/AUDIT.md)
+and its results for newer observations, failures and production gaps.
+
+Development navigation: `http://localhost:8080/workspace`. Production-server
+navigation: `http://localhost:3000/workspace` (when running on that configured
+port). Packaged Electron additionally records bounded KForge-owned loopback browser traffic
+and bounded attributed browser-console evidence. Those observations apply to an
+active owned Preview; they do not establish arbitrary external application or
+production coverage.
+
 <div align="center">
 
 <img src="client/assets/knoux-forge-official-logo.webp" width="126" alt="KNOuX Forge authentic official corporate logo" />
