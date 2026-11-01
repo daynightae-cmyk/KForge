@@ -19,6 +19,17 @@ function InspectorLoading({ label = "Inspector" }: { label?: string }) {
   );
 }
 
+function evidenceTimestamp(value: unknown, absentLabel: string): string {
+  if (typeof value === "string" || typeof value === "number") {
+    const raw = typeof value === "string" ? value.trim() : value;
+    if (typeof raw !== "number" && !raw) return absentLabel;
+    const parsed = new Date(raw as string | number);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString();
+    return typeof value === "string" ? value : absentLabel;
+  }
+  return absentLabel;
+}
+
 export default function CanonicalInspector(props: CanonicalInspectorProps) {
   const { activity, view, project, execution, context } = props;
 
@@ -87,9 +98,9 @@ export default function CanonicalInspector(props: CanonicalInspectorProps) {
               <div><dt>Type</dt><dd>{project.projectType || "UNKNOWN"}</dd></div>
               <div><dt>Branch</dt><dd>{project.branch || "NO_GIT"}</dd></div>
               <div><dt>Health</dt><dd>{project.healthScore ?? "NOT_SCANNED"}</dd></div>
-              <div><dt>Last scan</dt><dd>{project.lastScan ? new Date(project.lastScan).toLocaleString() : "NEVER"}</dd></div>
+              <div><dt>Last scan</dt><dd>{evidenceTimestamp(project.lastScan, "NEVER")}</dd></div>
               <div><dt>Changes</dt><dd>{project.modifiedFiles + project.untrackedFiles} working</dd></div>
-              <div><dt>Activity</dt><dd>{project.lastActivity ? new Date(project.lastActivity).toLocaleString() : "UNKNOWN"}</dd></div>
+              <div><dt>Activity</dt><dd>{evidenceTimestamp(project.lastActivity, "UNKNOWN")}</dd></div>
             </dl>
             <details className="kw-inspector-advanced">
               <summary>Advanced project evidence</summary>
