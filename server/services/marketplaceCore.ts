@@ -616,7 +616,12 @@ export function listMarketplaceRegistryAdapters(onlineOptional: boolean): Market
 }
 
 function firstPartyFixturesRoot(): string {
-  return path.resolve(process.cwd(), "fixtures");
+  // The canonical app root is authoritative in packaged/production runtimes
+  // (productionServer and desktop set KFORGE_APP_ROOT); fall back to the
+  // process working directory only for harness/dev contexts where no app root
+  // was provided. Resolving through cwd alone broke first-party Marketplace
+  // installs whenever the server did not run from the source checkout root.
+  return path.resolve(process.env.KFORGE_APP_ROOT || process.cwd(), "fixtures");
 }
 
 function firstPartyManifestPath(version: "1.0.0" | "1.1.0"): string {
