@@ -265,11 +265,18 @@ First gate run at head `fb9d1bc`: workflow-pins, asset-budget, npm-ci, npm-audit
 typecheck, lint, unit tests (548 passed), build and playwright-browser all PASS.
 `e2e` FAILED on `production-chromium` only — 85 passed, 1 failed, 1 skipped — and
 the single failure was the new disclosure test asserting the settled body inside
-CI's 5 s default expect window. It passed locally because
-`playwright.config.ts` grants Windows a 15 s expect timeout. The assertion was
-wrong about timing, not about behavior; it now waits for settle explicitly.
+CI's 5 s default expect window. It passed when run alone on Windows because
+`playwright.config.ts` grants a 15 s expect timeout, but the **full local suite
+failed it too**, exceeding even 15 s. Raising the test timeout to 60 s was
+considered and rejected as masking the defect rather than expressing it.
 
-Measuring why it was slow exposed a **separate and more serious defect**:
+The cause was test design on top of a pre-existing product defect: the spec
+opened the entire KForge repository as the session project, so every context
+build scanned the monorepo. Re-pointed at a small deterministic temp fixture, the
+same assertions pass in 3.3 s locally, which proves the disclosure logic itself
+is fast and that the cost belongs to the scan.
+
+Measuring why the scan was slow exposed a **separate and more serious defect**:
 `buildSessionContext` calls `scanProject`, which is not cached and which
 **executes the project's own typecheck and lint commands** (`tsc --noEmit`, then
 `lintIssues` when the project is trusted) plus secret-literal, completeness and
@@ -284,12 +291,15 @@ Measured on this host against the KForge repository itself:
 Merely viewing what a session would send therefore triggers project command
 execution, which contradicts the product's own stated contract for other
 surfaces ("Opening this surface does not run a benchmark or build the project
-graph"). A 7.7 s response to a click is also not an acceptable interaction cost.
+graph"), and conflicts with the loopback limiter's own design note that its
+ceiling "exists to stop a runaway or hostile local caller, not to shape normal
+product behaviour" — an assumption that per-request work is cheap. A 7.7 s
+response to a click is not an acceptable interaction cost either.
 
 This was deliberately **not** folded into the disclosure PR: the correct fix
 touches the shared context/scan boundary and needs its own evidence, including
 proof that disclosed bytes stay identical when the scan is skipped. It is
-recorded as the next P1 slice. The disclosure PR keeps the honest LOADING state
+recorded as the next P1 slice. The disclosure keeps the honest LOADING state
 rather than hiding the latency.
 
 ### Still open after this slice
