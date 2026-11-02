@@ -37,7 +37,7 @@ import {
   type SessionContextPayload,
   type SessionRuntimeHandlers,
 } from "../services/providerSessions";
-import { buildAgentContext } from "../services/agent";
+import { buildAgentContext, selectContextFiles, type AgentContextFile } from "../services/agent";
 import { executeAgentTool, isAgentToolName, type ProjectToolHandlers } from "../services/agentTools";
 import { getPreviewStatus, restartPreview, startPreview, stopPreviewAndWait } from "../services/previewRuntime";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
@@ -127,20 +127,18 @@ async function safeSelectedContext(projectPath: string, selectedFiles: string[])
   return files;
 }
 
-async function buildSessionContext(sessionId: string, selectedFiles: string[] = []): Promise<SessionContextPayload> {
-  const root = getWorkspaceRoot();
-  const session = await getProviderSession(root, sessionId);
-  if (!session) throw new Error("Session not found.");
-  if (!session.projectId) throw new Error("Session has no project context.");
-  const project = await resolveProject(session.projectId);
-  if (!project) throw new Error("Project for this session is no longer available.");
-  const scan = await scanProject(project);
-  const bounded = await buildAgentContext(project, scan);
-  const selected = await safeSelectedContext(project.path, selectedFiles);
+type SelectedContextFile = Awaited<ReturnType<typeof safeSelectedContext>>[number];
+
+/**
+ * One definition of the included context set, shared by the full session context
+ * view and the scan-free per-file disclosure, so the two can never drift apart
+ * and show the operator bytes that would not actually be sent.
+ */
+function assembleIncludedFiles(selected: SelectedContextFile[], bounded: AgentContextFile[]) {
   const selectedSet = new Set(selected.map((file) => file.path));
-  const files = [
+  return [
     ...selected,
-    ...bounded.files
+    ...bounded
       .filter((file) => !selectedSet.has(file.path))
       .map((file) => ({
         path: file.path,
@@ -152,6 +150,34 @@ async function buildSessionContext(sessionId: string, selectedFiles: string[] = 
         sourceTruncated: file.sourceTruncated,
       })),
   ].slice(0, 40);
+}
+
+async function resolveSessionProject(sessionId: string) {
+  const session = await getProviderSession(getWorkspaceRoot(), sessionId);
+  if (!session) throw new Error("Session not found.");
+  if (!session.projectId) throw new Error("Session has no project context.");
+  const project = await resolveProject(session.projectId);
+  if (!project) throw new Error("Project for this session is no longer available.");
+  return { session, project };
+}
+
+/**
+ * The included set for a disclosure request, built without scanning the project.
+ * File membership never depends on `scanProject`, so a disclosure click must not
+ * pay for it — and must not implicitly execute the project's typecheck or lint.
+ */
+async function disclosureFileSet(projectPath: string, selectedFiles: string[]) {
+  const selected = await safeSelectedContext(projectPath, selectedFiles);
+  const { files: bounded } = await selectContextFiles(projectPath);
+  return assembleIncludedFiles(selected, bounded);
+}
+
+async function buildSessionContext(sessionId: string, selectedFiles: string[] = []): Promise<SessionContextPayload> {
+  const { session, project } = await resolveSessionProject(sessionId);
+  const scan = await scanProject(project);
+  const bounded = await buildAgentContext(project, scan);
+  const selected = await safeSelectedContext(project.path, selectedFiles);
+  const files = assembleIncludedFiles(selected, bounded.files);
   const totalCharacters = files.reduce((total, file) => total + file.content.length, 0);
   return {
     project: { id: project.id, name: project.name, path: project.path, branch: project.branch },
@@ -358,8 +384,9 @@ router.get("/ai/command-center/sessions/:sessionId/context/file", async (req, re
   if (!requested) return res.status(400).json({ error: "A context file path is required." });
   try {
     const selectedFiles = typeof req.query.files === "string" ? req.query.files.split(",").map((value) => value.trim()).filter(Boolean) : [];
-    const context = await buildSessionContext(req.params.sessionId, selectedFiles);
-    const included = context.filesIncluded.find((file) => file.path === requested);
+    const { session, project } = await resolveSessionProject(req.params.sessionId);
+    const includedFiles = await disclosureFileSet(project.path, selectedFiles);
+    const included = includedFiles.find((file) => file.path === requested);
     if (!included || included.content === undefined) {
       return res.status(404).json({ error: "DISCLOSE_NOT_IN_CONTEXT: that path is not part of this session's disclosed context set." });
     }
@@ -374,7 +401,12 @@ router.get("/ai/command-center/sessions/:sessionId/context/file", async (req, re
       sourceTruncated: included.sourceTruncated === true,
       fetchedAt: new Date().toISOString(),
     };
-    return res.json({ disclosure, destination: context.destination, provider: context.provider, model: context.model });
+    return res.json({
+      disclosure,
+      destination: session.disclosureDestination || "local runtime",
+      provider: session.providerId,
+      model: session.modelId,
+    });
   } catch (error: unknown) {
     return res.status(400).json({ error: error instanceof Error ? error.message : "Context file disclosure failed." });
   }

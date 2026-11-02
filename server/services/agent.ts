@@ -304,26 +304,41 @@ export async function collectProjectFiles(projectPath: string, options: CollectP
   };
 }
 
-export async function buildAgentContext(project: ProjectSummary, scan: ProjectScan, issueId?: string): Promise<AgentContext> {
-  const issue = issueId ? scan.issues.find((entry) => entry.id === issueId) : undefined;
+/**
+ * The single source of truth for which files a bounded context includes.
+ *
+ * This is deliberately scan-independent: a caller that only needs the included
+ * set, or the exact bytes of one member, must not have to execute the project's
+ * own typecheck or lint to obtain it. `buildAgentContext` uses it, and the
+ * session disclosure route reuses it so both views agree by construction.
+ */
+export async function selectContextFiles(projectPath: string, issueFile?: string): Promise<{ files: AgentContextFile[]; scanResult: ContextScanResult | null }> {
   const files: AgentContextFile[] = [];
   let scanResult: ContextScanResult | null = null;
   const seen = new Set<string>();
   const add = async (relative: string, reason: AgentContextFile["reason"]) => {
     if (seen.has(relative) || files.length >= 10) return;
-    const entry = await readContextFile(project.path, relative, reason, 12_000);
+    const entry = await readContextFile(projectPath, relative, reason, 12_000);
     if (entry) { seen.add(entry.path); files.push(entry); }
   };
-  if (issue?.file) {
-    await add(issue.file, "active-problem");
+  if (issueFile) {
+    await add(issueFile, "active-problem");
     const active = files.find((entry) => entry.reason === "active-problem");
     if (active) for (const candidate of importCandidates(active.path, active.content).slice(0, 4)) await add(candidate, "import");
-    const basename = path.posix.basename(issue.file).replace(/\.[^.]+$/, "");
-    scanResult = await collectProjectFiles(project.path, { maxFiles: 5000, maxDepth: 8, timeBudgetMs: 2000 });
+    const basename = path.posix.basename(issueFile).replace(/\.[^.]+$/, "");
+    scanResult = await collectProjectFiles(projectPath, { maxFiles: 5000, maxDepth: 8, timeBudgetMs: 2000 });
     const rootEntries = scanResult.files;
     for (const entry of rootEntries.filter((value) => /(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(value) && value.toLowerCase().includes(basename.toLowerCase())).slice(0, 2)) await add(entry.split(path.sep).join("/"), "related-test");
   }
   for (const config of ["package.json", "tsconfig.json", "vite.config.ts", "README.md"]) await add(config, "configuration");
+  return { files, scanResult };
+}
+
+export async function buildAgentContext(project: ProjectSummary, scan: ProjectScan, issueId?: string): Promise<AgentContext> {
+  const issue = issueId ? scan.issues.find((entry) => entry.id === issueId) : undefined;
+  const selection = await selectContextFiles(project.path, issue?.file);
+  const files = selection.files;
+  const scanResult = selection.scanResult;
   const status = await gitStatus(project.path);
   const totalCharacters = files.reduce((total, entry) => total + entry.content.length, 0);
   return {

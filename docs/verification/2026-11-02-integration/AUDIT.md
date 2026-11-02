@@ -302,6 +302,42 @@ proof that disclosed bytes stay identical when the scan is skipped. It is
 recorded as the next P1 slice. The disclosure keeps the honest LOADING state
 rather than hiding the latency.
 
+### Slice: scan-free context disclosure (follow-up to PR #73)
+
+The disclosure route inherited the cost of `buildSessionContext`, which calls the
+uncached `scanProject` and thereby executes the project's own typecheck and lint.
+File membership never depended on that scan: `buildAgentContext` uses `scan` only
+for `technology`, `commands`, `git` and `diagnostics`, and the session path passes
+no `issueId`, so the included set comes entirely from selection logic that needs
+only a project path.
+
+- `server/services/agent.ts` — extracted `selectContextFiles(projectPath, issueFile?)`
+  as the single source of truth for membership. `buildAgentContext` now calls it,
+  so there is one implementation, not a second one.
+- `server/routes/providerCommandRouter.ts` — `assembleIncludedFiles` is now shared
+  by both the full context view and the new `disclosureFileSet`, which resolves the
+  session and project and builds the set without scanning. `resolveSessionProject`
+  replaces the duplicated session/project guard.
+- The disclosure response is asserted to carry no scan-derived field, so the route
+  cannot quietly grow a scan dependency back.
+
+Measured on this host against the KForge repository itself, same probe as before:
+
+| Path | Before | After |
+|---|---:|---:|
+| `GET .../context` | 2827 ms | 1606 ms (unchanged behaviour; explicit refresh path) |
+| `GET .../context/file` | 7664 ms | **169 ms** |
+
+A disclosure click is therefore roughly 45x faster and no longer triggers project
+command execution. The remaining `GET .../context` cost is the explicit scan that
+also supplies diagnostics and technology; removing implicit work from *surface
+mount* is still open and tracked separately.
+
+Because both views now share one assembly function, the spec asserts they stay
+identical: every path in the full context set must disclose with the same byte
+count, redaction flag and truncation flag, and a path outside the set must be
+refused by both.
+
 ### Still open after this slice
 
 GitHub Connect deployment/OAuth/webhook synchronization, trusted signing,
