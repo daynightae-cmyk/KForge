@@ -27,7 +27,18 @@ export interface SessionContextPayload {
   model: string;
   provider: string;
   destination: string;
-  filesIncluded: Array<{ path: string; reason: string; characters: number; content?: string }>;
+  filesIncluded: Array<{
+    path: string;
+    reason: string;
+    characters: number;
+    content?: string;
+    /** True when the sent bytes differ from disk bytes because redaction was applied. */
+    redacted?: boolean;
+    /** Redaction categories only; never the underlying values. */
+    redactionReasons?: string[];
+    /** True when the sent bytes were cut at the bounded context-read limit. */
+    sourceTruncated?: boolean;
+  }>;
   filesExcluded?: Array<{ path: string; reason: string }>;
   totalCharacters: number;
   estimatedTokens: number;

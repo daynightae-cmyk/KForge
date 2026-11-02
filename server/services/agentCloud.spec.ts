@@ -16,7 +16,7 @@ function context(files: AgentContext["files"]): AgentContext {
 
 describe("cloud plan disclosure input", () => {
   it("redacts mission secrets and reports exact data classes without source code", () => {
-    const outbound = buildRedactedCloudPlanInput(context([{ path: "package.json", reason: "configuration", content: "{}", redacted: false }]), "api_key=super-secret plan this project");
+    const outbound = buildRedactedCloudPlanInput(context([{ path: "package.json", reason: "configuration", content: "{}", redacted: false, reasons: [], sourceTruncated: false }]), "api_key=super-secret plan this project");
     expect(outbound.prompt).not.toContain("super-secret");
     expect(outbound.prompt).toContain("[REDACTED]");
     expect(outbound.redactionApplied).toBe(true);
@@ -25,7 +25,7 @@ describe("cloud plan disclosure input", () => {
   });
 
   it("marks source code when a source file is included in the bounded redacted context", () => {
-    const outbound = buildRedactedCloudPlanInput(context([{ path: "src/index.ts", reason: "active-problem", content: "export const value = 1;", redacted: false }]), "review the diagnostic");
+    const outbound = buildRedactedCloudPlanInput(context([{ path: "src/index.ts", reason: "active-problem", content: "export const value = 1;", redacted: false, reasons: [], sourceTruncated: false }]), "review the diagnostic");
     expect(outbound.sourceCodeIncluded).toBe(true);
     expect(outbound.dataClasses).toEqual(["METADATA", "PROJECT_CONTEXT", "SOURCE_CODE"]);
   });

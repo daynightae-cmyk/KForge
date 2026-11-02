@@ -169,3 +169,144 @@ observed signature UNAVAILABLE, release mode DEVELOPMENT.
 `npm run verify:installer` passed. `npm run verify:desktop` also passed.
 No trusted-release claim is made; signing remains unavailable.
 
+## Slice: AI session context disclosure and one redaction path (2026-11-02, later)
+
+Baseline revalidated at `3647141c0e5df697efa4f1436dd12dbb24592950`, equal to
+`origin/main`, with the `KForge Verification Gate` green on that exact SHA.
+One registered worktree, zero stashes, and the same three protected untracked
+paths. Free space measured on this host: K 5.7 GiB, C 15.2 GiB, D 3.5 GiB.
+
+### Prior P1 findings re-tested against current main, not assumed
+
+- **Windows DPAPI vault — no longer reproducing as a defect.** The opt-in real
+  OS acceptance suite passes on this host
+  (`KFORGE_REAL_DPAPI=1 npx vitest --run server/services/credentialVault.dpapi-real.spec.ts`):
+  2/2 passed, `set=676ms reveal=265ms`, far inside the 10 s PowerShell budget.
+  The earlier `ETIMEDOUT` is therefore treated as environmental (disk pressure /
+  first-run cost), not a product defect. This is a local host observation and is
+  not offered as packaged-installer evidence.
+- **Electron desktop smoke — now passing.** `npm run build` then
+  `npm run verify:desktop` completed with exit 0 on this SHA; the gate logged a
+  bound loopback URL and wrote `release/verification/desktop-verification.json`.
+  That gate still self-reports `sourceIndependentInstalledRuntime:
+  NOT_TESTED_BY_THIS_GATE`, so installed-runtime acceptance remains separate.
+- **Context-scan completeness** (`428b7e5`) and **inspector timestamp validation**
+  (`72558aa`) were already integrated; not reimplemented.
+
+### Gap actually closed in this slice
+
+`client/workbench/SessionWorkspace.tsx` rendered every provider-sent context file
+as a native `<button>` with no handler of any kind, while
+`server/routes/providerCommandRouter.ts` deliberately stripped `content` from the
+bulk `/context` response. The surface therefore advertised "Exact file context can
+be inspected inside the session before model execution" with no path that could
+deliver it — a dead control on a disclosure-critical journey.
+
+A second, more serious defect was found in the same journey. Operator-selected
+context files were redacted by a two-regex copy local to
+`safeSelectedContext`, while agent-derived files used the full
+`server/services/redaction.ts`. A direct probe confirmed the divergence: PEM
+private-key blocks, credentialed URLs (`postgres://user:pass@host`), bare
+`ghp_…` tokens and `Set-Cookie` headers all passed through the operator path
+**unmodified**, while the service path redacted all four. Those bytes are placed
+into the provider prompt.
+
+Implementation, one vertical slice:
+
+- `shared/providerCommandCenter.ts` — added `ProviderContextFileDisclosure`, and
+  documented that the bulk inspection payload carries metadata only.
+- `server/services/redaction.ts` consumers: `safeSelectedContext` now calls
+  `redactProjectText`, removing the weaker duplicate redactor.
+- `server/services/agent.ts` — `AgentContextFile` now carries `reasons` and
+  `sourceTruncated` honestly instead of hiding them behind an `as` cast; the
+  truncation marker is exported as `CONTEXT_TRUNCATION_MARKER`.
+- `server/routes/providerCommandRouter.ts` — new bounded
+  `GET .../sessions/:sessionId/context/file`. It resolves nothing from the
+  requested path: the path is only compared for membership against the
+  session's already-computed included set, so it cannot become an arbitrary
+  filesystem-read oracle. Redaction categories are reported; values never are.
+- `client/workbench/SessionWorkspace.tsx` + `providerStudio.css` — the chip now
+  performs the disclosure, switches the canonical inspector to CONTEXT, and
+  reports LOADING / ERROR / READY, redaction state, truncation state, byte count,
+  destination and read time. Selected state uses `aria-pressed`; existing
+  `--kw-*` tokens keep DAY/NIGHT parity without new literal colors.
+
+### Evidence
+
+- `npx tsc --noEmit` exit 0; `npm run lint` exit 0 (324 source files).
+- New `server/routes/providerCommandContextDisclosure.spec.ts`: 7 passed — exact
+  bytes disclosed, bulk poll carries no body, PEM/URL/token/cookie redaction,
+  sensitive-path redaction with non-secret lines preserved, seven non-member
+  paths refused with no leakage, unknown session refused, poll/disclosure
+  consistency.
+- **Negative control run:** reinstalling the historical two-regex redactor made
+  2 of those tests fail, including an explicit
+  `secret value MIIEpAIBAAKCAQEA must not be disclosed` assertion, then the fix
+  was restored. The suite has teeth; it is not vacuously green.
+- Full unit suite: 549 passed, 3 skipped, 73 files (baseline was 542/3/72).
+- Real-product E2E `tests/e2e/provider-command-center.spec.ts`: 2 passed, now
+  also asserting all five inspector tabs are visible and that PREVIEW/CONTEXT
+  switching works.
+- Visual: `verification/context-disclosure-evidence/` (gitignored) holds DAY and
+  NIGHT before/after PNGs at a measured 1672x941 read from PNG IHDR, captured
+  only after the disclosure settled.
+
+### Investigated and disproved, recorded so it is not "fixed" later
+
+The inspector mini-tab row appeared to clip `PREVIEW/MODEL/CONTEXT` in the
+captured PNGs. Measured geometry showed all five buttons laid out in two wrapped
+rows inside a 64px grid track with non-zero rects, and the E2E tab-reachability
+assertions pass. There is no clipping defect; the visual impression was a
+misreading of a scaled screenshot. No change was made for it.
+
+### Exact-head CI on PR #73 and the defect it exposed
+
+First gate run at head `fb9d1bc`: workflow-pins, asset-budget, npm-ci, npm-audit,
+typecheck, lint, unit tests (548 passed), build and playwright-browser all PASS.
+`e2e` FAILED on `production-chromium` only — 85 passed, 1 failed, 1 skipped — and
+the single failure was the new disclosure test asserting the settled body inside
+CI's 5 s default expect window. It passed when run alone on Windows because
+`playwright.config.ts` grants a 15 s expect timeout, but the **full local suite
+failed it too**, exceeding even 15 s. Raising the test timeout to 60 s was
+considered and rejected as masking the defect rather than expressing it.
+
+The cause was test design on top of a pre-existing product defect: the spec
+opened the entire KForge repository as the session project, so every context
+build scanned the monorepo. Re-pointed at a small deterministic temp fixture, the
+same assertions pass in 3.3 s locally, which proves the disclosure logic itself
+is fast and that the cost belongs to the scan.
+
+Measuring why the scan was slow exposed a **separate and more serious defect**:
+`buildSessionContext` calls `scanProject`, which is not cached and which
+**executes the project's own typecheck and lint commands** (`tsc --noEmit`, then
+`lintIssues` when the project is trusted) plus secret-literal, completeness and
+advanced-completion scans. `GET .../context` runs on every session mount and
+refresh, and the new disclosure route runs it again per click.
+
+Measured on this host against the KForge repository itself:
+
+- `GET .../context` — 2827 ms
+- `GET .../context/file` — 7664 ms
+
+Merely viewing what a session would send therefore triggers project command
+execution, which contradicts the product's own stated contract for other
+surfaces ("Opening this surface does not run a benchmark or build the project
+graph"), and conflicts with the loopback limiter's own design note that its
+ceiling "exists to stop a runaway or hostile local caller, not to shape normal
+product behaviour" — an assumption that per-request work is cheap. A 7.7 s
+response to a click is not an acceptable interaction cost either.
+
+This was deliberately **not** folded into the disclosure PR: the correct fix
+touches the shared context/scan boundary and needs its own evidence, including
+proof that disclosed bytes stay identical when the scan is skipped. It is
+recorded as the next P1 slice. The disclosure keeps the honest LOADING state
+rather than hiding the latency.
+
+### Still open after this slice
+
+GitHub Connect deployment/OAuth/webhook synchronization, trusted signing,
+installed-runtime and clean-machine acceptance, live provider effects, and the
+four policy-blocked cleanup paths are unchanged by this work. The cleanup mission
+remains REVIEW ONLY.
+
+

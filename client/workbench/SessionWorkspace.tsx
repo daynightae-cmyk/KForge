@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   CanonicalModel,
+  ProviderContextFileDisclosure,
   ProviderContextInspection,
   ProviderSessionEvent,
   ProviderSessionPatch,
@@ -58,6 +59,10 @@ export default function SessionWorkspace({ initialSession, provider, providers, 
   const [switchModels, setSwitchModels] = useState<CanonicalModel[]>([]);
   const [switchModel, setSwitchModel] = useState(session.modelId);
   const [switchDisclosure, setSwitchDisclosure] = useState(false);
+  const [disclosurePath, setDisclosurePath] = useState("");
+  const [disclosure, setDisclosure] = useState<ProviderContextFileDisclosure | null>(null);
+  const [disclosureState, setDisclosureState] = useState<"IDLE" | "LOADING" | "READY" | "ERROR">("IDLE");
+  const [disclosureError, setDisclosureError] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
   const endpoint = `/api/workspace/ai/command-center/sessions/${encodeURIComponent(session.id)}`;
 
@@ -73,15 +78,50 @@ export default function SessionWorkspace({ initialSession, provider, providers, 
     setPatches(result.patches || []);
   };
 
+  const selectedContextFiles = () => selectedFiles.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+
+  /** Keeps a disclosure request on exactly the file set the context list was built from. */
+  const contextQuery = (extra: Record<string, string> = {}) => {
+    const params = new URLSearchParams();
+    const files = selectedContextFiles();
+    if (files.length) params.set("files", files.join(","));
+    for (const [key, value] of Object.entries(extra)) params.set(key, value);
+    const query = params.toString();
+    return query ? `?${query}` : "";
+  };
+
   const refreshContext = async () => {
     try {
-      const files = selectedFiles.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
-      const suffix = files.length ? `?files=${encodeURIComponent(files.join(","))}` : "";
-      const result = await fetchJson<{ context: ProviderContextInspection }>(`${endpoint}/context${suffix}`);
+      const result = await fetchJson<{ context: ProviderContextInspection }>(`${endpoint}/context${contextQuery()}`);
       setContext(result.context);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Context inspection failed.");
     }
+  };
+
+  const openContextFile = async (filePath: string) => {
+    setDisclosurePath(filePath);
+    setDisclosure(null);
+    setDisclosureError("");
+    setDisclosureState("LOADING");
+    setRightTab("CONTEXT");
+    try {
+      const result = await fetchJson<{ disclosure: ProviderContextFileDisclosure }>(
+        `${endpoint}/context/file${contextQuery({ path: filePath })}`,
+      );
+      setDisclosure(result.disclosure);
+      setDisclosureState("READY");
+    } catch (error) {
+      setDisclosureError(error instanceof Error ? error.message : "Context file disclosure failed.");
+      setDisclosureState("ERROR");
+    }
+  };
+
+  const closeContextFile = () => {
+    setDisclosurePath("");
+    setDisclosure(null);
+    setDisclosureError("");
+    setDisclosureState("IDLE");
   };
 
   useEffect(() => {
@@ -174,7 +214,19 @@ export default function SessionWorkspace({ initialSession, provider, providers, 
           <div className="kw-pane-heading"><strong>PROJECT + CONTEXT</strong><button onClick={() => void refreshContext()}>Refresh</button></div>
           <dl className="kw-tech-dl"><div><dt>Project</dt><dd>{context?.project.name || project?.name || "UNKNOWN"}</dd></div><div><dt>Branch</dt><dd>{context?.project.branch || project?.branch || "UNKNOWN"}</dd></div><div><dt>Destination</dt><dd>{context?.destination || session.disclosureDestination || "UNKNOWN"}</dd></div><div><dt>Files</dt><dd>{context?.filesIncluded.length ?? "UNKNOWN"}</dd></div><div><dt>Est. tokens</dt><dd>{context?.estimatedTokens?.toLocaleString() ?? "UNKNOWN"}</dd></div><div><dt>Source sent</dt><dd>{context ? (context.sourceCodeIncluded ? "YES" : "NO") : "UNKNOWN"}</dd></div></dl>
           <label className="kw-field">Operator-selected context files<textarea value={selectedFiles} onChange={(event) => setSelectedFiles(event.target.value)} placeholder="src/app.tsx&#10;server/index.ts" rows={4} /></label>
-          <div className="kw-context-files">{(context?.filesIncluded || []).map((file) => <button key={file.path} title={file.reason}><span>{file.path}</span><small>{file.reason} · {file.characters.toLocaleString()} chars</small></button>)}</div>
+          <div className="kw-context-files" role="group" aria-label="Context files sent to the provider">
+            <p className="kw-context-files-hint">Select a file to read the exact bounded, redacted bytes this session sends. Nothing is sent until you start the run.</p>
+            {(context?.filesIncluded || []).length === 0 && <p className="kw-context-files-empty">No context files are currently included. Source code disclosure stays NO until a file is in the bounded set.</p>}
+            {(context?.filesIncluded || []).map((file) => <button
+              key={file.path}
+              type="button"
+              title={`${file.reason} — select to disclose the exact sent bytes`}
+              aria-pressed={disclosurePath === file.path}
+              data-context-file={file.path}
+              disabled={disclosureState === "LOADING" && disclosurePath === file.path}
+              onClick={() => void openContextFile(file.path)}
+            ><span>{file.path}</span><small>{file.reason} · {file.characters.toLocaleString()} chars{file.redacted ? " · REDACTED" : ""}{file.sourceTruncated ? " · TRUNCATED" : ""}</small></button>)}
+          </div>
           <div className="kw-checkpoint-card"><strong>Checkpoint</strong><code>{session.checkpointId || "Created automatically before first mutation"}</code><small>{appliedCount} applied patch(es) · rollback requires explicit action.</small></div>
         </aside>
 
@@ -192,7 +244,31 @@ export default function SessionWorkspace({ initialSession, provider, providers, 
           <nav className="kw-mini-tabs" aria-label="AI session inspector tabs">{(["PREVIEW", "MODEL", "CONTEXT", "DIAGNOSTICS", "SESSION"] as const).map((item) => <button key={item} className={rightTab === item ? "is-active" : ""} onClick={() => setRightTab(item)}>{item}</button>)}</nav>
           {rightTab === "PREVIEW" && <section className="kw-live-preview"><div className="kw-pane-heading"><strong>LIVE PREVIEW</strong><StatusBadge value={session.telemetry.previewState || (previewUrl ? "AVAILABLE" : "NOT_STARTED")} /></div>{previewUrl ? <><div className="kw-preview-toolbar"><code>{previewUrl}</code><a href={previewUrl} target="_blank" rel="noreferrer">Open ↗</a></div><iframe title="KForge live project Preview" src={previewUrl} sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin" /></> : <div className="kw-ai-empty"><strong>Preview not started</strong><span>Enable Preview after verification or let the model request the canonical start_preview tool. No screenshot or fake Preview is shown.</span></div>}</section>}
           {rightTab === "MODEL" && <section className="kw-inspector-stack"><h3>Model runtime</h3><dl className="kw-tech-dl"><div><dt>Provider</dt><dd>{provider?.name || session.providerId}</dd></div><div><dt>Model</dt><dd>{session.modelId}</dd></div><div><dt>Status</dt><dd>{session.status}</dd></div><div><dt>TTFT</dt><dd>{session.telemetry.ttftMs === null ? "UNKNOWN" : `${session.telemetry.ttftMs}ms`}</dd></div><div><dt>Latency</dt><dd>{session.telemetry.latencyMs === null ? "UNKNOWN" : `${session.telemetry.latencyMs}ms`}</dd></div><div><dt>Tokens</dt><dd>{session.telemetry.totalTokens ?? "UNKNOWN"}</dd></div><div><dt>Tools</dt><dd>{session.telemetry.toolCalls}</dd></div><div><dt>Files</dt><dd>{session.telemetry.filesChanged}</dd></div></dl><h4>Switch model</h4><label className="kw-field">Provider<select value={switchProvider} onChange={(event) => { setSwitchProvider(event.target.value); setSwitchDisclosure(false); }}>{providers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="kw-field">Model<select value={switchModel} onChange={(event) => setSwitchModel(event.target.value)}>{switchModels.length ? switchModels.map((model) => <option key={model.id} value={model.id}>{model.displayName}</option>) : <option value={switchModel}>{switchModel || "No discovered model"}</option>}</select></label><label className="kw-inline-check"><input type="checkbox" checked={switchDisclosure} onChange={(event) => setSwitchDisclosure(event.target.checked)} /> Confirm new cloud destination if required</label><button disabled={busy || !switchModel} onClick={() => void switchActiveModel()}>Switch model</button></section>}
-          {rightTab === "CONTEXT" && <section className="kw-inspector-stack"><h3>Context disclosure</h3><pre>{JSON.stringify(context, null, 2)}</pre></section>}
+          {rightTab === "CONTEXT" && <section className="kw-inspector-stack"><h3>Context disclosure</h3>
+            {disclosurePath && <div className="kw-context-disclosure" role="region" aria-label={`Disclosed context bytes for ${disclosurePath}`}>
+              <div className="kw-pane-heading"><strong data-disclosure-path={disclosurePath}>{disclosurePath}</strong>
+                {disclosureState === "READY" && <StatusBadge value={disclosure.redactionApplied ? "REDACTED_BEFORE_SEND" : "SENT_AS_IS"} />}
+                <button type="button" onClick={closeContextFile} aria-label="Close context file disclosure">Close</button>
+              </div>
+              {disclosureState === "LOADING" && <p className="kw-message" role="status">Reading the bounded context bytes this session would send…</p>}
+              {disclosureState === "ERROR" && <p className="kw-message" role="alert">Disclosure failed: {disclosureError}</p>}
+              {disclosureState === "READY" && disclosure && <>
+                <dl className="kw-tech-dl">
+                  <div><dt>Inclusion reason</dt><dd>{disclosure.reason}</dd></div>
+                  <div><dt>Destination</dt><dd>{context?.destination || "UNKNOWN"}</dd></div>
+                  <div><dt>Bytes for this file</dt><dd>{disclosure.characters.toLocaleString()} chars</dd></div>
+                  <div><dt>Provider / model</dt><dd>{context?.provider || "UNKNOWN"} / {context?.model || "UNKNOWN"}</dd></div>
+                  <div><dt>Redaction applied</dt><dd>{disclosure.redactionApplied ? `YES${disclosure.redactionReasons.length ? ` (${disclosure.redactionReasons.join(", ")})` : ""}` : "NO"}</dd></div>
+                  <div><dt>Source truncated</dt><dd>{disclosure.sourceTruncated ? "YES — bounded read limit reached" : "NO"}</dd></div>
+                  <div><dt>Read at</dt><dd>{new Date(disclosure.fetchedAt).toLocaleString()}</dd></div>
+                </dl>
+                {disclosure.redactionApplied && <p className="kw-message">Markers below replace real values in the bytes that are sent. KForge never places a credential in this view.</p>}
+                {disclosure.sourceTruncated && <p className="kw-message">The provider receives only the bounded prefix shown here; the remainder of the file is not sent.</p>}
+                <pre tabIndex={0} aria-label={`Exact sent bytes for ${disclosurePath}`}>{disclosure.content}</pre>
+              </>}
+            </div>}
+            {disclosureState === "IDLE" && <p className="kw-message">Select a context file to read the exact bounded bytes this session sends to {context?.destination || "the configured destination"}.</p>}
+            <pre aria-label="Context metadata">{JSON.stringify(context, null, 2)}</pre></section>}
           {rightTab === "DIAGNOSTICS" && <section className="kw-inspector-stack"><h3>Diagnostics</h3>{context?.diagnostics?.length ? <pre>{JSON.stringify(context.diagnostics, null, 2)}</pre> : <p>No bounded diagnostics are currently available.</p>}</section>}
           {rightTab === "SESSION" && <section className="kw-inspector-stack"><h3>Session truth</h3><pre>{JSON.stringify(session, null, 2)}</pre></section>}
         </aside>

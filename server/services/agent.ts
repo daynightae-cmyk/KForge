@@ -9,11 +9,18 @@ import { redactProjectText } from "./redaction";
 const execFileAsync = promisify(execFile);
 const textExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".md", ".yml", ".yaml"]);
 
+/** Marker appended to bounded context bytes so a reader can tell a cut happened. */
+export const CONTEXT_TRUNCATION_MARKER = "/* KForge context truncated */";
+
 export interface AgentContextFile {
   path: string;
   reason: "active-problem" | "import" | "related-test" | "configuration";
   content: string;
   redacted: boolean;
+  /** Redaction categories applied to the sent bytes. Categories only; never values. */
+  reasons: string[];
+  /** True when the file exceeded the bounded read limit and the sent bytes were cut. */
+  sourceTruncated: boolean;
 }
 
 export interface AgentContext {
@@ -147,9 +154,18 @@ export async function readContextFile(projectPath: string, relative: string, rea
   if (!textExtensions.has(path.extname(safe.relative).toLowerCase()) && path.basename(safe.relative) !== "package.json") return null;
   const raw = await fs.readFile(safe.resolved, "utf8").catch(() => "");
   if (!raw) return null;
-  const normalized = raw.length > limit ? `${raw.slice(0, limit)}\n/* KForge context truncated */` : raw;
-  const redacted = redactProjectText(safe.relative, normalized);
-  return { path: safe.relative, reason, ...redacted } as AgentContextFile;
+  const sourceTruncated = raw.length > limit;
+  const normalized = sourceTruncated ? `${raw.slice(0, limit)}\n${CONTEXT_TRUNCATION_MARKER}` : raw;
+  const redaction = redactProjectText(safe.relative, normalized);
+  const file: AgentContextFile = {
+    path: safe.relative,
+    reason,
+    content: redaction.content,
+    redacted: redaction.redacted,
+    reasons: redaction.reasons,
+    sourceTruncated,
+  };
+  return file;
 }
 
 function importCandidates(activePath: string, content: string) {
