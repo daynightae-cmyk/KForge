@@ -149,3 +149,23 @@ Recovered research retains original whitespace anomalies to preserve original by
 Local preservation/integration implemented. Final remote main, CI and worktree status: `RESULTS.md`, then refresh live before further edits. Zero dirt/storage cleanup: BLOCKED by policy. Installed final-main package, live providers/OAuth, trusted update and production runtime: NOT VERIFIED / BLOCKED as above. No full-production claim.
 
 Next execution contract: `docs/handoffs/QODER-PRODUCTION-CLOSURE-20261102.md`. Fix evidenced gaps and final-main provenance while preserving current product, unique history and owner evidence.
+### P2: Dependency audit refreshed (post-pagination slice)
+
+Full `npm audit` on the current tree reports 14 moderate and zero high/critical
+advisories, all in development/packaging dependencies; production-only audit
+reports zero. The suggested fixes are major downgrades of `electron-builder`
+(26.18.0 to 20.23.1) and `@tailwindcss/typography` (0.5.20 to 0.5.4), plus
+a normal `sucrase` update. No automatic dependency graph change was applied.
+The packaging path remains on electron-builder 26.18.0 with the Windows NSIS
+installer built and verified below.
+
+### Final-main packaging observation (post-pagination slice)
+
+`npm run package:windows` completed successfully on the current tree without
+signing material. Installer:
+`release/KNOuX-Forge-Setup-v0.1.0-Windows-x64.exe`,
+SHA-256 `37a32a2496cf1569754731b29e27d5d9e72bf64752f4c6fbdac1ac562f7d9d94`,
+observed signature UNAVAILABLE, release mode DEVELOPMENT.
+`npm run verify:installer` passed. `npm run verify:desktop` also passed.
+No trusted-release claim is made; signing remains unavailable.
+
