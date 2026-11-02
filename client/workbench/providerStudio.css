@@ -136,6 +136,17 @@
 .kw-context-files button { display: grid; gap: 2px; text-align: left; padding: 6px; min-width: 0; }
 .kw-context-files button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .kw-context-files button small { color: var(--kw-muted); font-size: 9px; }
+.kw-context-files button { cursor: pointer; }
+.kw-context-files button[aria-pressed="true"] { border-color: var(--kw-primary); background: var(--kw-panel-2); }
+.kw-context-files button[disabled] { opacity: .62; cursor: progress; }
+.kw-context-files-hint,
+.kw-context-files-empty { color: var(--kw-muted); font-size: 9px; line-height: 1.45; margin: 0; }
+.kw-context-files-empty { font-size: 10px; }
+.kw-context-disclosure { display: grid; gap: 6px; border: 1px solid var(--kw-border); border-radius: 5px; padding: 7px; min-width: 0; background: var(--kw-panel-2); }
+.kw-context-disclosure .kw-pane-heading { margin-bottom: 2px; }
+.kw-context-disclosure .kw-pane-heading strong { letter-spacing: .02em; overflow-wrap: anywhere; min-width: 0; }
+.kw-context-disclosure pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--kw-border); border-radius: 4px; padding: 6px; background: var(--kw-panel); min-width: 0; }
+.kw-context-disclosure .kw-message { font-size: 9px; line-height: 1.45; color: var(--kw-muted); margin: 0; }
 .kw-checkpoint-card { display: grid; gap: 4px; border: 1px solid var(--kw-border); border-radius: 5px; padding: 7px; margin-top: 8px; background: var(--kw-panel-2); }
 .kw-checkpoint-card code { overflow-wrap: anywhere; font-size: 9px; }
 .kw-checkpoint-card small { color: var(--kw-muted); font-size: 9px; }

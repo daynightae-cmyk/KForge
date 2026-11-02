@@ -223,7 +223,21 @@ export interface ProviderContextInspection {
   model: string;
   provider: string;
   destination: string;
-  filesIncluded: Array<{ path: string; reason: string; characters: number }>;
+  /**
+   * Metadata only. The bulk response never carries `content`; exact sent bytes
+   * are available per file through the bounded disclosure endpoint.
+   */
+  filesIncluded: Array<{
+    path: string;
+    reason: string;
+    characters: number;
+    /** True when the bytes sent differ from disk bytes because redaction applied. */
+    redacted?: boolean;
+    /** Redaction categories only; never the underlying values. */
+    redactionReasons?: string[];
+    /** True when the bytes sent were cut at the bounded context-read limit. */
+    sourceTruncated?: boolean;
+  }>;
   filesExcluded?: Array<{ path: string; reason: string }>;
   totalCharacters: number;
   estimatedTokens: number;
@@ -232,6 +246,29 @@ export interface ProviderContextInspection {
   technology: string[];
   disclosureConfirmed: boolean;
   sourceCodeIncluded: boolean;
+}
+
+/**
+ * One context file exactly as it is placed into the provider prompt.
+ *
+ * The bulk `/context` response deliberately omits `content` so that no routine
+ * poll carries source bytes to the renderer. This record is returned only for a
+ * path that is already a member of the session's computed included set, so it
+ * never accepts an arbitrary filesystem target and cannot become a read oracle.
+ */
+export interface ProviderContextFileDisclosure {
+  path: string;
+  reason: string;
+  /** Character count of the bytes actually sent, not the on-disk file size. */
+  characters: number;
+  content: string;
+  /** True when the sent bytes contain redaction markers in place of on-disk values. */
+  redactionApplied: boolean;
+  /** Redaction categories that were applied, e.g. ["private-key"]. Categories only, never values. */
+  redactionReasons: string[];
+  /** True when the sent bytes were cut at the bounded context-read limit. */
+  sourceTruncated: boolean;
+  fetchedAt: string;
 }
 
 export const UNKNOWN_CAPABILITIES: CanonicalModelCapabilities = {

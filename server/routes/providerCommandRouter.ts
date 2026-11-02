@@ -20,6 +20,8 @@ import {
   upsertCustomProvider,
 } from "../services/providerCommandCenter";
 import { createCredentialVault, migrateLegacyPlaintextSecrets } from "../services/credentialVault";
+import { redactProjectText } from "../services/redaction";
+import type { ProviderContextFileDisclosure } from "../../shared/providerCommandCenter";
 import {
   approveSessionAction,
   cancelSessionRun,
@@ -94,7 +96,7 @@ function projectToolHandlers(project: Awaited<ReturnType<typeof makeProjectSumma
 
 async function safeSelectedContext(projectPath: string, selectedFiles: string[]) {
   const realRoot = await fs.realpath(projectPath);
-  const files: Array<{ path: string; reason: string; characters: number; content: string }> = [];
+  const files: Array<{ path: string; reason: string; characters: number; content: string; redacted: boolean; redactionReasons: string[]; sourceTruncated: boolean }> = [];
   for (const requested of selectedFiles.slice(0, 40)) {
     if (!requested || path.isAbsolute(requested) || requested.includes("\0") || requested.split(/[\\/]/).includes("..")) continue;
     const lexical = path.resolve(projectPath, requested);
@@ -106,10 +108,21 @@ async function safeSelectedContext(projectPath: string, selectedFiles: string[])
     if (!stat?.isFile() || stat.size > 200_000) continue;
     const raw = await fs.readFile(real, "utf8").catch(() => "");
     if (!raw) continue;
-    const content = raw.slice(0, 24_000)
-      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-      .replace(/((?:api[_-]?key|token|secret|password)\s*[:=]\s*["']?)[^"'\s,;}]+/gi, "$1[REDACTED]");
-    files.push({ path: relative.split(path.sep).join("/"), reason: "operator-selected", characters: content.length, content });
+    // One redaction implementation for every context path. Operator-selected
+    // files previously used a two-pattern local copy that let private-key
+    // blocks, credentialed URLs, provider tokens and cookie headers reach the
+    // provider unmodified, while agent-derived files were fully redacted.
+    const bounded = raw.slice(0, 24_000);
+    const redaction = redactProjectText(relative, bounded);
+    files.push({
+      path: relative.split(path.sep).join("/"),
+      reason: "operator-selected",
+      characters: redaction.content.length,
+      content: redaction.content,
+      redacted: redaction.redacted,
+      redactionReasons: redaction.reasons,
+      sourceTruncated: raw.length > 24_000,
+    });
   }
   return files;
 }
@@ -127,7 +140,17 @@ async function buildSessionContext(sessionId: string, selectedFiles: string[] = 
   const selectedSet = new Set(selected.map((file) => file.path));
   const files = [
     ...selected,
-    ...bounded.files.filter((file) => !selectedSet.has(file.path)).map((file) => ({ path: file.path, reason: file.reason, characters: file.content.length, content: file.content })),
+    ...bounded.files
+      .filter((file) => !selectedSet.has(file.path))
+      .map((file) => ({
+        path: file.path,
+        reason: file.reason,
+        characters: file.content.length,
+        content: file.content,
+        redacted: file.redacted,
+        redactionReasons: file.reasons,
+        sourceTruncated: file.sourceTruncated,
+      })),
   ].slice(0, 40);
   const totalCharacters = files.reduce((total, file) => total + file.content.length, 0);
   return {
@@ -318,6 +341,42 @@ router.get("/ai/command-center/sessions/:sessionId/context", async (req, res) =>
     return res.json({ context: { ...context, filesIncluded: context.filesIncluded.map(({ content: _content, ...file }) => file) } });
   } catch (error: unknown) {
     return res.status(400).json({ error: error instanceof Error ? error.message : "Context inspection failed." });
+  }
+});
+
+/**
+ * Disclose one context file exactly as it enters the provider prompt.
+ *
+ * The requested path is only ever compared for membership against the session's
+ * already-computed included set; it is never resolved against the filesystem
+ * here, so this route cannot read a file that the context builder itself would
+ * not already have sent. Redaction and read bounds applied during context build
+ * are preserved, and the disclosure reports whether they altered the bytes.
+ */
+router.get("/ai/command-center/sessions/:sessionId/context/file", async (req, res) => {
+  const requested = typeof req.query.path === "string" ? req.query.path.trim() : "";
+  if (!requested) return res.status(400).json({ error: "A context file path is required." });
+  try {
+    const selectedFiles = typeof req.query.files === "string" ? req.query.files.split(",").map((value) => value.trim()).filter(Boolean) : [];
+    const context = await buildSessionContext(req.params.sessionId, selectedFiles);
+    const included = context.filesIncluded.find((file) => file.path === requested);
+    if (!included || included.content === undefined) {
+      return res.status(404).json({ error: "DISCLOSE_NOT_IN_CONTEXT: that path is not part of this session's disclosed context set." });
+    }
+    const content = included.content;
+    const disclosure: ProviderContextFileDisclosure = {
+      path: included.path,
+      reason: included.reason,
+      characters: content.length,
+      content,
+      redactionApplied: included.redacted === true,
+      redactionReasons: included.redactionReasons || [],
+      sourceTruncated: included.sourceTruncated === true,
+      fetchedAt: new Date().toISOString(),
+    };
+    return res.json({ disclosure, destination: context.destination, provider: context.provider, model: context.model });
+  } catch (error: unknown) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Context file disclosure failed." });
   }
 });
 

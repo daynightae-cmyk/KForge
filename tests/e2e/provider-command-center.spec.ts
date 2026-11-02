@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openWorkbench, selectExplorerView } from "./helpers/workbench";
+import { openWorkbench, selectExplorerView, setProjectContext } from "./helpers/workbench";
 
 test.describe("Provider + Model Command Center acceptance", () => {
   test.beforeEach(async ({ page }) => {
@@ -46,5 +46,65 @@ test.describe("Provider + Model Command Center acceptance", () => {
     await expect(surface).toContainText("Discover all models");
     const body = (await page.locator("body").innerText());
     expect(body).not.toContain(fakeKey);
+  });
+
+  test("session context files disclose the exact bounded bytes the session sends", async ({ page, request }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+
+    const opened = await request.post("/api/workspace/projects/open", { data: { path: process.cwd() } });
+    expect(opened.ok(), "fixture project opened in the isolated e2e workspace").toBeTruthy();
+    const { project } = await opened.json() as { project: { id: string } };
+
+    const session = await request.post("/api/workspace/ai/command-center/sessions", {
+      data: {
+        projectId: project.id, providerId: "ollama", modelId: "local-model", mode: "PLAN",
+        task: "Disclose bounded context", contextScope: "Repository", disclosureConfirmed: true,
+      },
+    });
+    expect(session.ok(), "local session created").toBeTruthy();
+
+    await openWorkbench(page);
+    await setProjectContext(page, project.id);
+    await selectExplorerView(page, "AI", "Providers");
+    await page.getByRole("button", { name: "SESSIONS", exact: true }).click();
+    await page.locator(".kw-session-list button").filter({ hasText: "Disclose bounded context" }).first().click();
+
+    const chip = page.locator('.kw-context-files button[data-context-file="package.json"]');
+    await expect(chip, "context file is rendered as an actionable control").toBeVisible({ timeout: 30_000 });
+
+    // The advertised promise is "exact file context can be inspected inside the
+    // session". A click has to produce that evidence, not a no-op.
+    await chip.click();
+    const region = page.getByRole("region", { name: /package\.json/ });
+    await expect(region).toBeVisible();
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    const bytes = region.getByLabel("Exact sent bytes for package.json");
+    await expect(bytes).toContainText("knoux-forge");
+    await expect(region).toContainText("Bytes for this file");
+    await expect(region).toContainText("Inclusion reason");
+
+    // Closing returns the inspector to the honest empty prompt.
+    await region.getByRole("button", { name: "Close context file disclosure" }).click();
+    await expect(region).toHaveCount(0);
+    await expect(chip).toHaveAttribute("aria-pressed", "false");
+
+    // Every inspector tab must stay reachable: the disclosure lives behind CONTEXT,
+    // so a clipped or unreachable tab row would silently remove the feature.
+    const tabs = page.locator(".kw-mini-tabs");
+    for (const label of ["PREVIEW", "MODEL", "CONTEXT", "DIAGNOSTICS", "SESSION"]) {
+      await expect(tabs.getByRole("button", { name: label, exact: true }), `${label} tab is visible`).toBeVisible();
+    }
+    await tabs.getByRole("button", { name: "PREVIEW", exact: true }).click();
+    await expect(tabs.getByRole("button", { name: "PREVIEW", exact: true })).toHaveClass(/is-active/);
+    await expect(page.getByText("Preview not started")).toBeVisible();
+    await tabs.getByRole("button", { name: "CONTEXT", exact: true }).click();
+    await expect(tabs.getByRole("button", { name: "CONTEXT", exact: true })).toHaveClass(/is-active/);
+    // Returning to CONTEXT restores the metadata view without a stale panel.
+    await expect(page.getByText("Context disclosure")).toBeVisible();
+
+    // The routine metadata poll must not have carried the body to the renderer
+    // ahead of the explicit disclosure action.
+    expect(errors, "no unhandled renderer errors during disclosure").toEqual([]);
   });
 });
