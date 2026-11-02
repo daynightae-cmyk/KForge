@@ -259,6 +259,39 @@ rows inside a 64px grid track with non-zero rects, and the E2E tab-reachability
 assertions pass. There is no clipping defect; the visual impression was a
 misreading of a scaled screenshot. No change was made for it.
 
+### Exact-head CI on PR #73 and the defect it exposed
+
+First gate run at head `fb9d1bc`: workflow-pins, asset-budget, npm-ci, npm-audit,
+typecheck, lint, unit tests (548 passed), build and playwright-browser all PASS.
+`e2e` FAILED on `production-chromium` only — 85 passed, 1 failed, 1 skipped — and
+the single failure was the new disclosure test asserting the settled body inside
+CI's 5 s default expect window. It passed locally because
+`playwright.config.ts` grants Windows a 15 s expect timeout. The assertion was
+wrong about timing, not about behavior; it now waits for settle explicitly.
+
+Measuring why it was slow exposed a **separate and more serious defect**:
+`buildSessionContext` calls `scanProject`, which is not cached and which
+**executes the project's own typecheck and lint commands** (`tsc --noEmit`, then
+`lintIssues` when the project is trusted) plus secret-literal, completeness and
+advanced-completion scans. `GET .../context` runs on every session mount and
+refresh, and the new disclosure route runs it again per click.
+
+Measured on this host against the KForge repository itself:
+
+- `GET .../context` — 2827 ms
+- `GET .../context/file` — 7664 ms
+
+Merely viewing what a session would send therefore triggers project command
+execution, which contradicts the product's own stated contract for other
+surfaces ("Opening this surface does not run a benchmark or build the project
+graph"). A 7.7 s response to a click is also not an acceptable interaction cost.
+
+This was deliberately **not** folded into the disclosure PR: the correct fix
+touches the shared context/scan boundary and needs its own evidence, including
+proof that disclosed bytes stay identical when the scan is skipped. It is
+recorded as the next P1 slice. The disclosure PR keeps the honest LOADING state
+rather than hiding the latency.
+
 ### Still open after this slice
 
 GitHub Connect deployment/OAuth/webhook synchronization, trusted signing,

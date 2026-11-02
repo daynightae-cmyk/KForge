@@ -79,7 +79,11 @@ test.describe("Provider + Model Command Center acceptance", () => {
     const region = page.getByRole("region", { name: /package\.json/ });
     await expect(region).toBeVisible();
     await expect(chip).toHaveAttribute("aria-pressed", "true");
+    // The disclosure re-derives the bounded context on demand. On a repository
+    // this size that exceeds CI's 5s default expect window, so wait for the
+    // settled body with an explicit budget instead of assuming it is instant.
     const bytes = region.getByLabel("Exact sent bytes for package.json");
+    await expect(bytes, "disclosure settles with the sent body").toBeVisible({ timeout: 60_000 });
     await expect(bytes).toContainText("knoux-forge");
     await expect(region).toContainText("Bytes for this file");
     await expect(region).toContainText("Inclusion reason");
