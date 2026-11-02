@@ -158,6 +158,37 @@ describe("Marketplace first-party lifecycle correctness", () => {
     expect(item).toMatchObject({ installed: true, trust: "TRUSTED", installationState: { state: "VERIFIED", value: "INSTALLED" }, integrity: { state: "VERIFIED" } });
   }, 15_000);
 
+  it("resolves first-party fixture manifests through KFORGE_APP_ROOT in installed-runtime contexts", async () => {
+    // Regression: firstParty fixtures must resolve through the canonical app
+    // root (KFORGE_APP_ROOT, set by production server/desktop) rather than only
+    // process.cwd(), otherwise installed-runtime installs fail with ENOENT and
+    // the lifecycle API answers 409.
+    const appRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-app-root-"));
+    const appFixtures = path.join(appRoot, "fixtures", "marketplace-first-party");
+    await fs.mkdir(appFixtures, { recursive: true });
+    const sourceFirstParty = path.resolve(process.cwd(), "fixtures", "marketplace-first-party");
+    await fs.copyFile(path.join(sourceFirstParty, "index.js"), path.join(appFixtures, "index.js"));
+    await fs.copyFile(path.join(sourceFirstParty, "manifest.json"), path.join(appFixtures, "manifest.json"));
+
+    const previousAppRoot = process.env.KFORGE_APP_ROOT;
+    const previousCwd = process.cwd();
+    const previousWorkspaceRoot = process.env.KFORGE_WORKSPACE_ROOT;
+    process.env.KFORGE_APP_ROOT = appRoot;
+    process.env.KFORGE_WORKSPACE_ROOT = workspaceRoot;
+    process.chdir(workspaceRoot);
+    try {
+      const result = await installPackage(workspaceRoot, FIRST_PARTY_ID);
+      expect(result).toMatchObject({ stage: "INSTALLED", installed: true, integrityVerified: true, sizeVerified: true });
+    } finally {
+      process.chdir(previousCwd);
+      if (previousAppRoot === undefined) delete process.env.KFORGE_APP_ROOT;
+      else process.env.KFORGE_APP_ROOT = previousAppRoot;
+      if (previousWorkspaceRoot === undefined) delete process.env.KFORGE_WORKSPACE_ROOT;
+      else process.env.KFORGE_WORKSPACE_ROOT = previousWorkspaceRoot;
+      await fs.rm(appRoot, { recursive: true, force: true });
+    }
+  }, 20_000);
+
   it("executes only a verified installed first-party package", async () => {
     await installPackage(workspaceRoot, FIRST_PARTY_ID);
     const execution = await runInstalledPackage(workspaceRoot, FIRST_PARTY_ID);
