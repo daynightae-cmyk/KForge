@@ -238,4 +238,52 @@ describe("Provider session context disclosure", () => {
     const session = await api<{ session: { id: string } }>(`/ai/command-center/sessions/${sessionId}`);
     expect(session.status, "session remains readable after disclosure").toBe(200);
   });
+
+  /**
+   * The disclosure route deliberately builds the included set without scanning the
+   * project, while the context route builds it through the full agent context.
+   * Both must resolve to the same membership and the same bytes, or the operator
+   * could be shown content that would not actually be sent.
+   */
+  it("keeps the scan-free disclosure set identical to the full context set", async () => {
+    await fs.writeFile(path.join(projectRoot, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: false } }, null, 2), "utf8");
+    await fs.writeFile(path.join(projectRoot, "README.md"), "# disclosure fixture\n", "utf8");
+    const { sessionId } = await openSession();
+    const selected = "src/index.ts";
+
+    const context = await api<{ context: ProviderContextInspection }>(contextUrl(sessionId, selected));
+    expect(context.status).toBe(200);
+    const contextPaths = context.body.context.filesIncluded.map((file) => file.path);
+    expect(contextPaths.length, "full context set is non-empty").toBeGreaterThan(0);
+
+    for (const entry of context.body.context.filesIncluded) {
+      const disclosure = await api<{ disclosure: ProviderContextFileDisclosure }>(contextUrl(sessionId, selected, entry.path));
+      expect(disclosure.status, `${entry.path} disclosed from the identical set`).toBe(200);
+      expect(disclosure.body.disclosure.characters, `${entry.path} byte count matches`).toBe(entry.characters);
+      expect(disclosure.body.disclosure.redactionApplied).toBe(entry.redacted === true);
+      expect(disclosure.body.disclosure.sourceTruncated).toBe(entry.sourceTruncated === true);
+    }
+
+    // A path outside the set must be refused by the disclosure route too.
+    const refused = await api<{ error: string }>(contextUrl(sessionId, selected, "src/never-included.ts"));
+    expect(refused.status).toBe(404);
+  });
+
+  /**
+   * Guard against the disclosure route silently growing a dependency on the
+   * project scan again. `selectContextFiles` takes a path, not a scan, so the
+   * membership computation cannot reach `scanProject`; this asserts the response
+   * stays free of scan-derived evidence, which is what made a disclosure click
+   * execute the project's own typecheck and lint before.
+   */
+  it("keeps scan-derived evidence out of the disclosure response", async () => {
+    const { sessionId } = await openSession();
+    const response = await fetch(`${baseUrl}/api/workspace${contextUrl(sessionId, "src/index.ts", "src/index.ts")}`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["destination", "disclosure", "model", "provider"]);
+    for (const scanField of ["diagnostics", "technology", "git", "estimatedTokens", "totalCharacters"]) {
+      expect(body, `disclosure must not carry scan-derived field ${scanField}`).not.toHaveProperty(scanField);
+    }
+  });
 });
