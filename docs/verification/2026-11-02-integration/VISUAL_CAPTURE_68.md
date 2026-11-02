@@ -39,3 +39,25 @@ The screenshot directory is retained locally under gitignored `verification/`. I
 2. Add supported 1366x768 and 1920x1080 captures/overflow and accessibility checks as separate bounded opt-in runs when useful.
 3. Preserve the new test code under normal Git/CI workflow; record actual new commit and exact-SHA CI before claiming integrated verification.
 4. Keep GitHub Connect deployment/OAuth, signing, and any blocked removal gated on owner authorization.
+
+## Refresh capture at verified main SHA `975d67c` (2026-11-02)
+
+Re-ran the identical opt-in command against the current canonical `main`
+(`975d67c645edf8174d9a77917f9c62b5ac365bf8`, the commit that added this spec),
+so the ledger is now source-accurate for main rather than pre-push:
+
+- Command: `KFORGE_CAPTURE_ALL_VIEWS=1 npx playwright test tests/e2e/all-views-visual-ledger.spec.ts --workers=1`
+- Result: EXIT 0; 1/1 test passed in 3.2m.
+- Local-only output: `verification/all-views-visual-evidence/1793582683493/`.
+- `ledger.json`: 68 registered views; 136 records; 136/136 `CAPTURED`
+  (0 `UNSETTLED`, 0 `ERROR`); 0 records with pending settle markers;
+  0 records with page errors; all 136 PNG files present on disk; every
+  record reports 1672x941 (spot-checked from raw PNG IHDR bytes, not the
+  recorded metadata alone).
+- Provenance line in the ledger itself: "KForge isolated Playwright
+  browser - NOT packaged desktop or approved visual parity"; overall
+  status remains `CAPTURED_NOT_VISUALLY_APPROVED`.
+- The earlier run in `1793580388344/` stays retained locally as history of
+  the pre-push state; it does not certify current main.
+- Owner-side review boundaries above are unchanged: this is not design
+  approval, not action-handler proof, not packaged-desktop verification.
