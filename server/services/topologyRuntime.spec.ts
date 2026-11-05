@@ -216,4 +216,44 @@ describe("canonical runtime topology", () => {
     expect(session.services[0].port.evidence).toMatch(/PID \d+/);
   }, 30_000);
 
+  // CodeQL alert 32 treats the Windows cmd.exe wrapper in resolveWindowsCommand
+  // as a shell sink reached from process.env.ComSpec. The boundary that makes it
+  // non-injectable is upstream: no token with a shell metacharacter is ever
+  // admitted as a service command, so nothing hostile can reach the wrapper.
+  // This proves that refusal directly instead of asserting it in a comment.
+  it("refuses a command token that carries a shell metacharacter before any service can start", async () => {
+    const hostile = [
+      ["api", ["node", "server.cjs", ";", "rm", "-rf", "/"]],
+      ["interp", ["node", "-e", "console.log($(curl -s http://169.254.169.254))"]],
+      ["backtick", ["node", "-e", "console.log(`id`)"]],
+      ["andthen", ["node", "a.cjs", "&&", "node", "b.cjs"]],
+      ["pipethen", ["node", "a.cjs", "|", "node", "b.cjs"]],
+      ["redirect", ["node", "a.cjs", ">", "out.txt"]],
+      ["percent", ["node", "a.cjs", "%USERPROFILE%"]],
+      ["exclaim", ["node", "a.cjs", "!VAR!"]],
+      ["caret", ["node", "a.cjs", "^&"]],
+      ["newline", ["node", "a.cjs\nnet user"]],
+      ["cmdwrapper", ["deploy.cmd", "&", "del", "important.txt"]],
+      ["batwrapper", ["build.bat", "|", "more"]],
+    ];
+    const root = await fixture(hostile.map(([item], index) => ({ id: `svc-${item}`, kind: "runtime", command: hostile[index][1], health: { type: "PROCESS" } })));
+    const projectId = id();
+    const discovery = await discoverRuntimeTopology(projectId, root);
+
+    // Every hostile entry is refused at discovery, so no session can be started.
+    expect(discovery.services).toEqual([]);
+    expect(discovery.state).toBe("UNAVAILABLE");
+    await expect(startTopology(projectId, root)).resolves.toMatchObject({ state: "UNAVAILABLE", services: [] });
+
+    // The refusal must not be a blanket reject-everything rule: a safe argv
+    // command and a safe quoted argument still register.
+    const safeRoot = await fixture([
+      { id: "api", kind: "api", command: command("server.cjs"), health: { type: "HTTP" } },
+      { id: "worker", kind: "worker", command: [process.execPath, "task.cjs", "--label", "safe-value"], health: { type: "PROCESS" } },
+    ]);
+    const safeDiscovery = await discoverRuntimeTopology(id(), safeRoot);
+    expect(safeDiscovery.services.map((service) => service.id).sort()).toEqual(["api", "worker"]);
+    expect(safeDiscovery.services.find((service) => service.id === "worker")?.command.args).toEqual(["task.cjs", "--label", "safe-value"]);
+  });
+
 });
