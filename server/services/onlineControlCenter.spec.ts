@@ -14,7 +14,7 @@ function platform(mode: LocalPlatformStatus["mode"]): LocalPlatformStatus {
 
 function project(remoteUrl?: string): ProjectSummary {
   return {
-    id: "project", name: "Project", trust: "trusted", path: "D:/Project", provider: remoteUrl?.includes("github.com") ? "GitHub" : remoteUrl ? "Git" : "Local", remoteUrl,
+    id: "project", name: "Project", trust: "trusted", path: "D:/Project", provider: isGitHubRemoteUrl(remoteUrl) ? "GitHub" : remoteUrl ? "Git" : "Local", remoteUrl,
     branch: "main", lastActivity: new Date().toISOString(), projectType: "TypeScript", modifiedFiles: 0, untrackedFiles: 0, ahead: 0, behind: 0,
     healthScore: null, securityStatus: "unknown", buildStatus: "unknown", testStatus: "unknown", syncStatus: "unknown", tags: [], favorite: false, pinned: false, archived: false,
     categories: { recent: true, favorite: false, pinned: false, archive: false },
