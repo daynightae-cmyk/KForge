@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import type { ProjectProfile } from "../../shared/workspace";
-import { evaluatePreviewEmbedding, getPreviewStatus, inspectPreviewCapability, inspectPreviewDocument, readBoundedPreviewBody, recordPreviewBrowserConsole, restartPreview, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "./previewRuntime";
+import { evaluatePreviewEmbedding, checkPreviewHealth, getPreviewStatus, inspectPreviewCapability, inspectPreviewDocument, readBoundedPreviewBody, recordPreviewBrowserConsole, restartPreview, startPreview, stopPreviewAndWait, waitForPreviewHealth } from "./previewRuntime";
 
 const profileWithoutPreview = { packageManager: "npm", scripts: {} } as ProjectProfile;
 
@@ -141,4 +141,77 @@ describe("local Preview runtime", () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   }, 30_000);
+
+  // CodeQL flags the Preview health fetch as request-forgery because the URL is
+  // assembled in-process. These cases pin the boundary that makes that safe: the
+  // probe may only ever touch loopback, and an application-supplied redirect can
+  // not carry it off-box. No production seam was added to make them testable.
+  it("refuses a Preview health redirect that leaves the loopback origin", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-preview-redirect-"));
+    const projectId = `preview-redirect-${Date.now()}-${Math.random()}`;
+    const profile = { packageManager: "npm", scripts: { dev: "node redirect.cjs" } } as unknown as ProjectProfile;
+    const attempted: string[] = [];
+    const realFetch = globalThis.fetch;
+    (globalThis as { fetch: typeof fetch }).fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      attempted.push(String(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url));
+      return realFetch(input as RequestInfo, init);
+    };
+    try {
+      await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ private: true, scripts: { dev: "node redirect.cjs" } }), "utf8");
+      await fs.writeFile(path.join(root, "redirect.cjs"), "require('node:http').createServer((_req,res)=>{res.writeHead(302,{location:'http://169.254.169.254/latest/meta-data/'});res.end()}).listen(Number(process.env.PORT),'127.0.0.1'); setInterval(()=>{},1000);", "utf8");
+      await startPreview(projectId, root, profile);
+      // The fixture process needs to bind before a redirect can be refused, and
+      // this Preview can never report healthy, so poll for the refusal itself.
+      let status = await checkPreviewHealth(projectId);
+      const deadline = Date.now() + 20_000;
+      while (Date.now() < deadline && !(status.health?.detail || "").includes("blocked cross-origin redirect")) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        status = await checkPreviewHealth(projectId);
+      }
+
+      expect(status.health?.ok).toBe(false);
+      expect(status.health?.detail).toContain("blocked cross-origin redirect");
+      expect(status.health?.detail).toContain("169.254.169.254");
+      expect(status.embedding).toMatchObject({ state: "BLOCKED" });
+      // The guard has to fire before any socket leaves the machine: not one
+      // recorded request may target a non-loopback authority.
+      expect(attempted.length).toBeGreaterThan(0);
+      expect(attempted.filter((url) => !/^http:\/\/(127\.0\.0\.1|localhost|\[::1\]:|::1)(:|\/)/.test(url))).toEqual([]);
+      expect(attempted.join(" ")).not.toContain("169.254.169.254");
+    } finally {
+      (globalThis as { fetch: typeof fetch }).fetch = realFetch;
+      await stopPreviewAndWait(projectId).catch(() => undefined);
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("refuses document QA for a route that points outside the healthy session origin", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-preview-document-"));
+    const projectId = `preview-document-${Date.now()}-${Math.random()}`;
+    const profile = { packageManager: "npm", scripts: { dev: "node server.cjs" } } as unknown as ProjectProfile;
+    const attempted: string[] = [];
+    const realFetch = globalThis.fetch;
+    (globalThis as { fetch: typeof fetch }).fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      attempted.push(String(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url));
+      return realFetch(input as RequestInfo, init);
+    };
+    try {
+      await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ private: true, scripts: { dev: "node server.cjs" } }), "utf8");
+      await fs.writeFile(path.join(root, "server.cjs"), "require('node:http').createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/html'});res.end('<!doctype html><html lang=\"en\"><head><title>Fixture</title></head><body>ok</body></html>')}).listen(Number(process.env.PORT),'127.0.0.1'); setInterval(()=>{},1000);", "utf8");
+      await startPreview(projectId, root, profile);
+      const healthy = await waitForPreviewHealth(projectId, 15_000, 200);
+      expect(healthy.health?.ok).toBe(true);
+
+      const inspection = await inspectPreviewDocument(projectId, "http://169.254.169.254/latest/meta-data/");
+      expect(inspection.state).toBe("FAILED");
+      expect(inspection.source).toBe("none");
+      expect(inspection.error).toContain("outside the active loopback origin");
+      expect(inspection.findings).toEqual([]);
+      expect(attempted.join(" ")).not.toContain("169.254.169.254");
+    } finally {
+      (globalThis as { fetch: typeof fetch }).fetch = realFetch;
+      await stopPreviewAndWait(projectId).catch(() => undefined);
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
