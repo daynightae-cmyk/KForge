@@ -7,6 +7,7 @@ import { getLocalPlatformStatus, setLocalPlatformMode } from "../services/localP
 import { getProjectTrust, setProjectTrust } from "../services/projectTrust";
 import { collectionCategories, getProjectCollectionEntry, recordProjectOpened, recordProjectScanned, recordProjectTask, updateProjectCollection } from "../services/projectCollections";
 import { applyDocumentationFix, auditDocumentation, previewDocumentationFix } from "../services/documentationAudit";
+import { isGitHubRemoteUrl } from "../services/onlineControlCenter";
 import { actionEvidenceFromTasks, candidateProjectPaths, detectProjectProfile, executePreviewFixVerify, executeProjectAction, githubReadState, makeProjectSummary, nonProductionSecurityEvidence, projectHealthEvidenceSources, releaseGateSourceVerdicts, scanProject, STALE_TASK_EVIDENCE_MS, taskEvidenceDetails } from "./workspace";
 import { startPreview, stopPreviewAndWait, waitForPreviewHealth } from "../services/previewRuntime";
 import type { KForgeTask } from "../services/tasks";
@@ -41,7 +42,7 @@ describe("KForge Workspace engines", () => {
     const sources = projectHealthEvidenceSources(project, profile, "READY", false, timestamp);
     expect(Object.keys(sources)).toEqual(["LOCAL", "GITHUB", "CI", "REMOTE_REGISTRY", "PREVIEW"]);
     expect(sources.LOCAL).toMatchObject({ state: "READY", timestamp, freshness: "CURRENT_SCAN", network: "NOT_REQUIRED" });
-    expect(sources.GITHUB.state).toBe(project.remoteUrl?.includes("github.com") ? "OFFLINE" : "NOT_CONFIGURED");
+    expect(sources.GITHUB.state).toBe(isGitHubRemoteUrl(project.remoteUrl) ? "OFFLINE" : "NOT_CONFIGURED");
     expect(sources.REMOTE_REGISTRY).toMatchObject({ state: "OFFLINE", network: "NOT_REQUIRED" });
     expect(sources.PREVIEW.network).toBe("NOT_REQUIRED");
     for (const source of Object.values(sources)) {
@@ -456,4 +457,51 @@ describe("KForge Workspace engines", () => {
     await expect(fs.readFile(file, "utf8")).resolves.toBe("before");
     await fs.rm(file, { force: true });
   });
+
+  // CodeQL reports the bounded profile traversal (server/routes/workspace.ts:250) as
+  // path-injection because its root comes from a caller-selected project. This proves
+  // the actual boundary from the outside: Windows reparse points are the shape that a
+  // directory-symlink guard alone would miss, so both forms are exercised here.
+  it("keeps bounded profile traversal inside the project root when a link points outside it", async (scope) => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-traversal-link-"));
+    const projectPath = path.join(base, "project");
+    const outsidePath = path.join(base, "outside");
+    try {
+      await fs.mkdir(path.join(projectPath, "src"), { recursive: true });
+      await fs.mkdir(outsidePath, { recursive: true });
+      await fs.writeFile(path.join(projectPath, "package.json"), JSON.stringify({ name: "link-probe", version: "1.0.0", scripts: { dev: "vite" } }), "utf8");
+      await fs.writeFile(path.join(projectPath, "src", "App.tsx"), "export const app = 1;", "utf8");
+      await fs.writeFile(path.join(outsidePath, "OUTSIDE-SECRET.txt"), "outside content", "utf8");
+      await fs.writeFile(path.join(outsidePath, "package.json"), JSON.stringify({ name: "outside-package", version: "1.0.0" }), "utf8");
+
+      // A junction is the unprivileged Windows reparse point; a directory symlink is
+      // its POSIX counterpart and is additionally attempted on Windows when the host
+      // allows creating one.
+      const linkKinds = process.platform === "win32" ? (["junction", "dir"] as const) : (["dir"] as const);
+      const created: string[] = [];
+      let lastError = "";
+      for (const [index, kind] of linkKinds.entries()) {
+        try {
+          await fs.symlink(outsidePath, path.join(projectPath, `linked-${index}`), kind);
+          created.push(kind);
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      if (!created.length) return scope.skip(`No directory link could be created on this host, so link containment is not evaluated: ${lastError}`);
+
+      const profile = await detectProjectProfile(await makeProjectSummary(projectPath));
+
+      // The links themselves are seen as leaf entries; nothing below them is entered.
+      const expectedEntries = 2 + created.length;
+      expect(profile.totalFileCount, `traversal entered a link: ${JSON.stringify(profile.fileDiscovery)}`).toBe(expectedEntries);
+      expect(profile.fileDiscovery.scannedCount).toBe(expectedEntries);
+      expect(profile.sourceFileCount, "the real in-project source file must still be found").toBe(1);
+      expect(profile.fileDiscovery.state).toBe("COMPLETE");
+      expect(JSON.stringify(profile)).not.toContain("OUTSIDE-SECRET");
+      expect(JSON.stringify(profile)).not.toContain("outside-package");
+    } finally {
+      await fs.rm(base, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+    }
+  }, 60_000);
 });
