@@ -273,4 +273,100 @@ environment-variable presence, Redis durability and Webhook configuration could
 only. No deployment was performed and no live OAuth or Webhook workflow is
 claimed.
 
+## Integrated Windows runtime slices and re-measured tally (2026-11-06)
+
+### Merge chain, verified from two sources each time
+
+| PR | Exact-head gates | Merge commit | `origin/main` confirmed by |
+|---|---|---|---|
+| #75 topology attribution | aggregate 7m44s pass, NSIS 20m22s pass | `8e33495` | `git pull --ff-only` + `git rev-parse HEAD` |
+| #76 security boundary tests | aggregate 10m0s pass, NSIS 20m43s pass | `9bfd554` | aggregate gate success observed; NSIS observed success at 00:52 |
+| #77 non-blocking DPAPI vault | aggregate 6m55s pass, NSIS 16m40s pass | `4e03366` | `mergeCommit.oid` **and** `git ls-remote origin refs/heads/main` |
+
+A process note worth keeping: while #77 was still open, its `potentialMergeCommit`
+value was read as if it were the merge result and reported as a merged `main`.
+That object does not exist (`git cat-file` fails on it) and the PR was still
+`OPEN`. Corrected the same session. A merge is only ever claimed from
+`mergeCommit.oid` plus a remote ref read, never from a prospective SHA.
+
+### CodeQL tally after the merged evidence
+
+Open alerts moved **20 → 18**, closed by CodeQL's own re-analysis of `main`, not
+by triage action:
+
+| Alert | Rule | Now |
+|---|---|---|
+| #27 | `js/incomplete-url-substring-sanitization` | `state=fixed`, `dismissal=none` |
+| #28 | `js/incomplete-url-substring-sanitization` | `state=fixed`, `dismissal=none` |
+
+#32 (`js/shell-command-injection-from-environment`, `topologyRuntime.ts:546`) is
+**still open**, as are all 15 path-injection and both remaining request-forgery
+alerts. The reconciliation table above still describes them accurately; #32's
+sink line number shifted by one through the topology edits, which is why it now
+reads `:546`.
+
+### Windows DPAPI vault, measured on this host
+
+`credentialVault` reached DPAPI through `execFileSync`, which froze the local API
+server for the life of the PowerShell child — twice per save, because `set`
+verifies its own write through `reveal`. Measured with a 10 ms heartbeat around
+real OS vault operations:
+
+| | before (`execFileSync`) | after (`spawn`, async) |
+|---|---:|---:|
+| max event-loop stall | 304 ms | **14 ms** |
+| heartbeat ticks across the same window | 3 | **58** |
+| `set` / `reveal` latency | 618 / 297 ms | 638 / 310 ms |
+
+Latency is unchanged and is not claimed otherwise: it is the PowerShell cold
+start, which remains. Real Windows DPAPI acceptance with `KFORGE_REAL_DPAPI=1`
+passed here (2 tests, `backend: WINDOWS_DPAPI_CURRENT_USER`, `set=715ms
+reveal=303ms`) — this host's current-user store, not an installed
+release-candidate claim. The four new seam cases were run against the pre-fix
+implementation and **3 of the 4 fail** there; the fourth (protector rejection)
+passed before as well and is kept as a boundary, not as evidence of this fix.
+
+### Topology surface re-verified in the real browser after the attribution change
+
+`tests/e2e/topology-lab.spec.ts` passes against the merged code (1 passed, 13.6 s
+— discovers, runs, inspects, persists, isolates restarts, propagates failure and
+stops a real multi-process app). A separate throwaway capture at the accepted
+1440x900 viewport drove a real two-service session through two health ticks and
+read the Inspector text back:
+
+```
+Port ownership
+127.0.0.1:57267 · KFORGE_SESSION · NONE
+OS evidence attributes listener 57267 directly to KForge-spawned PID 13216.
+Attribution source: netstat -ano -p TCP. Ownership was reused for this health
+check instead of re-reading the OS; the last real attribution was captured at
+2026-11-06T00:47:55.750Z and is re-verified at most every 30s.
+```
+
+Captures retained under `verification/` (ignored path):
+`tmp-topology-workbench-1440x900.png`, `tmp-topology-lab-1440x900.png`. The
+throwaway spec and its `test-results/` output were removed; the working tree
+returned to only the three protected untracked paths.
+
+**Visual verdict: `CAPTURED_NOT_VISUALLY_APPROVED`.** The evidence text renders
+and wraps inside the canonical Inspector, but the Topology Lab is very tall at
+1440x900 — canvas, embedded Preview and inspector stack — so the Port ownership
+block now sits well below the fold, and the added reuse sentence lengthens it
+roughly two-and-a-half times. Whether that is acceptable on this surface is a
+design decision, not something a green E2E proves. No owner approval is claimed.
+
+### Still open after these three slices
+
+- No test drives `resolveWindowsCommand`'s ComSpec branch itself (#32).
+- The loopback API has no per-caller secret; a local process as the same user is
+  not refused (alerts 19/17/9 residual risk).
+- PowerShell cold-start cost remains in both DPAPI and the container/npm
+  ancestry path; consolidating verify-after-write or moving to Electron
+  `safeStorage` is a separate authorised slice.
+- The recorded Electron smoke `spawnSync` 120 s failure is a different call site
+  and untouched.
+- K: disk headroom (2.5 GB free) still blocks `npm ci` and any packaged Windows
+  installed-lifecycle run on this host.
+
+
 
