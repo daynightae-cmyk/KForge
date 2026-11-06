@@ -200,3 +200,77 @@ bounded shutdown escalation are unchanged.
 - No installed-runtime, packaged, signed-release, live-provider or GitHub
   Connect deployment claim is made here.
 
+## Task 002 — CodeQL reconciliation at 20 accounts (2026-11-06)
+
+20 alerts were open on `main`. Each was traced to an exact sink line through the
+CodeQL API, reconciled against the code, and then either proved by a bounded
+negative test or classified with its guard named. None was dismissed and none
+was suppressed; `main` still reports the same 20 until a triager acts.
+
+| Alert(s) | Rule / severity | Sink | Disposition | Evidence |
+|---|---|---|---|---|
+| 48, 5–17, 9–16 (14) | `js/path-injection` high | `server/routes/workspace.ts` | **Bounded by one guard, now tested.** All 14 fan in from the profile traversal root; recursion happens only when `entry.isDirectory()` (`workspace.ts:260`) | New containment test plants a Windows junction and a directory symlink to an outside directory and asserts exact entry counts; `OUTSIDE-SECRET.txt` never surfaces |
+| 19, 17, 9 | `js/path-injection` high | `workspace.ts:2600`, `:498`, `:363` | **By design, boundary is the caller check — residual risk recorded, not closed.** `/projects/open` opens any existing local directory | `server/index.ts:51-80` refuses non-loopback Host, `Sec-Fetch-Site: cross-site` and `Origin !== Host`; `productionServer.ts:68` sets `enforceLoopbackHostHeader: true`, the path the packaged app runs (`desktop/main.cjs:135-141`). No per-caller secret: a local process as the same user is not refused |
+| 4 | `js/path-injection` high | `server/services/agentTools.ts:108` | **Classified, already tested.** `fs.realpath` precedes the containment throw at `:115`, so an in-project symlink can disclose existence before refusal; content stays blocked and the agent can already enumerate the tree | `agentTools.spec.ts:90/:104/:114/:135/:161/:200`, `agent-security.test.ts:73` |
+| 45 | `js/request-forgery` critical | `remoteSources/fetchPolicy.ts:320` | **Bounded by pre-existing, tested controls.** Host is a compiled-in constant; exact-origin allowlist `:190-195`, literal-IP and metadata-range blocks `:127-170`, every DNS answer re-checked `:217-225`, manual redirect re-validated `:298-326`, `networkAllowed` gate `:286-288` | `fetchPolicy.spec.ts:32-268`; `routes/remoteSources.spec.ts` zero-egress cases |
+| 20 | `js/request-forgery` critical | `server/services/previewRuntime.ts:207` | **Now proved directly.** Probe may only reach loopback; a cross-origin or non-http redirect throws at `:212` before the next request | Two new cases: a fixture that answers `302 -> http://169.254.169.254/latest/meta-data/` and a foreign absolute route in document QA. Both mutation-verified — with the guard removed the probe really does attempt the metadata address |
+| 32 | `js/shell-command-injection-from-environment` medium | `server/services/topologyRuntime.ts:545` | **Admission boundary now proved.** Spawns use `shell: false` with an argument vector; `safeCommand` (`:62`) rejects `; & \| \` $ < > CR LF % !` before any `.cmd` wrapper is built, and `safeArgv` (`topologyDetectors.ts:136-138`) does the same for detected commands | New test registers 12 hostile commands through real discovery and asserts zero services; mutation-verified. **Still open:** no test drives `resolveWindowsCommand`'s ComSpec branch itself |
+| 28, 27 | `js/incomplete-url-substring-sanitization` high | two `*.spec.ts` files | **Weak pattern removed from test code, not suppressed.** Both now call the exported `isGitHubRemoteUrl`, which compares `URL.hostname` exactly; production was already correct and already asserted against lookalikes | `onlineControlCenter.ts:54-64`, `onlineControlCenter.spec.ts:74-78` |
+
+Windows reparse-point behaviour, recorded as "validate separately" and not done
+in the 2026-11-02 audit, is now measured and pinned: on Node 24.21 / Windows 10
+19045, unprivileged, both `mklink /J` and `mklink /D` report
+`isDirectory()=false, isSymbolicLink()=true`, and the traversal does not descend
+into either.
+
+## Task 003 — dependency advisory reconciliation (2026-11-06)
+
+66 Dependabot alerts were open, all reachable through exactly four manifests.
+The decisive packaging fact is `package.json → build.files`, an explicit
+allowlist of `desktop/**`, `dist/**`, `fixtures/marketplace-first-party/**`,
+`fixtures/marketplace-first-party-v110/**`, `LICENSE` and `package.json`.
+
+| Manifest | Alerts | Severity split | Shipped in the installer | Installed on disk | Reachable by KForge code |
+|---|---:|---|---|---|---|
+| `docs/research/recovered-20261017/opensumi-spike-source/package-lock.json` | 60 | 3 critical, 28 high, 21 medium, 8 low | **No** — outside `build.files` | **No** — `node_modules` absent (whole `docs/` tree is 1.4 MB) | **No** — historical source only; excluded from Vitest discovery and from the build |
+| `fixtures/workspace-php/composer.json` | 4 | 1 critical, 1 high, 1 medium, 1 low | **No** | **No** — `vendor/` absent | **No** — read as text for PHP/Laravel detection only |
+| `fixtures/workspace-clean/package.json` | 1 | 1 medium | **No** | **No** — `node_modules` absent | **No** — the fixture's own manifest is data, not KForge's dependency graph |
+| `package-lock.json` (root) | 1 | 1 medium (`postcss-selector-parser`) | **No** — dev-only chain | Yes, in `node_modules` | Build-time only |
+
+Root production graph is clean and stays reported separately:
+`npm audit --omit=dev` → **0 vulnerabilities**; the full graph including
+build/development → **9 moderate, 0 high/critical**.
+
+The one root-graph item is real and is **not** claimed as fixed.
+`@tailwindcss/typography@0.5.20` — which is the current latest release — pins
+`postcss-selector-parser` to exactly `6.0.10`, below the `6.1.5` fix line, so no
+upstream upgrade resolves it and `npm audit fix --force` would *downgrade*
+typography to 0.5.4, which is older and breaking. It was therefore refused. The
+advisory is CPU exhaustion on quadratic selector parsing, reached only while
+building KForge's own CSS, and the advisory-bearing package is a devDependency
+(`npm ls --omit=dev` resolves empty) that is not in `dist/**` and so is not
+shipped. Remaining option, requiring owner-level dependency-policy acceptance:
+a narrow `overrides` entry with full gate verification. No ignore, no broad
+override, no research deletion to conceal counts.
+
+One hygiene observation recorded rather than acted on: committed fixture state
+under `fixtures/.kforge/project-collections.json` and
+`fixtures/workspace-clean/.kforge/snapshots/**` carries absolute paths from a
+different drive letter (`D:\Knoux Projects\Knoux_Project_Center\...`) that no
+longer exist. That is stale fixture evidence, not a security boundary, and
+deleting it needs the same cleanup authority as everything else here.
+
+## GitHub Connect status re-checked (2026-11-06)
+
+`connect.knoux.store` did not resolve from this host (`NXDOMAIN` from the
+configured resolver) and `curl https://connect.knoux.store/health` failed with
+exit code 6 before any HTTP exchange (`http_code=000`). No Vercel token, team or
+project identifier is present in this environment, no Vercel MCP tool is
+connected, and the `vercel` CLI is not installed, so the project, its runtime,
+environment-variable presence, Redis durability and Webhook configuration could
+**not** be re-verified in this session. Task 009 remains **BLOCKED_EXTERNAL**.
+`apps/github-connect/vercel.json` remains a source-backed readiness artifact
+only. No deployment was performed and no live OAuth or Webhook workflow is
+claimed.
+
+
