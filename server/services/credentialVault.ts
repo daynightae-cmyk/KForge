@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { execFileSync } from "child_process";
+import { spawn } from "child_process";
 
 export type CredentialVaultAvailability = "AVAILABLE" | "UNAVAILABLE" | "ENVIRONMENT_ONLY";
 export type CredentialVaultBackend = "WINDOWS_DPAPI_CURRENT_USER" | "EPHEMERAL_MEMORY" | "ENVIRONMENT" | "UNAVAILABLE";
@@ -50,8 +50,8 @@ export interface CredentialVault {
 
 export interface VaultRuntime {
   platform: NodeJS.Platform;
-  protect?: (plaintext: string) => string;
-  unprotect?: (protectedValue: string) => string;
+  protect?: (plaintext: string) => string | Promise<string>;
+  unprotect?: (protectedValue: string) => string | Promise<string>;
 }
 
 const ephemeralByRoot = new Map<string, Map<string, { value: string; updatedAt: string }>>();
@@ -110,7 +110,70 @@ function powershellBinary() {
   return process.env.SystemRoot ? path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "powershell.exe";
 }
 
-function protectWithDpapi(plaintext: string) {
+const DPAPI_TIMEOUT_MS = 10_000;
+const DPAPI_MAX_BUFFER_BYTES = 128 * 1024;
+
+/**
+ * DPAPI is only reachable through PowerShell, and a PowerShell cold start is
+ * roughly a second even before any assembly is loaded. Running it with
+ * `execFileSync` froze the whole local API server for the duration of every
+ * credential operation — including the round-trip verification in `set`, which
+ * pays the cost twice — so under load the child starved behind our own blocked
+ * event loop and the recorded 10 s timeout fired.
+ *
+ * This is the same bounded invocation, asynchronously: no shell, hidden window,
+ * the same stdin payload, the same output cap and the same deadline. Two
+ * properties are deliberate. Captured stdout is never included in a rejection,
+ * because in the unprotect direction stdout is the plaintext credential itself.
+ * And the deadline is enforced by killing the child, which synchronous exec
+ * could only approximate while it blocked the loop.
+ */
+function runDpapiScript(script: string, input: string) {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(powershellBinary(), ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let settled = false;
+    const finish = (error?: Error, value?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.stdout?.removeAllListeners("data");
+      child.stderr?.removeAllListeners("data");
+      error ? reject(error) : resolve(value || "");
+    };
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch { /* already exited */ }
+      finish(new Error(`PowerShell DPAPI operation exceeded the ${DPAPI_TIMEOUT_MS} ms deadline and was terminated.`));
+    }, DPAPI_TIMEOUT_MS);
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
+      // Preserve the previous maxBuffer refusal: an oversized payload is not a
+      // credential that may be stored or revealed.
+      if (Buffer.byteLength(stdout, "utf8") > DPAPI_MAX_BUFFER_BYTES) {
+        try { child.kill(); } catch { /* already exited */ }
+        finish(new Error("PowerShell DPAPI operation exceeded the protected-payload size limit."));
+      }
+    });
+    child.stderr?.resume();
+    child.on("error", (error) => finish(error));
+    child.on("close", (code) => finish(
+      code === 0 ? undefined : new Error(`PowerShell DPAPI operation failed with exit code ${code ?? "unknown"}.`),
+      stdout.trim(),
+    ));
+
+    child.stdin?.on("error", () => { /* the exit path records the failure */ });
+    child.stdin?.end(input);
+  });
+}
+
+async function protectWithDpapi(plaintext: string) {
   const script = [
     "Add-Type -AssemblyName System.Security",
     "$plain = [Console]::In.ReadToEnd()",
@@ -118,16 +181,10 @@ function protectWithDpapi(plaintext: string) {
     "$protected = [Security.Cryptography.ProtectedData]::Protect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)",
     "[Convert]::ToBase64String($protected)",
   ].join("; ");
-  return execFileSync(powershellBinary(), ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
-    input: plaintext,
-    encoding: "utf8",
-    windowsHide: true,
-    maxBuffer: 128 * 1024,
-    timeout: 10_000,
-  }).trim();
+  return (await runDpapiScript(script, plaintext)).trim();
 }
 
-function unprotectWithDpapi(protectedValue: string) {
+async function unprotectWithDpapi(protectedValue: string) {
   const script = [
     "Add-Type -AssemblyName System.Security",
     "$encoded = [Console]::In.ReadToEnd().Trim()",
@@ -135,13 +192,7 @@ function unprotectWithDpapi(protectedValue: string) {
     "$plain = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)",
     "[Console]::Out.Write([Text.Encoding]::UTF8.GetString($plain))",
   ].join("; ");
-  return execFileSync(powershellBinary(), ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
-    input: protectedValue,
-    encoding: "utf8",
-    windowsHide: true,
-    maxBuffer: 128 * 1024,
-    timeout: 10_000,
-  });
+  return runDpapiScript(script, protectedValue);
 }
 
 let injectedRuntimeForTests: VaultRuntime | null = null;
@@ -203,7 +254,7 @@ export function createCredentialVault(root: string, runtime: VaultRuntime = runt
       const id = normalizeId(providerId);
       const value = validateSecret(secret);
       if (dpapiAvailable) {
-        const protectedValue = runtime.protect!(value);
+        const protectedValue = await runtime.protect!(value);
         if (!protectedValue || protectedValue.includes(value)) throw new Error("Credential protection did not produce a valid protected payload.");
         const file = await readVault(resolvedRoot);
         file.credentials[id] = {
@@ -231,7 +282,7 @@ export function createCredentialVault(root: string, runtime: VaultRuntime = runt
       const record = dpapiAvailable ? await storedRecord(id) : null;
       if (record) {
         try {
-          return runtime.unprotect!(record.protectedValue);
+          return await runtime.unprotect!(record.protectedValue);
         } catch {
           throw new Error("OS credential decryption failed for the current Windows user.");
         }
