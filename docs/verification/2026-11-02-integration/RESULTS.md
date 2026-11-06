@@ -122,3 +122,81 @@ or **BLOCKED**, as detailed in AUDIT.md. No deployment was performed.
 The local gate's testedSha was ecb3d9e at invocation. Later historical research,
 ancestry reconciliation, README correction and unit-discovery changes require
 their own exact final-SHA CI; do not relabel the earlier gate.
+
+## Refreshed baseline and Task 001 — 2026-11-06, Asia/Dubai
+
+Revalidated before any source modification. The 2026-11-02/05 observations above
+are history, not current HEAD evidence.
+
+| Item | Observed on 2026-11-06 | Boundary |
+|---|---|---|
+| Canonical root / branch | `K:\Knoux Projects\KForge\Base`, `main` | One registered worktree (`Base`) |
+| HEAD and `origin/main` | `fc74fc2f4513fd2d9799ff2412f74fe840d0a8dc`, divergence 0/0 | Checkpoint SHA unchanged |
+| Open PRs at revalidation | None | Before this task's PR |
+| Exact-SHA CI at `fc74fc2` | `KForge Verification Gate` success; `aggregate verification gate` and `Windows NSIS package gate` success; CodeQL success | Repository evidence for that SHA only |
+| Working tree | Three protected untracked paths only (`fixtures/.marketplace-bad-sha-Pb4nO0/`, `kforge-security-17qX4N/`, `kforge-security-1jmRHl/`) | Never staged; cleanup remains REVIEW ONLY |
+| Local branches | `fix/ai-context-disclosure-redaction`, `perf/ai-context-without-implicit-scan`, both mirrored on origin and merged by PR #73/#74 | Preserved, not deleted |
+| Stashes | None | |
+| Git LFS | Filter configured, zero tracked LFS files, zero pending objects | Content filters are why tree cleanliness is not inferable from a single status field |
+| Machine | Windows 10 Pro 19045, 4 logical CPUs, 11.9 GiB RAM (5.7 GiB free), Node 24.21.0, npm 11.19.0 | |
+| Disk | **K: 46 GB used / 2.5 GB free (95%)**; C: 15 GB free; D: 6.3 GB free | Blocks `npm ci` and any parallel heavy build; no heavy build was run concurrently on this host |
+| KForge tree size | `node_modules` 690 MB, `release` 535 MB, `verification` 487 MB, `dist` 6.4 MB, `.git` 12 MB; whole project 1.8 GB | The remaining ~44 GB on K: is outside this project and outside cleanup authority |
+| Open CodeQL alerts | 20 (15 `js/path-injection`, 2 `js/request-forgery`, 2 `js/incomplete-url-substring-sanitization`, 1 `js/shell-command-injection-from-environment`) | Matches the audit count |
+| Open Dependabot alerts | 66: 60 `docs/research/recovered-20261017/opensumi-spike-source/package-lock.json`, 4 `fixtures/workspace-php/composer.json`, 1 `fixtures/workspace-clean/package.json`, 1 root `package-lock.json` (`postcss-selector-parser`) | 4 critical = 3 research + 1 PHP fixture |
+| Production-only audit | `npm audit --omit=dev` → 0 vulnerabilities | Confirmed again at `57561e8` |
+
+### The reported topology failures were not reproduced as a deterministic red run
+
+At `fc74fc2` the full local suite **passed**: 551 passed / 3 skipped, 73 files
+passed / 1 skipped, exit 0, in 58.8 s. `topologyRuntime.spec.ts` nevertheless
+inflated from 27.5 s isolated to 45.9 s under suite load, and the three tests
+named in the audit are the three slowest in that file. The recorded failure
+mechanism is therefore load-sensitive timing pressure on the same path this
+section identifies, not a reproducible assertion failure on this host at this
+SHA. That distinction is kept: no pre-fix red/green pair is claimed.
+
+### Task 001 root cause, measured rather than inferred
+
+Windows listener attribution crossed a `powershell.exe` cold start once per
+service per health probe. Measured idle cost 0.95–1.03 s per call.
+
+| Probe (Windows 10, same host, same 3-service fixture) | Before | After |
+|---|---:|---:|
+| `TOTAL_START_MS` for an explicit HTTP topology | 2381 ms | **683 ms** |
+| `process-spawned` → `listener-detected` per HTTP service | 1203 / 1129 ms | 346 / 288 ms |
+| OS attribution processes during 12 s steady-state polling (2 services) | 10 | **0** |
+| Worst contended topology test | 10681 ms | **6594 ms** |
+| `topologyRuntime.spec.ts` isolated file duration | 27544 ms | **16629 ms** |
+
+The attribution source in live evidence changed from `Get-NetTCPConnection` to
+`netstat -ano -p TCP`, which returns the same owning PID in 36–42 ms.
+
+No startup, health, shutdown or test timeout constant was raised; no test was
+skipped, disabled or weakened; the 12 s readiness budget, 3 s health interval and
+bounded shutdown escalation are unchanged.
+
+### Task 001 local results at `57561e8332722059365b79a9c5adb8582f7dba8e`
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` | Exit 0 |
+| `npm run lint` | Exit 0, 327 source files |
+| `npm test` (full suite) | Exit 0; 569 passed / 3 skipped (572); 75 files passed / 1 skipped; 52.3 s |
+| `npm run build` | Exit 0 |
+| `npm audit --omit=dev` | 0 vulnerabilities |
+| New regression specs | `listenerAttribution.spec.ts` 7 tests, `topologyRuntimeIntegration.spec.ts` 11 tests |
+| `previewRuntime.spec.ts` | Exit 0, 8 tests (same runtime path) |
+
+### Explicitly not closed by this section
+
+- `stopTopology` still stops in sequential dependency waves at ~1.5 s graceful
+  budget each: measured 4883 ms for three services. Bounded, escalated and
+  ownership-checked, but real shutdown latency and a separate slice.
+- The Windows DPAPI PowerShell cold start recorded above for the provider
+  command-center path is the same defect class in a different service and is
+  still open.
+- CodeQL alert 32 (`js/shell-command-injection-from-environment`) points into
+  `topologyRuntime.ts` `resolveWindowsCommand`, which this change did not touch.
+- No installed-runtime, packaged, signed-release, live-provider or GitHub
+  Connect deployment claim is made here.
+

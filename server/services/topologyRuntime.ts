@@ -17,7 +17,7 @@ import type {
   TopologySession,
 } from "../../shared/topology";
 import { detectAutomaticTopology } from "./topologyDetectors";
-import { materializeRuntimeCommand, materializeRuntimeEnvironment, registerRuntimeControls, runServiceControl, runTopologyCleanup, runtimeControlPlan, verifyServiceListener } from "./topologyRuntimeIntegration";
+import { materializeRuntimeCommand, materializeRuntimeEnvironment, registerRuntimeControls, forgetListenerEvidence, runServiceControl, runTopologyCleanup, runtimeControlPlan, verifyServiceListener } from "./topologyRuntimeIntegration";
 
 type JsonRecord = Record<string, unknown>;
 type ActiveService = { child: ChildProcess; service: RuntimeService };
@@ -277,6 +277,7 @@ export async function discoverRuntimeTopology(projectId: string, projectPath: st
       "Static dependency edges are shown only when declared by explicit topology, Compose depends_on, or runnable workspace package dependencies; all other relationships remain UNKNOWN.",
       "Packaged Electron captures bounded browser request telemetry through session.webRequest without request bodies or credentials. Browser-hosted/server-only sessions cannot claim Chromium subresource telemetry and show only evidence actually received.",
       "Listener PID attribution is attempted with OS evidence after a healthy listener appears. Ownership remains UNKNOWN when PID or ancestry proof is unavailable, and an unrelated proven listener is never promoted to KFORGE_SESSION.",
+      "Proven listener ownership is reused between bounded re-verifications instead of re-reading the OS table on every health check; the Inspector evidence states when the attribution was actually captured, so a reused claim is never presented as a fresh check.",
     ],
   };
   discoveries.set(projectId, discovery);
@@ -601,7 +602,11 @@ async function terminateOwned(active: ActiveService, force = false) {
 }
 
 function finishStop(topology: ActiveTopology, service: RuntimeService, active: ActiveService): RuntimeService {
-  service.state = "STOPPED"; service.stoppedAt ||= now(); topology.active.delete(service.id); refreshAggregate(topology); return service;
+  service.state = "STOPPED"; service.stoppedAt ||= now(); topology.active.delete(service.id);
+  // Windows recycles PIDs: ownership proved for a process that has now stopped
+  // must not be reused as evidence for whatever listens on that port next.
+  forgetListenerEvidence(topology.session.projectId, service.id);
+  refreshAggregate(topology); return service;
 }
 
 async function stopOne(topology: ActiveTopology, serviceId: string, timeoutMs = 4_000): Promise<RuntimeService> {
