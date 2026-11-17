@@ -81,7 +81,7 @@ describe("repository documentation truth contract", () => {
     const activeDocs = `${status}\n${matrix}`;
 
     expect(manifest.allowScripts).toEqual({
-      "@swc/core@1.16.20": true,
+      "@swc/core@1.16.22": true,
       "esbuild@0.25.4": true,
       "esbuild@0.28.2": true,
       "fsevents@2.3.2": true,
@@ -137,11 +137,11 @@ describe("repository documentation truth contract", () => {
 
     // Exact pin: an uncontrolled caret range would let a future Three.js release enter the
     // shipped runtime without a new review of this contract.
-    expect(manifest.dependencies?.three).toBe("0.186.1");
+    expect(manifest.dependencies?.three).toBe("0.187.0");
 
     const entry = lock.packages?.["node_modules/three"];
     expect(entry).toBeTruthy();
-    expect(entry?.version).toBe("0.186.1");
+    expect(entry?.version).toBe("0.187.0");
     // Three.js must stay a runtime dependency of the brand scene but must never run install
     // scripts or drag in a transitive graph that could widen the audit surface. npm omits the
     // `dev` flag entirely for production entries, so assert it is not flagged dev-only.
