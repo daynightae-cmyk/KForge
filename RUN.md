@@ -1,27 +1,29 @@
 # KNOuX Forge run guide
 
-## Primary Windows checkout: sync `main` and open Preview
+## Windows checkout: sync `main` and open Preview
 
-The repository-native launcher for the primary Windows development checkout is:
+The repository-native launcher is:
 
 ```text
 scripts/KForge-Local-Preview.ps1
 ```
 
-Its defaults are:
+Its defaults are repository-relative, not machine-specific:
 
 ```text
 Repository:     https://github.com/daynightae-cmyk/KForge.git
-Local checkout: D:\Knoux Projects\Knoux_Project_Center\01_Ready\KForge
+Local checkout: the checkout containing this script
 Preview:        http://127.0.0.1:8081/workspace
-Workspace root: D:\Knoux Projects\Knoux_Project_Center\01_Ready
+Workspace root: the parent directory of that checkout
 ```
 
 Run it from any PowerShell window:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "D:\Knoux Projects\Knoux_Project_Center\01_Ready\KForge\scripts\KForge-Local-Preview.ps1"
+powershell -ExecutionPolicy Bypass -File "<path-to-KForge>\scripts\KForge-Local-Preview.ps1"
 ```
+
+Use `-RepoPath <path>` to target a different checkout, `-Port <number>` to change the loopback preview port, and `-WorkspaceRoot <path>` to change project discovery.
 
 The launcher:
 
@@ -37,9 +39,11 @@ The launcher:
 10. starts Vite on `127.0.0.1:8081` with `--strictPort`;
 11. waits for `/api/ping` before opening `/workspace` in the default browser.
 
-Use `-Port <number>` or `-WorkspaceRoot <path>` when needed. `-SkipInstall` and `-SkipTypecheck` are available only for deliberate local bypasses.
+`-SkipInstall` and `-SkipTypecheck` are available only for deliberate local bypasses.
 
 ## Manual development and production
+
+Prerequisites: Node.js 24 or newer and the npm version recorded in `package.json#packageManager`.
 
 1. Install the locked dependencies with `npm ci`.
 2. Set `KFORGE_WORKSPACE_ROOT` in the process environment to the parent directory containing repositories KForge should discover. If omitted, KForge uses the parent of its current working directory.

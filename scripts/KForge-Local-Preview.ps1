@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [string]$RepoPath = 'D:\Knoux Projects\Knoux_Project_Center\01_Ready\KForge',
+  [string]$RepoPath = '',
   [int]$Port = 8081,
   [string]$WorkspaceRoot = '',
   [switch]$SkipInstall,
@@ -9,6 +9,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# Default to the checkout that contains this script, so the launcher is portable.
+if ([string]::IsNullOrWhiteSpace($RepoPath)) {
+  $RepoPath = Split-Path -Parent $PSScriptRoot
+}
 
 $RemoteUrl = 'https://github.com/daynightae-cmyk/KForge.git'
 $PreviewHost = '127.0.0.1'

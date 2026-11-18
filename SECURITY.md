@@ -17,13 +17,13 @@ Only the latest revision of the actively maintained release line receives securi
 
 Do **not** disclose a suspected vulnerability through a public Issue, Discussion, Pull Request, or other public channel.
 
-Repository automation could not independently prove that GitHub Private Vulnerability Reporting is enabled because the connected GitHub integration does not expose that administration endpoint. Therefore the current repository truth is:
+GitHub Private Vulnerability Reporting is enabled for this repository and is the preferred reporting channel. Open **Security → Advisories → Report a vulnerability** to start a private report.
 
-`PRIVATE_VULNERABILITY_REPORTING=ADMIN_ACTION_REQUIRED`
+`PRIVATE_VULNERABILITY_REPORTING=ENABLED`
 
-`PRIVATE_VULNERABILITY_REPORTING_VERIFICATION=UNVERIFIED`
+`PRIVATE_VULNERABILITY_REPORTING_VERIFICATION=VERIFIED_VIA_GITHUB_API_2026-11-18`
 
-A repository administrator must verify or enable **Settings → Code security and analysis → Private vulnerability reporting**. When the repository Security page actually exposes **Advisories → Report a vulnerability**, that private workflow is the preferred reporting channel. The presence of this document alone must not be interpreted as proof that the button is enabled.
+If the private advisory workflow is temporarily unavailable, contact the maintainer through the corporate contact details in the repository README rather than opening a public issue.
 
 Include enough information to reproduce and evaluate the issue without unrelated private data or credentials:
 
@@ -83,11 +83,26 @@ An existing EXE must be inspected as an artifact. A `Valid` Authenticode result 
 
 A `TRUSTED_RELEASE` still requires a valid Authenticode signature, signer identity evidence, artifact hash/provenance evidence, and every other configured release gate. Current absence of a production code-signing certificate must be reported as a blocker, not bypassed.
 
+## Repository Security Controls
+
+Verified on 2026-11-18:
+
+- GitHub Private Vulnerability Reporting: **enabled**.
+- Secret scanning and push protection: **enabled**.
+- Dependabot alerts and Dependabot security updates: **enabled**.
+- CodeQL code scanning: **enabled**; open findings remain classified and are not claimed as fixed without evidence.
+- GitHub Actions references in the verification workflow remain pinned to immutable commit SHAs.
+- `main` blocks force pushes and deletion and requires both verification gates; administrator bypass remains an explicit owner recovery path, so a green workflow proves the tested SHA rather than administrative enforcement.
+
+Repository settings that require a paid GitHub security plan are not claimed as active. A security control is documented as enabled only after its actual state is observable.
+
 ## Dependency Security
 
 Dependency updates must preserve reproducible locked installation, vulnerability auditing, reviewed lifecycle scripts, immutable GitHub Actions references where required, TypeScript verification, lint verification, automated tests, production build verification, browser acceptance, and Windows packaging verification.
 
 Routine Dependabot version updates intentionally exclude semver-major migrations. Breaking majors are reviewed one at a time. Security fixes are not to be disabled by that maintenance policy. Lifecycle-script allowlisting remains exact and reviewed; a blocked unreviewed lifecycle script is a security control working as designed.
+
+The production dependency graph must remain at **0 vulnerabilities** under `npm audit --omit=dev`. Development-only transitive findings are tracked and upgraded deliberately; they are never converted into a false production-clean claim. Historical research archives and test fixtures must not introduce third-party lockfiles whose vulnerable dependency ranges pollute the product security signal.
 
 ## Disclosure
 

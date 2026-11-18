@@ -365,9 +365,9 @@ Open **http://localhost:3000/workspace**. The local API is mounted under `/api/w
 
 ### Existing Windows development checkout
 
-The repository also ships [`scripts/KForge-Local-Preview.ps1`](scripts/KForge-Local-Preview.ps1), a Windows launcher that can synchronize `main`, preserve local changes via its documented stash behavior, install dependencies and start a Preview session.
+The repository also ships [`scripts/KForge-Local-Preview.ps1`](scripts/KForge-Local-Preview.ps1), a Windows launcher that can synchronize `main`, preserve local changes via its documented stash behavior, install dependencies and start a Preview session. Its defaults are repository-relative; use `-RepoPath` to target a different checkout.
 
-**Inspect that script and [RUN.md](RUN.md) before running it in a valuable working copy.** Its defaults refer to a particular historical checkout; your actual local path, branch, worktrees and active agents must be rechecked. Do not treat the launcher as a safe replacement for an unreviewed, dirty, concurrent workspace.
+**Inspect that script and [RUN.md](RUN.md) before running it in a valuable working copy.** Your actual branch, worktrees and active agents must be rechecked. Do not treat the launcher as a safe replacement for an unreviewed, dirty, concurrent workspace.
 
 ## Windows desktop & installer
 

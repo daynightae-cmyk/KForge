@@ -6,6 +6,18 @@
   "main": "desktop/main.cjs",
   "license": "MIT",
   "author": "DAY NIGHT DELIVERY SERVICES",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daynightae-cmyk/KForge.git"
+  },
+  "homepage": "https://knoux.store/",
+  "bugs": {
+    "url": "https://github.com/daynightae-cmyk/KForge/issues"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "npm@11.19.0",
   "allowScripts": {
     "@swc/core@1.16.22": true,
     "esbuild@0.25.4": true,
@@ -36,6 +48,7 @@
     "lint": "node scripts/lint.mjs",
     "test:e2e": "playwright test",
     "verify:assets": "node scripts/verify-asset-budget.mjs",
+    "verify:workflow-pins": "node scripts/verify-workflow-pins.mjs",
     "verify:gate": "node scripts/verify-gate.mjs",
     "verify:desktop": "npm run build && node scripts/verify-desktop.mjs",
     "verify:signing": "node scripts/verify-signing.mjs",
@@ -122,6 +135,7 @@
     "vitest": "^4.1.12"
   },
   "overrides": {
+    "postcss-selector-parser": "6.1.5",
     "express-rate-limit": {
       "ip-address": "10.7.4"
     },
