@@ -3,15 +3,15 @@
 ## Latest completed authoritative verification (2026-11-18)
 
 - Product: KNOuX Forge.
-- Verified SHA: `021eb05f4a77bb46eccd83a2581c75042b629060`.
-- GitHub Actions `KForge Verification Gate` run **44233918254** completed successfully on that exact SHA. Both jobs are green: **aggregate verification gate** (locked install, production dependency audit, typecheck, lint, unit/integration tests, production build, browser E2E) and **Windows NSIS package gate** (Windows browser E2E, packaged desktop shell, NSIS installer, Authenticode evidence, installed-runtime lifecycle).
-- Local verification on the same source: `npm ci`, `typecheck`, `lint` and `build` passed; 76 test files produced 577 passed and 3 skipped tests; `npm audit --omit=dev` reported **0 vulnerabilities**.
+- Verified SHA: `a973feff087acf91e8802f163731e6159865d8da`.
+- GitHub Actions `KForge Verification Gate` run **44243784504** completed successfully on that exact SHA. Both jobs are green: **aggregate verification gate** (locked install, production dependency audit, typecheck, lint, unit/integration tests, production build, browser E2E) and **Windows NSIS package gate** (Windows browser E2E, packaged desktop shell, NSIS installer, Authenticode evidence, installed-runtime lifecycle).
+- Local verification on the production-baseline source (`27f9b29`, the parent of the final test-hygiene commit): `npm ci`, `typecheck`, `lint`, `build`, `verify:assets`, `verify:workflow-pins` and `verify:desktop` passed; 76 test files produced 577 passed and 3 skipped tests; `npm audit --omit=dev` reported **0 vulnerabilities**. The final commit only isolates fixture snapshot state inside a test and does not change product behavior.
 - Ref topology: `main` only. Local `main` equals `origin/main`; no other local or remote branches, tags, worktrees or hidden archive refs remain.
 - Installer trust: **UNSIGNED** development/release-candidate artifact unless a trusted certificate is supplied and the OS-verified Authenticode state proves otherwise. No Trusted Publisher or SmartScreen reputation is claimed.
 - Code scanning recorded 18 open CodeQL findings on 2026-11-18: 15 `js/path-injection`, 2 `js/request-forgery`, and 1 `js/shell-command-injection-from-environment`. Their classification is retained below; they are not claimed fixed.
 - Dependabot: the three critical findings and most high/medium findings came from the retired OpenSumi research lockfile, which was removed from the working tree on 2026-11-18. Test-fixture manifests were refreshed to patched ranges. One open alert remains, `minimatch` **medium** in the development toolchain; it is tracked rather than suppressed and requires a semver-major upgrade of its parent package.
 - Dependency audit: `npm audit --omit=dev` reports **0 vulnerabilities**. The full development-inclusive graph reports 19 dev-only advisories (6 moderate, 13 high), dominated by `picomatch <=4.0.7` with no patched release and by `glob`/`minimatch` fixes that only exist in breaking majors. These are not production dependencies and are not converted into a false clean claim.
-- Production-baseline maintenance after the recorded run is limited to repository documentation, package metadata, dependency overrides, test fixtures and removal of that unused research archive. It is verified by its own gate run and does not retroactively change the recorded result.
+- Production-baseline maintenance after the recorded run is limited to repository documentation, package metadata, dependency overrides, test fixtures and removal of that unused research archive. It is verified by its own gate run and does not retroactively change the recorded result. Any later documentation-only commit is verified by the same gate against its own SHA.
 
 ## Previous verified state (2026-09-26)
 
