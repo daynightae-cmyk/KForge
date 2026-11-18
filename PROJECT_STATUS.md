@@ -3,15 +3,15 @@
 ## Latest completed authoritative verification (2026-11-18)
 
 - Product: KNOuX Forge.
-- Verified SHA: `a973feff087acf91e8802f163731e6159865d8da`.
-- GitHub Actions `KForge Verification Gate` run **44243784504** completed successfully on that exact SHA. Both jobs are green: **aggregate verification gate** (locked install, production dependency audit, typecheck, lint, unit/integration tests, production build, browser E2E) and **Windows NSIS package gate** (Windows browser E2E, packaged desktop shell, NSIS installer, Authenticode evidence, installed-runtime lifecycle).
-- Local verification on the production-baseline source (`27f9b29`, the parent of the final test-hygiene commit): `npm ci`, `typecheck`, `lint`, `build`, `verify:assets`, `verify:workflow-pins` and `verify:desktop` passed; 76 test files produced 577 passed and 3 skipped tests; `npm audit --omit=dev` reported **0 vulnerabilities**. The final commit only isolates fixture snapshot state inside a test and does not change product behavior.
+- Verified SHA: `9950302072b724869fc14fd8c8592d32391849ce`.
+- GitHub Actions `KForge Verification Gate` run **44252873032** completed successfully on that exact SHA. Both jobs are green: **aggregate verification gate** (locked install, production dependency audit, typecheck, lint, unit/integration tests, production build, browser E2E) and **Windows NSIS package gate** (Windows browser E2E, packaged desktop shell, NSIS installer, Authenticode evidence, installed-runtime lifecycle).
+- Local verification on the same source: `typecheck`, `lint`, `build`, `verify:assets`, `verify:workflow-pins` and `verify:desktop` passed; 78 test files produced 582 passed and 3 skipped tests; `npm audit --omit=dev` reported **0 vulnerabilities**. The local suite used two workers because this Windows host was contended; the GitHub gate ran the default configuration on the exact SHA.
 - Ref topology: `main` only. Local `main` equals `origin/main`; no other local or remote branches, tags, worktrees or hidden archive refs remain.
 - Installer trust: **UNSIGNED** development/release-candidate artifact unless a trusted certificate is supplied and the OS-verified Authenticode state proves otherwise. No Trusted Publisher or SmartScreen reputation is claimed.
 - Code scanning recorded 18 open CodeQL findings on 2026-11-18: 15 `js/path-injection`, 2 `js/request-forgery`, and 1 `js/shell-command-injection-from-environment`. Their classification is retained below; they are not claimed fixed.
 - Dependabot: the three critical findings and most high/medium findings came from the retired OpenSumi research lockfile, which was removed from the working tree on 2026-11-18. Test-fixture manifests were refreshed to patched ranges. One open alert remains, `minimatch` **medium** in the development toolchain; it is tracked rather than suppressed and requires a semver-major upgrade of its parent package.
 - Dependency audit: `npm audit --omit=dev` reports **0 vulnerabilities**. The full development-inclusive graph reports 19 dev-only advisories (6 moderate, 13 high), dominated by `picomatch <=4.0.7` with no patched release and by `glob`/`minimatch` fixes that only exist in breaking majors. These are not production dependencies and are not converted into a false clean claim.
-- Production-baseline maintenance after the recorded run is limited to repository documentation, package metadata, dependency overrides, test fixtures and removal of that unused research archive. It is verified by its own gate run and does not retroactively change the recorded result. Any later documentation-only commit is verified by the same gate against its own SHA.
+- The verified head includes production HTTP hardening (CSP and security-header parity with the packaged desktop shell, generic terminal error boundary), bounded desktop diagnostics with one rotated backup, and issue forms that route vulnerabilities to private advisories. These are covered by the same gate run rather than claimed as separate evidence.
 
 ## Previous verified state (2026-09-26)
 
@@ -80,7 +80,7 @@ Run #271 proves, on SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`:
 - Remote registries, remote CI, remote Preview, product updates, GitHub operations, and cloud AI remain dependent on their real adapters, credentials, network policy, trust, and explicit actions. Missing prerequisites stay `OFFLINE`, `NOT_CONFIGURED`, `UNKNOWN`, `UNAVAILABLE`, or `BLOCKED`.
 - Browser-console capture is deliberately bounded to packaged Electron and an active KForge-owned loopback Preview. HTML-only inspection still does not claim executed-JavaScript DOM coverage, rendered layout/contrast, request waterfalls, screenshots, element picking, or user-interaction telemetry unless a separate measured capability supplies that evidence.
 
-This file is a dated evidence snapshot, not a permanently self-updating claim about HEAD. Run #271 and SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b` are the latest verified implementation baseline captured here. A later documentation-only commit does not retroactively change that tested SHA; for any newer implementation commit, use that exact SHA's GitHub Actions run and artifacts.
+This file is a dated evidence snapshot, not a permanently self-updating claim about HEAD. The latest verified implementation baseline is the SHA and run recorded at the top of this file; earlier run numbers and SHAs below describe historical states and do not attest current HEAD. A later documentation-only commit does not retroactively change the verified implementation SHA; for any newer implementation commit, use that exact SHA's GitHub Actions run and artifacts.
 
 ## Release closure work (2026-09-09, local HEAD, unpushed at write time)
 
