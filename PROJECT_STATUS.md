@@ -13,6 +13,18 @@
 - Dependency audit: `npm audit --omit=dev` reports **0 vulnerabilities**. The full development-inclusive graph reports 19 dev-only advisories (6 moderate, 13 high), dominated by `picomatch <=4.0.7` with no patched release and by `glob`/`minimatch` fixes that only exist in breaking majors. These are not production dependencies and are not converted into a false clean claim.
 - The verified head includes production HTTP hardening (CSP and security-header parity with the packaged desktop shell, generic terminal error boundary), bounded desktop diagnostics with one rotated backup, and issue forms that route vulnerabilities to private advisories. These are covered by the same gate run rather than claimed as separate evidence.
 
+## New polish batch verified SHA (2026-11-18)
+
+- Product: KNOuX Forge.
+- Verified SHA: `4d166845a40a8a3ccde1a37ab7563a0318e577a5`.
+- This SHA includes the final-production polish batch: desktop window-state persistence, Windows app identity (`com.daynightdeliveryservices.knouxforge`), production menu without reload/DevTools, About/diagnostics actions, KForgeErrorBoundary branded recovery surface, branded 404 page, top-level React error boundary, CSP parity with packaged desktop, bounded desktop log rotation, and current-status README.
+- GitHub Actions `KForge Verification Gate` run is pending on this exact SHA. Local verification passed: `typecheck`, `lint`, `build`, `verify:desktop` (loopback smoke test PASS), 12/12 new unit tests, `npm audit --omit=dev` **0 vulnerabilities**.
+- Ref topology: `main` only. Local `main` equals `origin/main`; no other local or remote branches, tags, worktrees or hidden archive refs remain.
+- Installer trust: **UNSIGNED** development/release-candidate artifact unless a trusted certificate is supplied and the OS-verified Authenticode state proves otherwise. No Trusted Publisher or SmartScreen reputation is claimed.
+- Desktop lifecycle hardening documented: window placement is validated against attached displays and ignored when corrupt/unreachable; fatal main-process failures redact through the diagnostic writer and fail closed; renderer crashes offer bounded reload recovery then a clean quit; production menu withholds reload/DevTools; CSP parity between production browser and packaged desktop.
+- Code scanning: same 18 open CodeQL findings as above, classified behind realpath/loopback/`shell:false` boundaries; not claimed fixed.
+- Dependabot: same `minimatch` medium alert requires breaking parent upgrade; `picomatch <=4.0.7` has no patched release.
+
 ## Previous verified state (2026-09-26)
 
 - Product: KNOuX Forge
