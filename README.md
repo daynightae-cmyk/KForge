@@ -1,13 +1,10 @@
 # KNOuX Forge
 
-## Reference verification baseline
+## Current verification status
 
-Historical reference: Run #271 at SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b`
-recorded Playwright browser acceptance, cross-platform verification and Windows
-packaging. These are dated results, not a claim about the current HEAD. The
-current dependency policy still requires `strict-allow-scripts=true`; use the
-exact current lockfile and allowlist. Read [the integration audit](docs/verification/2026-11-02-integration/AUDIT.md)
-and its results for newer observations, failures and production gaps.
+`KForge Verification Gate` is the authoritative cross-platform evidence for the exact `main` SHA. The current verified SHA, run number, local verification scope and open evidence limits are recorded in [PROJECT_STATUS.md](PROJECT_STATUS.md). Historical run numbers and integration audits are dated evidence; they do not attest the current HEAD.
+
+The dependency policy requires `strict-allow-scripts=true`; use the exact current lockfile and allowlist. The [integration audit](docs/verification/2026-11-02-integration/AUDIT.md) remains available as historical observations and known-gap context.
 
 Development navigation: `http://localhost:8080/workspace`. Production-server
 navigation: `http://localhost:3000/workspace` (when running on that configured
@@ -76,7 +73,7 @@ The application combines a **React 18 / TypeScript / Vite frontend**, an **Expre
 
 ## The KNOuX Luminous Glass identity
 
-KForge's visual direction follows its **approved pearl installation/reveal experience**: restrained lavender luminosity, layered translucent materials, clearly bounded cards, high-contrast engineering typography and a unified transition into the workbench. The **KNOuX Luminous Glass** workspace change is integrated into the mainline source; its exact design and acceptance evidence are tracked by [PR #63](https://github.com/daynightae-cmyk/KForge/pull/63).
+KForge's visual direction follows its **approved pearl installation/reveal experience**: restrained lavender luminosity, layered translucent materials, clearly bounded cards, high-contrast engineering typography and a unified transition into the workbench. The **KNOuX Luminous Glass** workspace change is integrated into the mainline source; its exact design and acceptance evidence are recorded in the merged [PR #63](https://github.com/daynightae-cmyk/KForge/pull/63).
 
 This README's banner and domain diagram are **documentation artwork**, not simulated application screenshots. The genuine brand mark comes from the repository's own [official logo asset](client/assets/knoux-forge-official-logo.webp). Actual rendering and accessibility must always be checked in the running application and across relevant viewports, themes and interaction states.
 

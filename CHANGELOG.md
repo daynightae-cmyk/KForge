@@ -6,17 +6,22 @@ All notable changes to KNOuX Forge are recorded here. The format follows Keep a 
 
 ### Added
 
+- Branded renderer recovery boundary and a theme-consistent route-not-found surface, so a render failure or unknown route never leaves a blank window.
+- Desktop window placement is remembered across launches and validated against attached displays before it is restored.
+- About and diagnostics menu entries, plus a Windows app-user-model identity aligned with the packaged application id.
 - Bug-report and feature-request issue forms, plus an issue chooser that routes vulnerability reports to GitHub Private Vulnerability Reporting.
 
 ### Changed
 
+- The packaged desktop menu exposes native editing, zoom, fullscreen, About and diagnostics while withholding reload and DevTools from production.
 - Desktop diagnostics are now bounded at 5 MB with a single rotated `.1` backup instead of growing indefinitely.
 
 ### Security
 
 - The standalone production browser runtime now serves the built workbench under the same content security policy as the packaged desktop shell, with `nosniff`, frame, referrer and permissions headers. HSTS remains omitted because the runtime is loopback HTTP only.
 - Unhandled HTTP failures now terminate in a generic JSON boundary that preserves deliberate 4xx statuses without echoing stacks, absolute paths, request bodies or credentials.
-- Tests assert content-security-policy parity between the production browser runtime and the packaged desktop policy, and verify the terminal error boundary never leaks failure internals.
+- Desktop main-process fatal failures are logged through the redacting diagnostic writer and fail closed; renderer crashes offer bounded reload recovery instead of leaving an unresponsive shell.
+- Tests assert content-security-policy parity between the production browser runtime and the packaged desktop policy, verify the terminal error boundary never leaks failure internals, and cover window-state validation and production menu roles.
 
 ## [0.1.0] - 2026-11-18
 

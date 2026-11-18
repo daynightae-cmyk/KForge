@@ -1,27 +1,27 @@
-import { useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight, Compass } from "lucide-react";
 
-const NotFound = () => {
-  const location = useLocation();
-
-  useEffect(() => {
-    console.error(
-      "404 Error: User attempted to access non-existent route:",
-      location.pathname,
-    );
-  }, [location.pathname]);
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">404</h1>
-        <p className="text-xl text-gray-600 mb-4">Oops! Page not found</p>
-        <a href="/" className="text-blue-500 hover:text-blue-700 underline">
-          Return to Home
-        </a>
+const NotFound = () => (
+  <main className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
+    <section className="w-full max-w-lg rounded-2xl border bg-card p-8 text-center shadow-sm" aria-labelledby="not-found-title">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+        <Compass aria-hidden="true" className="text-muted-foreground" size={22} />
       </div>
-    </div>
-  );
-};
+      <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">KNOuX Forge</p>
+      <h1 id="not-found-title" className="mt-2 text-2xl font-semibold">Route not found</h1>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">
+        The requested workbench route does not exist in this build. Your local projects and evidence were not changed.
+      </p>
+      <div className="mt-6 flex flex-wrap justify-center gap-3">
+        <Link className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" to="/workspace">
+          <ArrowRight aria-hidden="true" size={16} /> Open workbench
+        </Link>
+        <Link className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" to="/">
+          Return to start
+        </Link>
+      </div>
+    </section>
+  </main>
+);
 
 export default NotFound;

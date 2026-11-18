@@ -1,10 +1,12 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, session, safeStorage } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, session, safeStorage, Menu, screen } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
 const { isTrustedKForgeOrigin, toSafeExternalHttpUrl } = require("./trustOrigin.cjs");
 const { createGitHubConnect } = require("./githubConnect.cjs");
 const { createBoundedLogWriter } = require("./logFile.cjs");
+const { APP_USER_MODEL_ID, createApplicationMenuTemplate } = require("./appMenu.cjs");
+const { createWindowStateStore, ensureVisibleBounds } = require("./windowState.cjs");
 
 const PRODUCT_NAME = "KNOuX Forge";
 const DESKTOP_CHANNELS = new Set(["kforge:runtime", "kforge:github-start", "kforge:github-status", "kforge:github-disconnect", "kforge:github-installations", "kforge:github-repositories"]);
@@ -19,6 +21,7 @@ const workspaceRoot = path.join(userDataRoot, "workspace");
 const logsRoot = path.join(userDataRoot, "logs");
 const logFile = path.join(logsRoot, "desktop.log");
 const logWriter = createBoundedLogWriter(logFile);
+const windowStateStore = createWindowStateStore(path.join(userDataRoot, "window-state.json"));
 const githubConnect = createGitHubConnect({
   safeStorage,
   userDataRoot,
@@ -31,6 +34,9 @@ let productionServer = null;
 let productionServerModule = null;
 let isQuitting = false;
 let startupError = null;
+let fatalHandled = false;
+let rendererRecoveryAttempts = 0;
+let rendererRecoveryDialogOpen = false;
 
 function redact(value) {
   return String(value)
@@ -44,6 +50,125 @@ function writeLog(level, message) {
     logWriter.write(line);
   } catch {
     // Logging must never prevent the desktop product from opening.
+  }
+}
+
+function describeFailure(value) {
+  let text;
+  if (value instanceof Error) text = value.stack || value.message;
+  else if (typeof value === "string") text = value;
+  else {
+    try { text = JSON.stringify(value); } catch { text = String(value); }
+  }
+  return text.length > 4000 ? `${text.slice(0, 4000)}…` : text;
+}
+
+function handleFatalFailure(kind, failure) {
+  if (fatalHandled) return;
+  fatalHandled = true;
+  writeLog("ERROR", `${kind}: ${describeFailure(failure)}`);
+  try {
+    dialog.showErrorBox(
+      `${PRODUCT_NAME} encountered an unexpected error`,
+      `KNOuX Forge must close. The failure was written to the desktop diagnostics log.\n\nDiagnostics: ${logFile}`,
+    );
+  } catch {
+    // The error dialog is best-effort when the main process is already unstable.
+  }
+  const exitTimer = setTimeout(() => app.exit(1), 5_000);
+  exitTimer.unref();
+  void stopLocalRuntime()
+    .catch((error) => writeLog("ERROR", `Fatal shutdown cleanup failed: ${describeFailure(error)}`))
+    .finally(() => {
+      clearTimeout(exitTimer);
+      app.exit(1);
+    });
+}
+
+process.on("uncaughtException", (error) => handleFatalFailure("Uncaught exception", error));
+process.on("unhandledRejection", (reason) => writeLog("ERROR", `Unhandled rejection: ${describeFailure(reason)}`));
+
+async function openDiagnosticsFolder() {
+  try {
+    const failure = await shell.openPath(logsRoot);
+    if (failure) writeLog("WARN", `Diagnostics folder could not be opened: ${failure}`);
+  } catch (error) {
+    writeLog("WARN", `Diagnostics folder could not be opened: ${describeFailure(error)}`);
+  }
+}
+
+async function showAbout() {
+  const metadata = desktopMetadata();
+  const options = {
+    type: "info",
+    title: `About ${PRODUCT_NAME}`,
+    message: `${PRODUCT_NAME} ${metadata.version}`,
+    detail: [
+      `Electron ${process.versions.electron}`,
+      `Chromium ${process.versions.chrome}`,
+      `Node.js ${process.versions.node}`,
+      `${metadata.packaged ? "Packaged" : "Development"} runtime on ${metadata.platform} ${metadata.architecture}`,
+      "",
+      "Installer signing is verified per artifact; this running process does not self-verify its signature.",
+      `Diagnostics: ${logFile}`,
+    ].join("\n"),
+    buttons: ["Open Diagnostics Folder", "Close"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  };
+  const window = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const result = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
+  if (result.response === 0) await openDiagnosticsFolder();
+}
+
+async function handleRendererGone(details) {
+  if (isQuitting || fatalHandled || !details || details.reason === "clean-exit") return;
+  writeLog("ERROR", `Renderer process gone: ${details.reason || "unknown"} (exitCode=${details.exitCode ?? "unknown"})`);
+  if (rendererRecoveryDialogOpen) return;
+  rendererRecoveryDialogOpen = true;
+  try {
+    const window = mainWindow;
+    if (!window || window.isDestroyed()) {
+      await requestQuit();
+      return;
+    }
+    if (rendererRecoveryAttempts >= 2) {
+      await dialog.showMessageBox(window, {
+        type: "error",
+        title: `${PRODUCT_NAME} renderer stopped`,
+        message: "The workbench renderer stopped repeatedly.",
+        detail: `Quit and restart KNOuX Forge. Diagnostics: ${logFile}`,
+        buttons: ["Quit"],
+        defaultId: 0,
+        noLink: true,
+      });
+      await requestQuit();
+      return;
+    }
+    rendererRecoveryAttempts += 1;
+    const result = await dialog.showMessageBox(window, {
+      type: "error",
+      title: `${PRODUCT_NAME} renderer stopped`,
+      message: "The workbench renderer stopped unexpectedly.",
+      detail: "Reload the workbench to continue. If it stops again, quit and restart KNOuX Forge.",
+      buttons: ["Reload Workbench", "Quit"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (result.response !== 0) {
+      await requestQuit();
+      return;
+    }
+    try {
+      window.reload();
+    } catch (error) {
+      writeLog("ERROR", `Renderer reload failed: ${describeFailure(error)}`);
+      await requestQuit();
+    }
+  } finally {
+    rendererRecoveryDialogOpen = false;
   }
 }
 
@@ -95,9 +220,14 @@ function recordDesktopConsole(details) {
 
 function createWindow() {
   const icon = path.join(applicationRoot, "dist", "spa", "favicon.ico");
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const displays = [primaryDisplay, ...screen.getAllDisplays().filter((display) => display.id !== primaryDisplay.id)];
+  const restored = ensureVisibleBounds(windowStateStore.load(), displays, primaryDisplay);
+  const position = Number.isInteger(restored.x) && Number.isInteger(restored.y) ? { x: restored.x, y: restored.y } : {};
   mainWindow = new BrowserWindow({
-    width: 1480,
-    height: 920,
+    width: restored.width,
+    height: restored.height,
+    ...position,
     minWidth: 1024,
     minHeight: 720,
     show: false,
@@ -112,6 +242,7 @@ function createWindow() {
       webSecurity: true,
     },
   });
+  if (restored.maximized) mainWindow.maximize();
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     const external = toSafeExternalHttpUrl(url);
@@ -127,7 +258,14 @@ function createWindow() {
   // Electron 44 exposes console-message as one details object. Keeping this
   // listener single-argument avoids the deprecated legacy level/message/line/sourceId signature.
   mainWindow.webContents.on("console-message", (details) => recordDesktopConsole(details));
+  mainWindow.webContents.on("render-process-gone", (_event, details) => { void handleRendererGone(details); });
   mainWindow.once("ready-to-show", () => mainWindow && mainWindow.show());
+  mainWindow.on("close", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const maximized = mainWindow.isMaximized();
+    const bounds = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+    windowStateStore.save({ ...bounds, maximized });
+  });
   mainWindow.on("closed", () => { mainWindow = null; });
   return mainWindow;
 }
@@ -202,9 +340,14 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.setName(PRODUCT_NAME);
+  app.setAppUserModelId(APP_USER_MODEL_ID);
   app.setPath("userData", userDataRoot);
   app.on("web-contents-created", (_event, contents) => {
     contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  });
+  app.on("child-process-gone", (_event, details) => {
+    if (!details || details.reason === "clean-exit") return;
+    writeLog("WARN", `Child process gone: ${details.type || "unknown"} ${details.reason || "unknown"} (exitCode=${details.exitCode ?? "unknown"}).`);
   });
   app.on("before-quit", (event) => {
     if (!isQuitting) {
@@ -262,6 +405,12 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.webRequest.onCompleted(trafficFilter, (details) => recordDesktopTraffic(details));
     session.defaultSession.webRequest.onErrorOccurred(trafficFilter, (details) => recordDesktopTraffic(details, details.error || "request failed"));
     writeLog("INFO", `Starting ${PRODUCT_NAME} ${app.getVersion()} (${app.isPackaged ? "packaged" : "development"} runtime).`);
+    Menu.setApplicationMenu(Menu.buildFromTemplate(createApplicationMenuTemplate({
+      productName: PRODUCT_NAME,
+      about: () => { void showAbout(); },
+      openDiagnostics: () => { void openDiagnosticsFolder(); },
+      isDevelopment,
+    })));
     await startApplication();
   });
 }

@@ -97,6 +97,8 @@ Unhandled route failures terminate in a generic JSON boundary. The caller receiv
 
 Desktop diagnostics are bounded: `desktop.log` rotates at 5 MB and keeps one `.1` backup, so a long-running or noisy Preview session cannot grow user data without limit. Rotation is best-effort and must never prevent the application from starting.
 
+Desktop process lifecycle is fail-closed: the renderer is sandboxed with context isolation and no Node integration, permission requests are denied, navigation and external opens are validated, and only one product instance may run. Fatal main-process failures are redacted into the diagnostic log before the application exits; renderer crashes offer bounded reload recovery, and repeated crashes end in a clean quit that directs the operator to restart rather than leaving an unresponsive shell. Window placement is convenience state: it is validated against attached displays and ignored when corrupt or unreachable.
+
 ## Repository Security Controls
 
 Verified on 2026-11-18:
