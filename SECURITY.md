@@ -83,6 +83,20 @@ An existing EXE must be inspected as an artifact. A `Valid` Authenticode result 
 
 A `TRUSTED_RELEASE` still requires a valid Authenticode signature, signer identity evidence, artifact hash/provenance evidence, and every other configured release gate. Current absence of a production code-signing certificate must be reported as a blocker, not bypassed.
 
+## Runtime HTTP and Desktop Hardening
+
+The packaged Electron shell and the standalone production browser runtime serve the same built workbench under the same restrictive content security policy:
+
+`default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
+
+The policy permits only loopback Preview frames, blocks remote script and object embedding, forbids framing the KForge shell, and is asserted by automated tests. Development keeps Vite HMR usable and is not presented as the production policy. HSTS is intentionally not applied because the runtime is loopback HTTP only; adding it there would be header decoration rather than a transport boundary.
+
+Production responses also set `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a `Permissions-Policy` that disables camera, microphone, geolocation, payment, USB, serial, HID and Bluetooth access.
+
+Unhandled route failures terminate in a generic JSON boundary. The caller receives a stable error code and a generic message; stacks, absolute paths, request bodies and credential values stay server-side. Deliberate 4xx statuses are preserved, but their internal failure text is not echoed.
+
+Desktop diagnostics are bounded: `desktop.log` rotates at 5 MB and keeps one `.1` backup, so a long-running or noisy Preview session cannot grow user data without limit. Rotation is best-effort and must never prevent the application from starting.
+
 ## Repository Security Controls
 
 Verified on 2026-11-18:

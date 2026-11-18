@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { createServer as createHttpServer, type Server } from "http";
 import path from "path";
 import express from "express";
+import { kforgeTerminalErrorHandler } from "./httpHardening";
 import { createServer } from "./index";
 import { recordPreviewBrowserConsole, stopAllPreviews } from "./services/previewRuntime";
 import { recordTopologyBrowserTraffic, stopAllTopologies } from "./services/topologyRuntime";
@@ -65,7 +66,7 @@ export async function startKForgeProductionServer({
   // The packaged/E2E runtime is loopback-only, so it also refuses any Host
   // header that is not a loopback authority. That closes DNS-rebinding access
   // to workspace, provider, marketplace and remote-source truth.
-  const app = createServer({ enforceLoopbackHostHeader: true });
+  const app = createServer({ enforceLoopbackHostHeader: true, securityHeaders: true });
   app.disable("x-powered-by");
   app.use(express.static(distPath));
   app.get("/{*path}", (req, res) => {
@@ -81,6 +82,10 @@ export async function startKForgeProductionServer({
       res.status(500).json({ error: "KForge workbench shell is unavailable in this build." });
     });
   });
+
+  // Static and shell failures are registered after createServer()'s API
+  // boundary, so the production app needs its own terminal error handler.
+  app.use(kforgeTerminalErrorHandler);
 
   const server = createHttpServer(app);
   const address = await new Promise<{ host: string; port: number }>((resolve, reject) => {

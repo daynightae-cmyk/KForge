@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/daynightae-cmyk/KForge/security/advisories/new
+    about: Report vulnerabilities privately. Never open a public issue for a suspected vulnerability.
+  - name: Read the security policy
+    url: https://github.com/daynightae-cmyk/KForge/blob/main/SECURITY.md
+    about: Review supported versions, scope and private reporting requirements.
+  - name: Read the project status
+    url: https://github.com/daynightae-cmyk/KForge/blob/main/PROJECT_STATUS.md
+    about: Check the verified head, known blockers and evidence limits before filing.

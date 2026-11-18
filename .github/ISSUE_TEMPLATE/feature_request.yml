@@ -1,0 +1,68 @@
+name: Feature request
+description: Propose a capability that belongs in the canonical KNOuX Forge architecture.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        KNOuX Forge is local-first and evidence-backed. Proposals must map to a real canonical surface and service, not decorative or mock capability.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the concrete engineering workflow that is currently blocked or unnecessarily slow.
+      placeholder: When I ..., I cannot ..., because ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+      description: What should KForge do, and what evidence should the Inspector expose for it?
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Primary surface
+      description: Which canonical area should own this capability?
+      options:
+        - Workspace
+        - Local Platform
+        - Preview
+        - Tasks and evidence
+        - Marketplace or Agents
+        - Online and remote sources
+        - Models and provider command center
+        - Security and release quality
+        - Documentation and contributor tooling
+        - Other or cross-cutting
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain existing workarounds or narrower designs you rejected and why.
+    validations:
+      required: false
+  - type: textarea
+    id: risks
+    attributes:
+      label: Security, privacy and failure behavior
+      description: Note any filesystem, process, network, credential or trust implications, and what must happen when the capability is unavailable.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and this proposal is not already covered.
+          required: true
+        - label: This proposal does not require fabricated provider, runtime or release evidence.
+          required: true
+        - label: This proposal does not duplicate an existing canonical surface or service unnecessarily.
+          required: true

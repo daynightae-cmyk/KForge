@@ -1,0 +1,87 @@
+name: Bug report
+description: Report a reproducible defect in KNOuX Forge.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Use the private advisory link on the previous screen.
+
+        Remove credentials, tokens, private paths and unrelated user data from every field before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: KNOuX Forge version or commit
+      description: Provide the application version or the exact main commit SHA you tested.
+      placeholder: 0.1.0 or 716196f252ebf9c0cdae802e399488ce140d2c4b
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      description: Where did the defect occur?
+      options:
+        - Windows desktop application (installed NSIS build)
+        - Windows desktop application (development)
+        - Production browser runtime (built server)
+        - Vite development server
+        - Verification, packaging or release tooling
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system version, Node.js version and any relevant project toolchain versions.
+      placeholder: Windows 11 24H2, Node.js 24.x, npm 11.x
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Give the smallest sequence that reliably reproduces the problem.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened, and which product contract states it?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include exact error text where useful.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Relevant log lines, screenshots or verification output with secrets and private paths removed.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and this defect is not already reported.
+          required: true
+        - label: I reproduced this on the latest `main` revision or state the exact version above.
+          required: true
+        - label: This report contains no credentials, tokens, private keys or unrelated user data.
+          required: true
+        - label: This is not a security vulnerability; those are reported privately through GitHub Security Advisories.
+          required: true

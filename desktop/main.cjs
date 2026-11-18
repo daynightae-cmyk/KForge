@@ -4,6 +4,7 @@ const path = require("path");
 const { pathToFileURL } = require("url");
 const { isTrustedKForgeOrigin, toSafeExternalHttpUrl } = require("./trustOrigin.cjs");
 const { createGitHubConnect } = require("./githubConnect.cjs");
+const { createBoundedLogWriter } = require("./logFile.cjs");
 
 const PRODUCT_NAME = "KNOuX Forge";
 const DESKTOP_CHANNELS = new Set(["kforge:runtime", "kforge:github-start", "kforge:github-status", "kforge:github-disconnect", "kforge:github-installations", "kforge:github-repositories"]);
@@ -17,6 +18,7 @@ const userDataRoot = path.join(localAppData, PRODUCT_NAME);
 const workspaceRoot = path.join(userDataRoot, "workspace");
 const logsRoot = path.join(userDataRoot, "logs");
 const logFile = path.join(logsRoot, "desktop.log");
+const logWriter = createBoundedLogWriter(logFile);
 const githubConnect = createGitHubConnect({
   safeStorage,
   userDataRoot,
@@ -39,8 +41,7 @@ function redact(value) {
 function writeLog(level, message) {
   const line = `${new Date().toISOString()} [${level}] ${redact(message)}\n`;
   try {
-    fs.mkdirSync(logsRoot, { recursive: true });
-    fs.appendFileSync(logFile, line, { encoding: "utf8" });
+    logWriter.write(line);
   } catch {
     // Logging must never prevent the desktop product from opening.
   }

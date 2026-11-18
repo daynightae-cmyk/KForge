@@ -4,7 +4,19 @@ All notable changes to KNOuX Forge are recorded here. The format follows Keep a 
 
 ## [Unreleased]
 
-Nothing recorded yet.
+### Added
+
+- Bug-report and feature-request issue forms, plus an issue chooser that routes vulnerability reports to GitHub Private Vulnerability Reporting.
+
+### Changed
+
+- Desktop diagnostics are now bounded at 5 MB with a single rotated `.1` backup instead of growing indefinitely.
+
+### Security
+
+- The standalone production browser runtime now serves the built workbench under the same content security policy as the packaged desktop shell, with `nosniff`, frame, referrer and permissions headers. HSTS remains omitted because the runtime is loopback HTTP only.
+- Unhandled HTTP failures now terminate in a generic JSON boundary that preserves deliberate 4xx statuses without echoing stacks, absolute paths, request bodies or credentials.
+- Tests assert content-security-policy parity between the production browser runtime and the packaged desktop policy, and verify the terminal error boundary never leaks failure internals.
 
 ## [0.1.0] - 2026-11-18
 

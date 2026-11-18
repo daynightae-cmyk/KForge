@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { KFORGE_CONTENT_SECURITY_POLICY } from "./httpHardening";
 import { startKForgeProductionServer } from "./productionServer";
 
 const temporaryRoots: string[] = [];
@@ -39,9 +40,15 @@ describe("KForge production server", () => {
       expect(runtime.port).toBeGreaterThan(0);
       const ping = await fetch(`${runtime.url}/api/ping`);
       expect(ping.status).toBe(200);
+      expect(ping.headers.get("content-security-policy")).toBe(KFORGE_CONTENT_SECURITY_POLICY);
       await expect(ping.json()).resolves.toEqual({ message: "KForge server is online." });
       const application = await fetch(`${runtime.url}/workspace`);
       expect(application.status).toBe(200);
+      expect(application.headers.get("content-security-policy")).toBe(KFORGE_CONTENT_SECURITY_POLICY);
+      expect(application.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(application.headers.get("x-frame-options")).toBe("DENY");
+      expect(application.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(application.headers.get("permissions-policy")).toContain("camera=()");
       await expect(application.text()).resolves.toContain("Local workspace");
     } finally {
       await runtime.close();

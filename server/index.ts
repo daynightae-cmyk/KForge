@@ -1,5 +1,6 @@
 import express from "express";
 import { rateLimit } from "express-rate-limit";
+import { kforgeSecurityHeaders, kforgeTerminalErrorHandler } from "./httpHardening";
 import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
 import operationEvidenceRouter from "./routes/operationEvidence";
 import productTruthRouter from "./routes/productTruth";
@@ -14,6 +15,12 @@ const LOOPBACK_API_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
 export interface CreateServerOptions {
   enforceLoopbackHostHeader?: boolean;
   requestAllowancePerMinute?: number;
+  /**
+   * The packaged Electron shell and the standalone production browser runtime
+   * serve the SPA under a restrictive CSP. Development keeps Vite HMR open and
+   * leaves this disabled.
+   */
+  securityHeaders?: boolean;
 }
 
 /**
@@ -104,12 +111,13 @@ function rejectUnsafeProviderStorageIdentifiers(req: express.Request, res: expre
 export function createServer(options: CreateServerOptions = {}) {
   const app = express();
 
-  // Loopback-first desktop runtime: disable fingerprinting, bound body sizes,
-  // normalize malformed-JSON errors without leaking stacks. HSTS/CSP-at-edge
-  // are intentionally not applied here: this API is served over loopback HTTP
-  // by the packaged Electron shell (which applies its own CSP frame policy),
-  // so internet-edge headers would be security decoration, not a boundary.
+  // Loopback-first runtime: disable fingerprinting, bound body sizes and
+  // normalize malformed-JSON errors without leaking stacks. The production
+  // browser runtime enables the same CSP family that the packaged Electron
+  // shell applies at its session boundary; HSTS remains inapplicable because
+  // this API is only served over loopback HTTP.
   app.disable("x-powered-by");
+  if (options.securityHeaders) app.use(kforgeSecurityHeaders);
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true, limit: "100kb" }));
   app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -158,6 +166,11 @@ export function createServer(options: CreateServerOptions = {}) {
   // before any socket opens, and results normalize onto Marketplace evidence.
   app.use("/api/workspace", remoteSourcesRouter);
   app.use("/api/workspace", workspaceRouter);
+
+  // Registered after every API route so Express 5 forwards rejected async
+  // handlers here instead of its development default handler, which would echo
+  // a stack and absolute paths to the local caller.
+  app.use(kforgeTerminalErrorHandler);
 
   return app;
 }
