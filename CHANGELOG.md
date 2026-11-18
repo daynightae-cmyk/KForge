@@ -19,6 +19,7 @@ Nothing recorded yet.
 
 - Consolidated all repository work onto a single `main` head with `main` as the only local and remote branch.
 - Refreshed test-fixture dependency ranges to patched releases.
+- Isolated the workspace snapshot test in a disposable temporary project root so tests no longer write snapshot state into tracked fixture directories.
 - Enabled Dependabot security updates and automatic deletion of merged branches.
 - Updated the security policy to record verified private vulnerability reporting and repository security controls.
 - Updated the project status with the 2026-11-18 authoritative verification result.

@@ -448,14 +448,20 @@ describe("KForge Workspace engines", () => {
   });
 
   it("creates and restores a file snapshot", async () => {
-    const projectPath = fixture("workspace-clean");
+    // Snapshot state is written under <project>/.kforge, so this test must own a
+    // disposable project root instead of leaving state inside the tracked fixture.
+    const projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "kforge-workspace-snapshot-"));
     const file = path.join(projectPath, "src", "snapshot-target.txt");
-    await fs.writeFile(file, "before", "utf8");
-    const snapshot = await createSnapshot(projectPath, ["src/snapshot-target.txt"], "Workspace snapshot test");
-    await fs.writeFile(file, "after", "utf8");
-    await restoreSnapshot(projectPath, snapshot.id);
-    await expect(fs.readFile(file, "utf8")).resolves.toBe("before");
-    await fs.rm(file, { force: true });
+    try {
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, "before", "utf8");
+      const snapshot = await createSnapshot(projectPath, ["src/snapshot-target.txt"], "Workspace snapshot test");
+      await fs.writeFile(file, "after", "utf8");
+      await restoreSnapshot(projectPath, snapshot.id);
+      await expect(fs.readFile(file, "utf8")).resolves.toBe("before");
+    } finally {
+      await fs.rm(projectPath, { recursive: true, force: true, maxRetries: 4, retryDelay: 75 });
+    }
   });
 
   // CodeQL reports the bounded profile traversal (server/routes/workspace.ts:250) as
