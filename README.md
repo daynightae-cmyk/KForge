@@ -6,6 +6,10 @@
 
 The dependency policy requires `strict-allow-scripts=true`; use the exact current lockfile and allowlist. The [integration audit](docs/verification/2026-11-02-integration/AUDIT.md) remains available as historical observations and known-gap context.
 
+## Reference verification baseline
+
+Historical verified baselines are dated evidence, not current HEAD claims. The authoritative baseline is recorded in [PROJECT_STATUS.md](PROJECT_STATUS.md): **Run #271** at SHA `a7464f3d3f1758b1a9725304719e0ebaacb79f3b` (Preview 5.0 baseline: `npm audit --audit-level=moderate` 0 vulnerabilities, 61/61 Playwright browser acceptance, 487.85 kB main client entry). Current HEAD status, verified SHA and run number are maintained in PROJECT_STATUS.md; this README links to it rather than pinning historical numbers as present-tense promises.
+
 Development navigation: `http://localhost:8080/workspace`. Production-server
 navigation: `http://localhost:3000/workspace` (when running on that configured
 port). Packaged Electron additionally records bounded KForge-owned loopback browser traffic
