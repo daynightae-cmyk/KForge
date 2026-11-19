@@ -2281,3 +2281,126 @@ html.dark .kw-empty__mark {
 .kw-service-card__action { font-size: 12px; min-height: 32px; }
 .kw-service-card__badge { font-size: 9px; }
 .kw-service-card__facts { font-size: 11px; }
+
+/* ------------------------------------------------------------------ */
+/* 17. Motion + micro-interactions                                    */
+/*   Premium feel on top of the approved rebirth identity.            */
+/*   Every motion honors prefers-reduced-motion. No layout, color, or */
+/*   capability contract is changed here — only entrance, hover,      */
+/*   press, and focus polish.                                         */
+/* ------------------------------------------------------------------ */
+
+@keyframes kf-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kf-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kf-pulse-soft {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.85; transform: scale(1.02); }
+}
+
+@keyframes kf-ring-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--kw-primary) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--kw-primary) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--kw-primary) 0%, transparent); }
+}
+
+.kw-surface-heading,
+.kf-card,
+.kf-stat,
+.kw-quality-card,
+.kw-surface-section,
+.kw-operation-panel,
+.kw-agent-panel,
+.kw-inspector-project {
+  animation: kf-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Hover lift on premium cards — readable, restrained, never layout-shifting. */
+.kf-card:hover,
+.kw-quality-card:hover,
+.kw-surface-section:hover,
+.kw-operation-panel:hover,
+.kw-agent-panel:hover {
+  transform: translateY(-2px);
+}
+
+/* Pressed state on every shell button — tactile confirmation of interaction. */
+.kw-shell button:not(:disabled):active,
+.kw-shell .kf-btn:not(:disabled):active,
+.kw-shell .is-primary:active {
+  transform: scale(0.97);
+}
+
+/* Focus ring with a soft outward pulse so keyboard navigation is unmistakable. */
+.kw-shell button:focus-visible,
+.kw-shell input:focus-visible,
+.kw-shell select:focus-visible,
+.kw-shell textarea:focus-visible,
+.kw-shell .kf-btn:focus-visible,
+.kw-shell .kf-tabs button:focus-visible {
+  outline-offset: 2px;
+  animation: kf-ring-pulse 1.4s ease-out infinite;
+}
+
+[data-kf-reduced-motion="true"] .kw-shell button:focus-visible,
+[data-kf-reduced-motion="true"] .kw-shell input:focus-visible,
+[data-kf-reduced-motion="true"] .kw-shell select:focus-visible,
+[data-kf-reduced-motion="true"] .kw-shell textarea:focus-visible,
+[data-kf-reduced-motion="true"] .kw-shell .kf-btn:focus-visible,
+[data-kf-reduced-motion="true"] .kw-shell .kf-tabs button:focus-visible,
+[data-kf-reduced-motion="true"] .kw-surface-heading,
+[data-kf-reduced-motion="true"] .kf-card,
+[data-kf-reduced-motion="true"] .kf-stat,
+[data-kf-reduced-motion="true"] .kw-quality-card,
+[data-kf-reduced-motion="true"] .kw-surface-section,
+[data-kf-reduced-motion="true"] .kw-operation-panel,
+[data-kf-reduced-motion="true"] .kw-agent-panel,
+[data-kf-reduced-motion="true"] .kw-inspector-project {
+  animation: none !important;
+}
+
+/* Skeleton shimmer for empty/loading evidence panels. */
+.kw-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--kf-violet-soft) 60%, var(--kw-panel));
+}
+.kw-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: -10% -20% -10% -20%;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--kw-primary) 30%, transparent), transparent);
+  animation: kf-pulse-soft 1.6s ease-in-out infinite;
+}
+[data-kf-reduced-motion="true"] .kw-skeleton::after { animation: none; }
+
+/* Soft glow accent on the primary action button in each surface heading. */
+.kw-surface-heading > button:hover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 0, color-mix(in srgb, var(--kw-primary) 25%, transparent), transparent);
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+.kw-surface-heading > button:is(:hover, :focus-visible)::after { opacity: 0.55; }
+
+/* Back navigation: gentle scale on hover for tactile wayfinding. */
+.kw-navigation-back:hover { transform: translateX(-2px); }
+.kw-navigation-back:active { transform: translateX(0) scale(0.94); }
+
+/* Activity rail active state gets a gentle inner breath for the current domain. */
+.kw-activity-bar button.is-active {
+  animation: kf-pulse-soft 4s ease-in-out infinite;
+}
+[data-kf-reduced-motion="true"] .kw-activity-bar button.is-active { animation: none; }
