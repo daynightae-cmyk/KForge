@@ -10,7 +10,7 @@ import { clearProjectContext, selectActivity, setProjectContext } from "./helper
  */
 
 const ACTIVITY_LABELS = ["Projects", "AI", "Online", "Intelligence", "Quality", "Developer Tools", "Remote / Git", "Release", "System"] as const;
-const EXPECTED_VIEW_COUNT = 68;
+const EXPECTED_VIEW_COUNT = 71;
 const SETTLE_TIMEOUT = 45_000;
 const EVIDENCE_ROOT = path.join(process.cwd(), "verification", "settle-audit");
 const FINAL_ROOT = path.join(process.cwd(), "verification", "final");

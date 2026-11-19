@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FolderOpen, GitBranch, Loader2, Rocket, Settings2, Store, Terminal } from "lucide-react";
+import { Compass, FolderOpen, GitBranch, Loader2, Rocket, Settings2, Store, Terminal } from "lucide-react";
 import { EmptyState } from "./ui";
 import { fetchJson, jsonRequest } from "./api";
 
@@ -114,6 +114,7 @@ export function ProjectRequired({ detail }: { detail: string }) {
 }
 
 const QUICK_ACTIONS: Array<{ label: string; target: string; icon: typeof Terminal }> = [
+  { label: "Setup guide", target: "Get Started", icon: Compass },
   { label: "Project commands", target: "Terminal", icon: Terminal },
   { label: "Providers", target: "Providers", icon: Store },
   { label: "Marketplace", target: "Marketplace", icon: Rocket },

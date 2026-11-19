@@ -117,23 +117,24 @@ This README's banner and domain diagram are **documentation artwork**, not simul
 
 ## One workbench, nine engineering domains
 
-The [canonical navigation source](client/workbench/navigation.ts) currently defines **9 Activity Bar domains and 68 user-facing destinations**. The [service directory](client/workbench/serviceDirectory.ts) attaches domain, section, purpose, primary action, handler and API contract to navigable services; [availability](client/workbench/serviceAvailability.ts) is computed from real prerequisites and evidence, not hardcoded success.
+The [canonical navigation source](client/workbench/navigation.ts) currently defines **9 Activity Bar domains and 71 user-facing destinations**. The [service directory](client/workbench/serviceDirectory.ts) attaches domain, section, purpose, primary action, handler and API contract to navigable services; [availability](client/workbench/serviceAvailability.ts) is computed from real prerequisites and evidence, not hardcoded success.
 
-These are *product areas and reachable destinations*, **not a claim that 68 independent external integrations are live**.
+These are *product areas and reachable destinations*, **not a claim that 71 independent external integrations are live**.
 
 ### 01 — Projects · local context and collections
 
-**Workspace · Project Health · Recent · Favorites · Pinned · Archive · Open Project · Import Project**
+**Workspace · Project Health · Get Started · Recent · Favorites · Pinned · Archive · Open Project · Import Project**
 
 Start with real project context: inspect a local repository, choose the active project, review trust, open a directory or request a permitted clone. Organize known projects using persisted collections, then let the project's actual technology and metadata determine which capabilities are available.
 
 - Bounded local project discovery and selection.
 - Project-specific health, findings and evidence.
+- Evidence-based Get Started guide ([onboarding contract](docs/ONBOARDING.md)).
 - Recent/favorite/pinned/archive collections.
 - Distinction between global context and a selected, trusted project.
 - Explicit policy checks for importing or cloning a remote repository.
 
-**Primary evidence:** [Projects source](client/workbench/projectsSurface.tsx) · [Project collections](client/workbench/ProjectCollectionsWorkbench.tsx) · [Project Health](client/workbench/ProjectHealthWorkbench.tsx)
+**Primary evidence:** [Projects source](client/workbench/projectsSurface.tsx) · [Get Started](client/workbench/GettingStartedWorkbench.tsx) · [Project collections](client/workbench/ProjectCollectionsWorkbench.tsx) · [Project Health](client/workbench/ProjectHealthWorkbench.tsx)
 
 ### 02 — AI · providers, models, agents and tasks
 
@@ -235,7 +236,7 @@ A Windows installer existing on disk does not establish its trust. KForge keeps 
 
 ### 09 — System · policy, preferences and diagnostics
 
-**Settings · Trust · Permissions · Storage · Online / Offline · Self Audit · System Diagnostics**
+**Settings · Trust · Permissions · Storage · Online / Offline · Self Audit · System Diagnostics · Brand & Identity · Capabilities**
 
 System is the trust and truth control plane. User-editable settings are persisted; unsupported settings are clearly identified. Trust and remote mode decisions change actual permissions rather than merely changing decorative badges.
 
@@ -244,8 +245,10 @@ System is the trust and truth control plane. User-editable settings are persiste
 - Control offline/network policy.
 - Review application storage and diagnostics.
 - Run bounded Self Audit with persisted evidence and honest restart/reload verification.
+- Review the canonical palette, typography and downloadable assets ([brand guide](docs/BRANDING.md)).
+- Browse every registered destination and its owning contract without a readiness claim.
 
-**Primary evidence:** [System source](client/workbench/systemSurface.tsx) · [System Control Center](client/workbench/SystemControlCenter.tsx) · [System Trust](client/workbench/SystemTrustCenter.tsx)
+**Primary evidence:** [System source](client/workbench/systemSurface.tsx) · [System Control Center](client/workbench/SystemControlCenter.tsx) · [System Trust](client/workbench/SystemTrustCenter.tsx) · [Brand Center](client/workbench/BrandCenter.tsx) · [Capabilities](client/workbench/CapabilitiesWorkbench.tsx)
 
 ## The capability and service contract
 
@@ -255,7 +258,7 @@ The foundational information model is:
 ACTIVITY BAR
   └── DOMAIN (9)
        └── EXPLORER SECTION
-            └── SERVICE DESTINATION (68 entries in current navigation)
+            └── SERVICE DESTINATION (71 entries in current navigation)
                  ├── Purpose & prerequisites
                  ├── Primary action
                  ├── UI handler
@@ -269,6 +272,16 @@ This is enforced and described by [Service Directory](docs/KFORGE-SERVICE-DIRECT
 A **service card is a navigation and action surface**, not independent evidence that its backend works. Service readiness depends on selected project, trust, runtime, registered actions, actual providers and network policy.
 
 **Availability may include:** `READY`, `NEEDS_SETUP`, `REQUIRES_PROJECT`, `REQUIRES_PERMISSION`, `OFFLINE`, `UNAVAILABLE`, `RUNNING`, `FAILED` and `COMPLETED`.
+
+### Brand, onboarding and capability surfaces
+
+Three destinations make the contract inspectable inside the product:
+
+- **Projects → Get Started** derives each setup step from workspace, trust, policy, provider and persisted scan evidence. Opening the guide completes nothing by itself ([onboarding contract](docs/ONBOARDING.md)).
+- **System → Brand & Identity** renders the canonical palette, typography, experience rules and downloadable public SVG assets from `client/brand/brandTokens.ts` ([brand guide](docs/BRANDING.md)).
+- **System → Capabilities** projects every registered destination with its handler and API contract, explicitly as a contract inventory rather than a readiness claim.
+
+`npm run verify:brand` checks the tokens, assets, manifest and guide together and runs inside the authoritative gate ([workflow guide](docs/WORKFLOWS.md)).
 
 ### How to distinguish a working feature from a beautiful shell
 
@@ -709,7 +722,7 @@ KForge remains an **actively developed product**. This repository deliberately d
 | Domain | Truth to preserve |
 |---|---|
 | **Local repository/workspace** | Local discovery, project authority and persisted evidence have concrete implementation; scope and trust still apply. |
-| **Service destinations** | The navigation contract currently defines 68 destinations; their individual availability is computed from prerequisites. |
+| **Service destinations** | The navigation contract currently defines 71 destinations; their individual availability is computed from prerequisites. |
 | **Luminous Glass** | The accepted visual work has been merged, but that alone is not new service/runtime verification. |
 | **Cloud AI** | Optional configuration and consent pathways exist; provider connection and model capability depend on real credentials and responses. |
 | **Online / GitHub** | Remote reads and writes are explicit; CI, registries and remote catalog availability cannot be inferred locally. |

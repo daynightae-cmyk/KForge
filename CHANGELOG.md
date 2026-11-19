@@ -6,6 +6,13 @@ All notable changes to KNOuX Forge are recorded here. The format follows Keep a 
 
 ### Added
 
+- **Get Started** onboarding destination that derives every step from workspace, trust, policy, provider and persisted scan evidence instead of visit state.
+- **Brand & Identity** destination with the canonical palette, typography, experience rules, public SVG assets, copy controls and Day/Night preview.
+- **Capabilities** destination projecting all registered destinations, handlers and API contracts as an explicit contract inventory.
+- Canonical brand token module, public app icon, wordmark, social card, installed-app manifest and document metadata.
+- `verify:brand` contract check and its `brand-contract` step inside the authoritative verification gate.
+- `KForge Windows Release Candidate (unsigned)` manual workflow for an exact-SHA installer rehearsal with truthful signing evidence.
+- Brand, onboarding and workflow guides plus a Playwright spec covering the three new destinations.
 - Branded renderer recovery boundary and a theme-consistent route-not-found surface, so a render failure or unknown route never leaves a blank window.
 - Desktop window placement is remembered across launches and validated against attached displays before it is restored.
 - About and diagnostics menu entries, plus a Windows app-user-model identity aligned with the packaged application id.
@@ -13,6 +20,9 @@ All notable changes to KNOuX Forge are recorded here. The format follows Keep a 
 
 ### Changed
 
+- The navigation contract now defines **71** user-facing destinations across the same nine Activity domains.
+- The Projects Project Center links to the Get Started guide, and the projectless quick actions include a Setup guide entry.
+- README, changelog and service documentation describe the new destinations without turning a registered contract into a readiness claim.
 - The packaged desktop menu exposes native editing, zoom, fullscreen, About and diagnostics while withholding reload and DevTools from production.
 - Desktop diagnostics are now bounded at 5 MB with a single rotated `.1` backup instead of growing indefinitely.
 

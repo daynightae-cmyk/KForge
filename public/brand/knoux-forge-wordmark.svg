@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="200" viewBox="0 0 880 200" role="img" aria-labelledby="title">
+  <title id="title">KNOuX Forge wordmark</title>
+  <defs>
+    <linearGradient id="kfWord" x1="52" y1="62" x2="820" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C8AFFF"/>
+      <stop offset=".42" stop-color="#8958FF"/>
+      <stop offset="1" stop-color="#6F31EE"/>
+    </linearGradient>
+    <linearGradient id="kfRule" x1="52" y1="0" x2="560" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2AD9C8"/>
+      <stop offset=".55" stop-color="#8958FF"/>
+      <stop offset="1" stop-color="#8958FF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="878" height="198" rx="22" fill="#07070B" stroke="#5122B8" stroke-opacity=".55"/>
+  <path d="M62 92V148" fill="none" stroke="url(#kfWord)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M118 92 76 120l42 28" fill="none" stroke="url(#kfWord)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M148 92v56" fill="none" stroke="#2AD9C8" stroke-width="5" stroke-linecap="round" opacity=".85"/>
+  <text x="182" y="136" fill="url(#kfWord)" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="72" font-weight="700" letter-spacing="-1">KNOuX</text>
+  <text x="182" y="166" fill="#E6E1D2" fill-opacity=".72" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="600" letter-spacing="7.5">FORGE</text>
+  <path d="M512 104h318" stroke="url(#kfRule)" stroke-width="2" opacity=".8"/>
+  <text x="512" y="140" fill="#F7F5FF" fill-opacity=".78" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="500">Local-first engineering</text>
+  <text x="512" y="166" fill="#F7F5FF" fill-opacity=".5" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="400">command center</text>
+</svg>

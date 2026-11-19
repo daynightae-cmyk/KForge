@@ -1,0 +1,113 @@
+/* Brand & Identity — canonical brand guide surface. Owned by BrandCenter. */
+
+.kw-brand-center {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 18px;
+}
+
+.kw-brand-center__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) auto;
+  gap: 18px;
+  align-items: start;
+  padding: 18px;
+  border: 1px solid var(--kw-border);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 90% -30%, color-mix(in srgb, #8958FF 26%, transparent), transparent 58%),
+    linear-gradient(135deg, color-mix(in srgb, var(--kw-panel) 90%, #8958FF 10%), var(--kw-panel));
+}
+.kw-brand-center__hero small { color: var(--kw-primary); font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.kw-brand-center__hero h2 { margin: 5px 0 7px; font-size: 22px; line-height: 1.12; letter-spacing: -.03em; }
+.kw-brand-center__hero p { margin: 0; max-width: 70ch; color: var(--kw-muted); font-size: 12px; line-height: 1.6; }
+.kw-brand-center__hero-actions { display: grid; gap: 7px; min-width: 190px; }
+.kw-brand-center__hero-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 11px; border-radius: 8px; font-size: 10px; font-weight: 700; }
+
+.kw-brand-center__panel {
+  padding: 14px;
+  border: 1px solid var(--kw-border);
+  border-radius: 12px;
+  background: var(--kw-panel);
+}
+.kw-brand-center__panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
+.kw-brand-center__panel > header small { color: var(--kw-primary); font-size: 9px; font-weight: 800; letter-spacing: .13em; }
+.kw-brand-center__panel > header h3 { margin: 3px 0 0; font-size: 14px; }
+.kw-brand-center__panel > header svg { color: var(--kw-primary); }
+
+.kw-brand-center__facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin: 0; }
+.kw-brand-center__facts > div { padding: 8px 10px; border: 1px solid var(--kw-border); border-radius: 8px; background: color-mix(in srgb, var(--kw-muted) 26%, var(--kw-panel)); }
+.kw-brand-center__facts dt { color: var(--kw-muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.kw-brand-center__facts dd { margin: 3px 0 0; font-size: 11px; overflow-wrap: anywhere; }
+.kw-brand-center__facts code { font-size: 9px; line-height: 1.45; }
+.kw-brand-center__facts a { display: inline-flex; align-items: center; gap: 4px; color: var(--kw-primary); text-decoration: none; overflow-wrap: anywhere; }
+.kw-brand-center__facts a:hover { text-decoration: underline; }
+
+.kw-brand-center__taglines { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; margin-top: 10px; }
+.kw-brand-center__taglines article { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--kw-border); border-radius: 8px; background: color-mix(in srgb, #8958FF 7%, var(--kw-panel)); }
+.kw-brand-center__taglines small { color: var(--kw-primary); font-size: 9px; font-weight: 800; }
+.kw-brand-center__taglines p { margin: 0; font-size: 12px; font-weight: 600; line-height: 1.4; }
+
+.kw-brand-center__swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 9px; }
+.kw-brand-center__swatch { overflow: hidden; border: 1px solid var(--kw-border); border-radius: 10px; background: var(--kw-panel); }
+.kw-brand-center__swatch-face { display: grid; gap: 2px; padding: 13px 12px; min-height: 92px; align-content: end; }
+.kw-brand-center__swatch-face strong { font-size: 12px; }
+.kw-brand-center__swatch-face code { font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.kw-brand-center__swatch-face small { font-size: 9px; opacity: .8; }
+.kw-brand-center__swatch-body { display: grid; gap: 5px; padding: 9px 11px; }
+.kw-brand-center__swatch-body > span { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.kw-brand-center__swatch-body code { color: var(--kw-muted); font-size: 9px; }
+.kw-brand-center__swatch-body p { margin: 0; color: var(--kw-muted); font-size: 9px; line-height: 1.5; }
+
+.kw-brand-center__split { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px; }
+.kw-brand-center__type-sample { display: grid; gap: 7px; padding: 12px; margin-bottom: 10px; border: 1px dashed var(--kw-border); border-radius: 9px; background: color-mix(in srgb, var(--kw-muted) 22%, var(--kw-panel)); }
+.kw-brand-center__type-sample strong { font-size: 20px; line-height: 1.2; letter-spacing: -.03em; }
+.kw-brand-center__type-sample p { margin: 0; font-size: 11px; line-height: 1.6; color: var(--kw-muted); }
+.kw-brand-center__type-sample p[dir="rtl"] { font-size: 14px; color: var(--kw-text); }
+.kw-brand-center__note { margin: 10px 0 0; color: var(--kw-muted); font-size: 10px; line-height: 1.55; }
+
+.kw-brand-center__assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+.kw-brand-center__asset { display: grid; overflow: hidden; border: 1px solid var(--kw-border); border-radius: 10px; background: color-mix(in srgb, var(--kw-muted) 20%, var(--kw-panel)); }
+.kw-brand-center__asset-preview { display: grid; place-items: center; min-height: 130px; padding: 14px; background: repeating-conic-gradient(color-mix(in srgb, var(--kw-border) 55%, transparent) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px; }
+.kw-brand-center__asset-preview img { max-width: 100%; max-height: 110px; object-fit: contain; }
+.kw-brand-center__asset-body { display: grid; gap: 5px; padding: 10px 11px; background: var(--kw-panel); }
+.kw-brand-center__asset-body > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kw-brand-center__asset-body strong { font-size: 11px; }
+.kw-brand-center__asset-body > header span { padding: 2px 5px; border: 1px solid var(--kw-border); border-radius: 4px; color: var(--kw-muted); font-size: 8px; font-weight: 700; }
+.kw-brand-center__asset-body p { margin: 0; color: var(--kw-muted); font-size: 9px; line-height: 1.5; }
+.kw-brand-center__asset-body > code { color: var(--kw-muted); font-size: 9px; }
+.kw-brand-center__asset-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
+.kw-brand-center__asset-actions a { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--kw-primary) 45%, var(--kw-border)); border-radius: 6px; color: var(--kw-text); font-size: 9px; font-weight: 700; text-decoration: none; }
+.kw-brand-center__asset-actions a:hover { border-color: var(--kw-primary); }
+
+.kw-brand-center__previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.kw-brand-center__previews article { display: grid; gap: 9px; padding: 13px; border-radius: 11px; border: 1px solid var(--kw-border); }
+.kw-brand-center__previews article.is-day { background: #F7F5FF; color: #241747; }
+.kw-brand-center__previews article.is-night { background: #07070B; color: #F7F5FF; border-color: #5122B8; }
+.kw-brand-center__previews header { display: flex; align-items: center; justify-content: space-between; }
+.kw-brand-center__previews header span { font-size: 9px; font-weight: 800; letter-spacing: .13em; }
+.kw-brand-center__previews article.is-day header span { color: #6F31EE; }
+.kw-brand-center__previews article.is-night header span { color: #C8AFFF; }
+.kw-brand-center__previews header code { font-size: 9px; opacity: .8; }
+.kw-brand-center__previews img { width: 100%; max-height: 96px; object-fit: contain; border-radius: 6px; }
+.kw-brand-center__previews article > div { display: flex; gap: 6px; }
+.kw-brand-center__previews article > div span { width: 26px; height: 26px; border-radius: 6px; border: 1px solid color-mix(in srgb, currentColor 22%, transparent); }
+.kw-brand-center__previews p { margin: 0; font-size: 9px; line-height: 1.5; opacity: .78; }
+
+.kw-brand-center__footer {
+  display: flex;
+  align-items: start;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid var(--kw-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, #8958FF 4%, var(--kw-panel));
+  color: var(--kw-muted);
+}
+.kw-brand-center__footer svg { flex: 0 0 auto; color: var(--kw-primary); margin-top: 1px; }
+.kw-brand-center__footer p { margin: 0; font-size: 10px; line-height: 1.55; }
+
+@media (max-width: 980px) {
+  .kw-brand-center__hero { grid-template-columns: minmax(0, 1fr); }
+  .kw-brand-center__hero-actions { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}

@@ -4,6 +4,7 @@ import { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLIC
 import type { SurfaceProps } from "./surfaceContracts";
 
 const ProjectsSurface = lazy(() => import("./projectsSurface"));
+const GettingStartedWorkbench = lazy(() => import("./GettingStartedWorkbench"));
 const ProjectHealthWorkbench = lazy(() => import("./ProjectHealthWorkbench"));
 const ProjectCollectionsWorkbench = lazy(() => import("./ProjectCollectionsWorkbench"));
 const OnlineSurface = lazy(() => import("./onlineSurface"));
@@ -21,6 +22,8 @@ const PreviewStudioWorkbench = lazy(() => import("./PreviewStudioWorkbench"));
 const RemoteSurface = lazy(() => import("./remoteSurface"));
 const ReleaseSurface = lazy(() => import("./releaseSurface"));
 const SystemSurface = lazy(() => import("./systemSurface"));
+const BrandCenter = lazy(() => import("./BrandCenter"));
+const CapabilitiesWorkbench = lazy(() => import("./CapabilitiesWorkbench"));
 const SystemTrustCenter = lazy(() => import("./SystemTrustCenter"));
 const SystemPermissionsCenter = lazy(() => import("./SystemPermissionsCenter"));
 const SystemControlCenter = lazy(() => import("./SystemControlCenter"));
@@ -34,7 +37,8 @@ function SurfaceLoading({ activity, view }: Pick<SurfaceProps, "activity" | "vie
 
 export function WorkbenchSurface(props: SurfaceProps) {
   let surface: ReactNode;
-  if (props.activity === "projects" && props.view === "health") surface = <ProjectHealthWorkbench project={props.project} onRefresh={props.onRefresh} />;
+  if (props.activity === "projects" && props.view === "getting-started") surface = <GettingStartedWorkbench {...props} />;
+  else if (props.activity === "projects" && props.view === "health") surface = <ProjectHealthWorkbench project={props.project} onRefresh={props.onRefresh} />;
   else if (props.activity === "projects" && ["recent", "favorites", "pinned", "archive"].includes(props.view)) surface = <ProjectCollectionsWorkbench view={props.view as "recent" | "favorites" | "pinned" | "archive"} workspace={props.workspace} project={props.project} onProjectSelect={props.onProjectSelect} onRefresh={props.onRefresh} />;
   else if (props.activity === "projects") surface = <ProjectsSurface {...props} />;
   else if (props.activity === "online") surface = <OnlineSurface {...props} />;
@@ -50,6 +54,8 @@ export function WorkbenchSurface(props: SurfaceProps) {
   else if (props.activity === "developer-tools") surface = <DeveloperSurface {...props} />;
   else if (props.activity === "remote") surface = <RemoteSurface {...props} />;
   else if (props.activity === "release") surface = <ReleaseSurface {...props} />;
+  else if (props.activity === "system" && props.view === "brand") surface = <BrandCenter {...props} />;
+  else if (props.activity === "system" && props.view === "capabilities") surface = <CapabilitiesWorkbench {...props} />;
   else if (props.activity === "system" && props.view === "trust") surface = <SystemTrustCenter project={props.project} onRefresh={props.onRefresh} />;
   else if (props.activity === "system" && props.view === "permissions") surface = <SystemPermissionsCenter project={props.project} />;
   else if (props.activity === "system" && ["online-offline", "self-audit", "system-diagnostics"].includes(props.view)) surface = <SystemControlCenter view={props.view as "online-offline" | "self-audit" | "system-diagnostics"} project={props.project} />;

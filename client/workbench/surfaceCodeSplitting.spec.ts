@@ -30,6 +30,9 @@ describe("Workbench surface code splitting", () => {
     for (const moduleName of [
       "ProjectHealthWorkbench",
       "ProjectCollectionsWorkbench",
+      "GettingStartedWorkbench",
+      "BrandCenter",
+      "CapabilitiesWorkbench",
       "DeveloperExecutionLedger",
       "DeveloperObservabilityWorkbench",
       "DeveloperTestsWorkbench",

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">KNOuX Forge — local-first engineering command center</title>
+  <desc id="desc">Dark brand card with the KNOuX Forge monogram, wordmark, tagline and knoux.store address.</desc>
+  <defs>
+    <radialGradient id="kfGlow" cx="0" cy="0" r="1" gradientTransform="translate(930 120) rotate(132) scale(720)">
+      <stop offset="0" stop-color="#6F31EE" stop-opacity=".38"/>
+      <stop offset=".55" stop-color="#2AD9C8" stop-opacity=".05"/>
+      <stop offset="1" stop-color="#07070B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="kfCard" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0D0A14"/>
+      <stop offset=".6" stop-color="#07070B"/>
+      <stop offset="1" stop-color="#07070B"/>
+    </linearGradient>
+    <linearGradient id="kfMark" x1="92" y1="92" x2="286" y2="318" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C8AFFF"/>
+      <stop offset=".45" stop-color="#8958FF"/>
+      <stop offset="1" stop-color="#5122B8"/>
+    </linearGradient>
+    <linearGradient id="kfWord" x1="360" y1="150" x2="1080" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7F5FF"/>
+      <stop offset=".55" stop-color="#C8AFFF"/>
+      <stop offset="1" stop-color="#8958FF"/>
+    </linearGradient>
+    <pattern id="kfGrid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0v48" fill="none" stroke="#F7F5FF" stroke-opacity=".035"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#kfCard)"/>
+  <rect width="1200" height="630" fill="url(#kfGrid)"/>
+  <rect width="1200" height="630" fill="url(#kfGlow)"/>
+  <rect x="44" y="44" width="1112" height="542" rx="28" fill="none" stroke="#C8AFFF" stroke-opacity=".18"/>
+  <g transform="translate(88 92)">
+    <rect width="232" height="232" rx="48" fill="#050508" stroke="#5122B8" stroke-opacity=".75"/>
+    <path d="M72 42v148" fill="none" stroke="url(#kfMark)" stroke-width="30" stroke-linecap="round"/>
+    <path d="M177 42 78 116l99 74" fill="none" stroke="url(#kfMark)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M158 182a38 38 0 0 1-38 38" fill="none" stroke="#2AD9C8" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="202" cy="44" r="9" fill="#2AD9C8"/>
+  </g>
+  <text x="360" y="210" fill="url(#kfWord)" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="112" font-weight="700" letter-spacing="-4">KNOuX</text>
+  <text x="364" y="272" fill="#E6E1D2" fill-opacity=".7" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="34" font-weight="600" letter-spacing="18">FORGE</text>
+  <path d="M360 330h760" stroke="#8958FF" stroke-opacity=".45" stroke-width="2"/>
+  <text x="360" y="402" fill="#F7F5FF" fill-opacity=".9" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="36" font-weight="500">Local-first engineering command center.</text>
+  <text x="360" y="464" fill="#F7F5FF" fill-opacity=".6" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="27" font-weight="400">Evidence before claims. Local context before remote contact.</text>
+  <g font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="23" font-weight="500">
+    <circle cx="372" cy="532" r="6" fill="#2AD9C8"/>
+    <text x="392" y="540" fill="#E6E1D2" fill-opacity=".8">knoux.store</text>
+    <circle cx="592" cy="532" r="6" fill="#8958FF"/>
+    <text x="612" y="540" fill="#E6E1D2" fill-opacity=".8">KForge · Windows</text>
+    <circle cx="880" cy="532" r="6" fill="#C8AFFF"/>
+    <text x="900" y="540" fill="#E6E1D2" fill-opacity=".8">Engineering workbench</text>
+  </g>
+</svg>

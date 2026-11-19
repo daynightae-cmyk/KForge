@@ -5,7 +5,7 @@ export const CANONICAL_INSPECTOR_OWNER = "WORKBENCH" as const;
 export const ONLINE_INSPECTOR_POLICY = "SINGLE_CANONICAL_INSPECTOR" as const;
 
 export const SURFACE_AUDIT_MATRIX: Record<KForgeActivity, Record<string, ProductSurfaceClass>> = {
-  projects: { workspace: "SPECIALIZED", health: "SPECIALIZED", recent: "SPECIALIZED", favorites: "SPECIALIZED", pinned: "SPECIALIZED", archive: "SPECIALIZED", "open-project": "SPECIALIZED", "import-project": "SPECIALIZED" },
+  projects: { workspace: "SPECIALIZED", health: "SPECIALIZED", recent: "SPECIALIZED", favorites: "SPECIALIZED", pinned: "SPECIALIZED", archive: "SPECIALIZED", "open-project": "SPECIALIZED", "import-project": "SPECIALIZED", "getting-started": "SPECIALIZED" },
   ai: { providers: "SPECIALIZED", models: "SPECIALIZED", agents: "SPECIALIZED", tasks: "SPECIALIZED" },
   online: { discover: "SPECIALIZED", marketplace: "SPECIALIZED", extensions: "SPECIALIZED", models: "SPECIALIZED", agents: "SPECIALIZED", tools: "SPECIALIZED", integrations: "SPECIALIZED", providers: "SPECIALIZED", installed: "SPECIALIZED", updates: "SPECIALIZED", downloads: "SPECIALIZED", "remote-sources": "SPECIALIZED", security: "SPECIALIZED", activity: "SPECIALIZED", documentation: "SPECIALIZED" },
   intelligence: { "project-graph": "SPECIALIZED", dependencies: "SPECIALIZED", "impact-analysis": "SPECIALIZED", "code-understanding": "SPECIALIZED", "ask-kforge": "SPECIALIZED", architecture: "SPECIALIZED" },
@@ -13,5 +13,5 @@ export const SURFACE_AUDIT_MATRIX: Record<KForgeActivity, Record<string, Product
   release: { "release-gate": "SPECIALIZED", "release-preparation": "SPECIALIZED", artifacts: "SPECIALIZED", versioning: "SPECIALIZED" },
   "developer-tools": { terminal: "SPECIALIZED", tests: "SPECIALIZED", build: "SPECIALIZED", runtime: "SPECIALIZED", lint: "SPECIALIZED", logs: "SPECIALIZED", diagnostics: "SPECIALIZED", preview: "SPECIALIZED" },
   remote: { git: "SPECIALIZED", branches: "SPECIALIZED", commits: "SPECIALIZED", github: "SPECIALIZED", "pull-requests": "SPECIALIZED", issues: "SPECIALIZED", actions: "SPECIALIZED", releases: "SPECIALIZED" },
-  system: { settings: "SPECIALIZED", trust: "SPECIALIZED", permissions: "SPECIALIZED", storage: "SPECIALIZED", "online-offline": "SPECIALIZED", "self-audit": "SPECIALIZED", "system-diagnostics": "SPECIALIZED" },
+  system: { settings: "SPECIALIZED", trust: "SPECIALIZED", permissions: "SPECIALIZED", storage: "SPECIALIZED", "online-offline": "SPECIALIZED", "self-audit": "SPECIALIZED", "system-diagnostics": "SPECIALIZED", brand: "SPECIALIZED", capabilities: "SPECIALIZED" },
 } as const;

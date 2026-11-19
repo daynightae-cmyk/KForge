@@ -19,7 +19,7 @@ const ACTIVITIES = [
   "Projects", "AI", "Online", "Intelligence", "Quality",
   "Developer Tools", "Remote / Git", "Release", "System",
 ] as const;
-const REQUIRED_VIEWS = 68;
+const REQUIRED_VIEWS = 71;
 const THEMES = ["light", "dark"] as const;
 const viewLimitValue = Number(process.env.KFORGE_VISUAL_VIEW_LIMIT || REQUIRED_VIEWS);
 const VIEW_LIMIT = Number.isInteger(viewLimitValue) && viewLimitValue >= 1
@@ -108,7 +108,7 @@ async function waitForVisualSettle(page: Page) {
   return { pending, opacitySettled };
 }
 
-test.describe("KForge 68-view visual evidence ledger (opt-in)", () => {
+test.describe("KForge 71-view visual evidence ledger (opt-in)", () => {
   test.skip(!ENABLED, "Opt-in only: set KFORGE_CAPTURE_ALL_VIEWS=1");
 
   test("records actual Day/Night viewport PNGs and an explicit coverage ledger", async ({ page }) => {

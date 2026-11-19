@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { SurfaceProps } from "./surfaceContracts";
 import type { ProjectSummary } from "@shared/workspace";
 import { fetchJson, jsonRequest } from "./api";
-import { ArrowRight, GitBranch, Hammer, Play, Search, TerminalSquare, TestTube2 } from "lucide-react";
+import { ArrowRight, Compass, GitBranch, Hammer, Play, Search, TerminalSquare, TestTube2 } from "lucide-react";
 import { EmptyState, StatusBadge } from "./ui";
 import ServiceCatalogue from "./ServiceCatalogue";
 import { ProjectStartActions } from "./ProjectStartActions";
@@ -121,7 +121,10 @@ function ProjectsSurface({ view, workspace, project, onProjectSelect, onRefresh 
         <div className="kw-project-center__copy"><small>PROJECT CENTER</small><h2>Open a project and KForge surrounds it.</h2><p>Every status below comes from local project evidence. Actions open the real KForge workbench that owns the capability.</p></div>
         <div className="kw-project-center__actions">
           <ProjectStartActions compact />
-          <button className="kw-project-center__import" onClick={() => openTool("Import Project")}>Import project<ArrowRight size={13} /></button>
+          <div className="kw-project-center__links">
+            <button className="kw-project-center__import" onClick={() => openTool("Import Project")}>Import project<ArrowRight size={13} /></button>
+            <button className="kw-project-center__import" onClick={() => openTool("Get Started")}><Compass size={13} />Setup guide</button>
+          </div>
         </div>
       </div>
     </section> : null}

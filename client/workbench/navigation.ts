@@ -8,6 +8,7 @@ export const ACTIVITIES: WorkbenchActivity[] = [
     { id: "workspace", label: "Workspace", group: "Projects" }, { id: "health", label: "Project Health", group: "Projects" },
     { id: "recent", label: "Recent", group: "Collections" }, { id: "favorites", label: "Favorites", group: "Collections" }, { id: "pinned", label: "Pinned", group: "Collections" }, { id: "archive", label: "Archive", group: "Collections" },
     { id: "open-project", label: "Open Project", group: "Actions" }, { id: "import-project", label: "Import Project", group: "Actions" },
+    { id: "getting-started", label: "Get Started", group: "Start" },
   ] },
   { id: "ai", label: "AI", views: [
     { id: "providers", label: "Providers", group: "Configure AI" }, { id: "models", label: "Models", group: "Configure AI" }, { id: "agents", label: "Agents", group: "Project execution" }, { id: "tasks", label: "Tasks", group: "Project execution" },
@@ -36,6 +37,7 @@ export const ACTIVITIES: WorkbenchActivity[] = [
   ] },
   { id: "system", label: "System", views: [
     { id: "settings", label: "Settings", group: "Preferences" }, { id: "trust", label: "Trust", group: "Access and policy" }, { id: "permissions", label: "Permissions", group: "Access and policy" }, { id: "storage", label: "Storage", group: "Maintenance" }, { id: "online-offline", label: "Online / Offline", group: "Access and policy" }, { id: "self-audit", label: "Self Audit", group: "Maintenance" }, { id: "system-diagnostics", label: "System Diagnostics", group: "Maintenance" },
+    { id: "brand", label: "Brand & Identity", group: "Identity" }, { id: "capabilities", label: "Capabilities", group: "Inventory" },
   ] },
 ];
 

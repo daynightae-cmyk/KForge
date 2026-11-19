@@ -48,6 +48,7 @@
     "lint": "node scripts/lint.mjs",
     "test:e2e": "playwright test",
     "verify:assets": "node scripts/verify-asset-budget.mjs",
+    "verify:brand": "node scripts/verify-brand.mjs",
     "verify:workflow-pins": "node scripts/verify-workflow-pins.mjs",
     "verify:gate": "node scripts/verify-gate.mjs",
     "verify:desktop": "npm run build && node scripts/verify-desktop.mjs",

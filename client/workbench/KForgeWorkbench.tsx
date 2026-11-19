@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity, Archive, ArrowLeft, Bot, Boxes, BrainCircuit, Bug, Building2, Camera, ChevronRight, CircleDot,
-  Clock3, Cloud, Code2, Download, FileSearch, FolderKanban, FolderOpen, Gauge, GitBranch, GitCommit, Github,
+  Clock3, Cloud, Code2, Compass, Download, FileSearch, FolderKanban, FolderOpen, Gauge, GitBranch, GitCommit, Github,
   GitPullRequest, Globe2, HardDrive, HeartPulse, KeyRound, Layers, ListChecks, MonitorPlay, Network,
-  Package, PackagePlus, Pin, Play, Puzzle, Radar, RefreshCw, Rocket, ScanSearch, ScrollText, Search, Settings2,
+  Package, PackagePlus, Palette, Pin, Play, Puzzle, Radar, RefreshCw, Rocket, ScanSearch, ScrollText, Search, Settings2,
   ShieldCheck, SlidersHorizontal, Star, Stethoscope, Store, Tag, Tags, Terminal, TestTube2, Wifi, Workflow, Wrench,
   X, Zap,
 } from "lucide-react";
@@ -48,7 +48,7 @@ const icons: Record<KForgeActivity, ReactNode> = {
 const viewIcons: Record<string, ReactNode> = {
   workspace: <FolderKanban size={15} />, health: <HeartPulse size={15} />,
   recent: <Clock3 size={15} />, favorites: <Star size={15} />, pinned: <Pin size={15} />, archive: <Archive size={15} />,
-  "open-project": <FolderOpen size={15} />, "import-project": <Download size={15} />,
+  "open-project": <FolderOpen size={15} />, "import-project": <Download size={15} />, "getting-started": <Compass size={15} />,
   providers: <Cloud size={15} />, models: <Boxes size={15} />, agents: <Bot size={15} />, tasks: <ListChecks size={15} />,
   discover: <Search size={15} />, marketplace: <Store size={15} />, extensions: <Puzzle size={15} />, tools: <Wrench size={15} />,
   integrations: <Layers size={15} />, installed: <Package size={15} />, updates: <RefreshCw size={15} />, downloads: <Download size={15} />,
@@ -64,6 +64,7 @@ const viewIcons: Record<string, ReactNode> = {
   "release-gate": <ShieldCheck size={15} />, "release-preparation": <PackagePlus size={15} />, artifacts: <Package size={15} />, versioning: <Tags size={15} />,
   settings: <Settings2 size={15} />, trust: <ShieldCheck size={15} />, permissions: <KeyRound size={15} />, storage: <HardDrive size={15} />,
   "online-offline": <Wifi size={15} />, "self-audit": <FileSearch size={15} />, "system-diagnostics": <Activity size={15} />,
+  brand: <Palette size={15} />, capabilities: <Boxes size={15} />,
 };
 
 async function refreshSettings(): Promise<KForgePlatformSettings> {

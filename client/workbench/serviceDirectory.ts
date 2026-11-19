@@ -1,7 +1,7 @@
 import {
-  Activity, Archive, Bot, Boxes, BrainCircuit, Braces, Bug, Building2, Cpu, Database, FileSearch,
+  Activity, Archive, Bot, Boxes, BrainCircuit, Braces, Bug, Building2, Compass, Cpu, Database, FileSearch,
   Fingerprint, FolderKanban, Gauge, GitBranch, GitCommitHorizontal, HardDrive, HeartPulse, History,
-  KeyRound, LayoutDashboard, Library, ListChecks, Map as MapIcon, MessageSquareCode, Package, Puzzle,
+  KeyRound, LayoutDashboard, Library, ListChecks, Map as MapIcon, MessageSquareCode, Package, Palette, Puzzle,
   Radar, Radio, Rocket, ScanSearch, Server, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Star,
   Store, Terminal, TestTube2, Truck, Wrench, type LucideIcon,
 } from "lucide-react";
@@ -80,7 +80,7 @@ export const ACTIVITY_PURPOSE: Record<KForgeActivity, string> = {
 
 const SERVICE_ICONS: Record<string, LucideIcon> = {
   workspace: LayoutDashboard, health: HeartPulse, recent: History, favorites: Star, pinned: MapIcon,
-  archive: Archive, "open-project": FolderKanban, "import-project": GitBranch,
+  archive: Archive, "open-project": FolderKanban, "import-project": GitBranch, "getting-started": Compass,
   providers: KeyRound, models: Cpu, agents: Bot, tasks: ListChecks,
   discover: ScanSearch, marketplace: Store, extensions: Puzzle, tools: Wrench, integrations: Boxes,
   installed: Package, updates: Truck, downloads: Library, "remote-sources": Radio, documentation: FileSearch,
@@ -95,7 +95,7 @@ const SERVICE_ICONS: Record<string, LucideIcon> = {
   "pull-requests": GitBranch, issues: Bug, actions: Activity, releases: Truck,
   "release-gate": ShieldCheck, "release-preparation": Rocket, artifacts: Package, versioning: Fingerprint,
   settings: Settings2, trust: ShieldCheck, permissions: KeyRound, storage: HardDrive,
-  "online-offline": Radio, "self-audit": Radar, "system-diagnostics": Activity,
+  "online-offline": Radio, "self-audit": Radar, "system-diagnostics": Activity, brand: Palette, capabilities: Boxes,
 };
 
 // One description per existing destination, not one card per API endpoint.
@@ -109,6 +109,7 @@ const PURPOSES: Record<KForgeActivity, Record<string, ServicePurpose>> = {
     archive: global("Review archived project registrations and restore them to your workspace.", "Retired registrations you can bring back.", "Open archive", "ProjectCollectionsWorkbench", "GET /api/workspace/projects"),
     "open-project": global("Register an existing local project directory without contacting a remote service.", "Add a folder on this machine to the workspace.", "Open project", "ProjectStartActions", "POST /api/workspace/projects/open"),
     "import-project": global("Clone a repository into the workspace with explicit confirmation and network permission.", "Bring a remote repository into the local workspace.", "Import repository", "ProjectStartActions", "POST /api/workspace/projects/clone"),
+    "getting-started": global("Assemble the verified local starting path from workspace, trust, policy, provider and persisted scan evidence.", "Know exactly which setup steps are backed by evidence, and which are still open.", "Review setup", "GettingStartedWorkbench", "GET /api/workspace/projects"),
   },
   ai: {
     providers: global("Configure AI providers, credentials and connection settings in Provider Studio.", "Add a provider key and prove the connection before you rely on it.", "Configure provider", "ProviderStudio", "GET /api/workspace/ai/command-center/providers"),
@@ -185,6 +186,8 @@ const PURPOSES: Record<KForgeActivity, Record<string, ServicePurpose>> = {
     "online-offline": global("Choose an operating mode and inspect the network policy it permits.", "Control exactly when KForge may reach the network.", "Review mode", "SystemControlCenter", "GET /api/workspace/platform"),
     "self-audit": optional("Run KForge's self audit and inspect persisted verification evidence.", "KForge checking its own work with stored evidence.", "Run self audit", "SystemControlCenter", "GET /api/workspace/projects/:id/self-audit"),
     "system-diagnostics": optional("Inspect application environment, desktop runtime and diagnostic evidence.", "The environment facts behind the current session.", "Review diagnostics", "SystemControlCenter", "GET /api/workspace/platform"),
+    brand: global("Inspect the canonical identity, palette, typography and downloadable public brand assets.", "Use the approved brand values without drifting from the product source.", "Review brand", "BrandCenter", "GET /api/workspace/settings"),
+    capabilities: global("Browse every registered workbench destination with the handler and API contract that owns it.", "See the full capability inventory as contracts, without a readiness claim.", "Browse capabilities", "CapabilitiesWorkbench", "GET /api/workspace/platform"),
   },
 };
 
@@ -238,6 +241,9 @@ const SERVICE_KEYWORDS: Record<string, string[]> = {
   "system:online-offline": ["network", "mode", "policy", "connectivity"],
   "system:self-audit": ["verify", "self check", "integrity", "diagnose kforge"],
   "system:system-diagnostics": ["environment", "runtime info", "platform", "support"],
+  "projects:getting-started": ["onboarding", "welcome", "first run", "setup", "start", "guide", "checklist"],
+  "system:brand": ["identity", "logo", "palette", "colour", "color", "typography", "brand assets", "tagline"],
+  "system:capabilities": ["inventory", "contract", "directory", "services", "routes", "handlers", "coverage"],
 };
 
 export const WORKBENCH_SERVICES: WorkbenchService[] = ACTIVITIES.flatMap((activity) =>
@@ -297,6 +303,7 @@ const LEGACY_TARGETS: Record<string, string> = {
   "Self Audit": "system:self-audit", "Remote Sources": "online:remote-sources", Downloads: "online:downloads",
   Installed: "online:installed", Tools: "online:tools", Integrations: "online:integrations", Activity: "online:activity",
   Discover: "online:discover",
+  "Get Started": "projects:getting-started", "Brand & Identity": "system:brand", Brand: "system:brand", Capabilities: "system:capabilities",
 };
 
 /**

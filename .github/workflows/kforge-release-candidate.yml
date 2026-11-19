@@ -1,0 +1,133 @@
+name: KForge Windows Release Candidate (unsigned)
+
+# Manual, exact-SHA release rehearsal. This workflow produces a downloadable
+# NSIS installer and the verification evidence that belongs to that exact build.
+# It never publishes a GitHub Release, never uploads to a store and never claims
+# code signing. Signing state is whatever scripts/verify-signing.mjs can prove
+# for the produced file.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full 40-character commit SHA to build
+        required: true
+        type: string
+      confirm_unsigned:
+        description: I understand this artifact is unsigned unless repository signing material is configured
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kforge-release-candidate-${{ inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  windows-release-candidate:
+    name: Windows release candidate evidence
+    if: ${{ inputs.confirm_unsigned }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Reject a short or malformed SHA
+        shell: pwsh
+        run: |
+          if ('${{ inputs.sha }}' -notmatch '^[0-9a-f]{40}$') {
+            throw 'The release candidate input must be a full 40-character commit SHA.'
+          }
+
+      - name: Checkout exact release candidate SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify workflow pins
+        run: npm run verify:workflow-pins
+
+      - name: Verify asset budget
+        run: npm run verify:assets
+
+      - name: Verify brand contracts
+        run: npm run verify:brand
+
+      - name: Verify GitHub Connect security contracts
+        run: npm run test:github-connect
+
+      - name: Validate production types
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run unit and service tests
+        run: npm test
+
+      - name: Build production client and server
+        run: npm run build
+
+      - name: Run Windows browser E2E gate
+        env:
+          KFORGE_PLAYWRIGHT_CHANNEL: msedge
+        run: npm run test:e2e
+
+      - name: Verify packaged desktop shell over the production build
+        run: node scripts/verify-desktop.mjs
+
+      - name: Build unsigned-state-transparent NSIS installer
+        run: npm run package:windows
+
+      - name: Record Authenticode signing evidence (truthful, non-escalating)
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter 'KNOuX-Forge-Setup-*-Windows-x64.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer was not produced; signing evidence cannot be recorded.' }
+          node scripts/verify-signing.mjs $installer.FullName
+        continue-on-error: true
+
+      - name: Verify installed Windows runtime and NSIS lifecycle
+        run: npm run verify:installer
+
+      - name: Write release candidate status note
+        shell: pwsh
+        run: |
+          $lines = @(
+            '# KForge release candidate status',
+            '',
+            "SHA: ${{ inputs.sha }}",
+            "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            '',
+            'This bundle was produced by a manual workflow dispatch.',
+            'It is NOT a claim of code signing, SmartScreen reputation, store acceptance or verified provider connectivity.',
+            'Read release/verification/*.json, release/SHA256SUMS.txt and the verify-signing output for the evidence that actually exists.',
+            ''
+          )
+          Set-Content -Path release/RELEASE-CANDIDATE-STATUS.md -Value $lines -Encoding utf8
+
+      - name: Upload release candidate installer and evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: kforge-release-candidate-${{ inputs.sha }}
+          path: |
+            release/KNOuX-Forge-Setup-*-Windows-x64.exe
+            release/SHA256SUMS.txt
+            release/installer-manifest.json
+            release/RELEASE-NOTES.md
+            release/RELEASE-CANDIDATE-STATUS.md
+            release/verification/*.json
+          if-no-files-found: error
+          retention-days: 14

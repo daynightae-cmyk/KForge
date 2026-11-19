@@ -1,0 +1,23 @@
+{
+  "name": "KNOuX Forge",
+  "short_name": "KForge",
+  "description": "Local-first engineering command center. Evidence before claims, local context before remote contact.",
+  "id": "/",
+  "start_url": "/workspace",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07070B",
+  "theme_color": "#8958FF",
+  "categories": ["developer", "productivity"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/brand/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

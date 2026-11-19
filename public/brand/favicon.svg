@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">KNOuX Forge app icon</title>
+  <defs>
+    <linearGradient id="kfPlate" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0D0A14"/>
+      <stop offset="1" stop-color="#07070B"/>
+    </linearGradient>
+    <linearGradient id="kfMark" x1="18" y1="14" x2="46" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C8AFFF"/>
+      <stop offset=".45" stop-color="#8958FF"/>
+      <stop offset="1" stop-color="#5122B8"/>
+    </linearGradient>
+    <radialGradient id="kfHalo" cx="0" cy="0" r="1" gradientTransform="translate(44 14) rotate(126) scale(40)">
+      <stop offset="0" stop-color="#8958FF" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#8958FF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="url(#kfPlate)" stroke="#5122B8" stroke-opacity=".7"/>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="url(#kfHalo)"/>
+  <path d="M21 15v34" fill="none" stroke="url(#kfMark)" stroke-width="7" stroke-linecap="round"/>
+  <path d="M43 15 23 32l20 17" fill="none" stroke="url(#kfMark)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M39 45a9 9 0 0 1-9 9" fill="none" stroke="#2AD9C8" stroke-width="2" stroke-linecap="round" opacity=".9"/>
+  <circle cx="49" cy="15" r="2.2" fill="#2AD9C8"/>
+</svg>
