@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { activityLabel, viewLabel } from "./navigation";
-import { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
+import { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY, type ProductSurfaceClass } from "./surfaceTypes";
 import type { SurfaceProps } from "./surfaceContracts";
 
 const ProjectsSurface = lazy(() => import("./projectsSurface"));
@@ -28,8 +28,6 @@ const SystemTrustCenter = lazy(() => import("./SystemTrustCenter"));
 const SystemPermissionsCenter = lazy(() => import("./SystemPermissionsCenter"));
 const SystemControlCenter = lazy(() => import("./SystemControlCenter"));
 
-export { SURFACE_AUDIT_MATRIX, CANONICAL_INSPECTOR_OWNER, ONLINE_INSPECTOR_POLICY } from "./surfaceAudit";
-export type { ProductSurfaceClass } from "./surfaceAudit";
 
 function SurfaceLoading({ activity, view }: Pick<SurfaceProps, "activity" | "view">) {
   return <div className="kw-message" role="status" aria-live="polite" aria-busy="true">Loading {activityLabel(activity)} / {viewLabel(activity, view)}…</div>;

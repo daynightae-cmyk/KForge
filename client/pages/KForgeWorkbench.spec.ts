@@ -7,7 +7,7 @@ const surfacesSource = () => readFileSync(new URL("../workbench/surfaces.tsx", i
 const canonicalInspectorSource = () => readFileSync(new URL("../workbench/CanonicalInspector.tsx", import.meta.url), "utf8");
 const marketplaceInspectorSource = () => readFileSync(new URL("../components/ui/KForgeInspector.tsx", import.meta.url), "utf8");
 const contractsSource = () => readFileSync(new URL("../workbench/surfaceContracts.ts", import.meta.url), "utf8");
-const surfaceAuditSource = () => readFileSync(new URL("../workbench/surfaceAudit.ts", import.meta.url), "utf8");
+const surfaceAuditSource = () => readFileSync(new URL("../workbench/surfaceTypes.ts", import.meta.url), "utf8");
 const surfaceTypesSource = () => readFileSync(new URL("../workbench/surfaceTypes.ts", import.meta.url), "utf8");
 const sharedHelperSource = () => readFileSync(new URL("../workbench/surfaceShared.tsx", import.meta.url), "utf8");
 const uiSource = () => readFileSync(new URL("../workbench/ui.tsx", import.meta.url), "utf8");
