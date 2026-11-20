@@ -1,6 +1,7 @@
 import express from "express";
 import { rateLimit } from "express-rate-limit";
 import { kforgeSecurityHeaders, kforgeTerminalErrorHandler } from "./httpHardening";
+import githubActionsRouter from "./routes/githubActions";
 import marketplaceLifecycleRouter from "./routes/marketplaceLifecycle";
 import operationEvidenceRouter from "./routes/operationEvidence";
 import productTruthRouter from "./routes/productTruth";
@@ -146,6 +147,12 @@ export function createServer(options: CreateServerOptions = {}) {
   // provider-command service can derive a filesystem path from route input.
   app.use(rejectUnsafeProviderStorageIdentifiers);
 
+  // Authorized GitHub mutations are action-specific contracts layered over the
+  // existing gh transport. They require trust, Online mode, explicit
+  // confirmation, exact repository identity derived from the origin remote, and
+  // a non-stale local source SHA. Read-only GitHub evidence stays in the
+  // canonical workspace route.
+  app.use("/api/workspace", githubActionsRouter);
   // Marketplace lifecycle mutations reuse the canonical Marketplace service.
   // The router intentionally defines no root GET route, so the existing
   // /api/workspace/marketplace catalog remains owned by workspaceRouter.

@@ -2305,6 +2305,14 @@ html.dark .kw-empty__mark {
   50%      { opacity: 0.85; transform: scale(1.02); }
 }
 
+/* Activity rail breath animates opacity only: a scaling pulse changes the
+   button's bounding box, which keeps automation and accessibility tooling
+   from treating the live control as continuously unstable. */
+@keyframes kf-activity-breath {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 0.85; }
+}
+
 @keyframes kf-ring-pulse {
   0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--kw-primary) 55%, transparent); }
   70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--kw-primary) 0%, transparent); }
@@ -2401,6 +2409,6 @@ html.dark .kw-empty__mark {
 
 /* Activity rail active state gets a gentle inner breath for the current domain. */
 .kw-activity-bar button.is-active {
-  animation: kf-pulse-soft 4s ease-in-out infinite;
+  animation: kf-activity-breath 4s ease-in-out infinite;
 }
 [data-kf-reduced-motion="true"] .kw-activity-bar button.is-active { animation: none; }

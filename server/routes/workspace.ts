@@ -40,6 +40,8 @@ import { isWorkspaceAction } from "../../shared/workspace";
 import { checkForModelUpdates, deleteOllamaModel, detectLocalAIProvider, generateWithLocalAI, getCloudAIConfiguration, getModelCenter, getModelChangelog, getModelCompatibility, getOllamaRuntimeStatus, installModelUpdate, installOllamaModel, isCloudAIProviderId, listAIProviders, listCloudAIProviders, requestLocalPlan, setActiveModel, testAIConnection, verifyModelUpdate, type AIProviderId } from "../services/aiCenter";
 import { createProviderSession, discoverProviderModels, listDiscoveredModels, listProviderSessions, listProviderSummaries, replaceProviderKey, revealProviderKey, testProviderConnection, upsertCustomProvider } from "../services/providerCommandCenter";
 import { createSnapshot, listSnapshots, restoreSnapshot } from "../services/snapshots";
+import { RELEASE_ARTIFACT_ROOTS, collectArtifactEvidence, collectArtifactInventory, composeArtifactDigest, getReleaseRecord, isReleaseVersion, listReleasePublications, listReleaseRecords, persistReleasePublication, persistReleaseRecord, readBackPublishedAsset, resolveReleaseSigning, sourceHeadMismatch, verifyArtifactBytes, type ReleaseExecutionRecord, type ReleasePublicationAsset, type ReleasePublicationRecord } from "../services/releaseExecution";
+import { classifyGhMutationFailure, executeGhCommand, executeGhMutation, ghCliRunner, githubMutationStatus, parseGitHubRemote, releaseEndpoint, releaseUploadArgs, validateReleaseInput } from "../services/githubActions";
 import { listCachedDocumentation, type CachedDocRecord } from "../services/remoteSources/documentationService";
 import { buildAgentContext, buildCloudAIPlan, buildLocalAIPlan, buildRedactedCloudPlanInput, buildRulePlan, contextScanSummary, evaluatePatchQuality, generateVerifiedPatch, validateAndApplyPatch } from "../services/agent";
 import { analyzeImpact, buildProjectGraph } from "../services/projectGraph";
@@ -1942,7 +1944,8 @@ async function releasePreparation(project: ProjectSummary) {
   const artifactNames = ["dist", "build", "out", "target", "release", "artifacts"];
   const artifacts = (await Promise.all(artifactNames.map(async (name) => { const absolute = path.join(project.path, name); try { const stat = await fs.stat(absolute); return stat.isDirectory() ? name : undefined; } catch { return undefined; } }))).filter((entry): entry is string => Boolean(entry));
   const localEvidence = await localReleaseEvidence(project);
-  return { generatedAt: new Date().toISOString(), baselineTag: baseline || null, version: version || null, commits, artifacts, localEvidence, notes: commits.length ? commits.map((commit) => `- ${commit.subject} (${commit.shortSha})`).join("\n") : "No commits are available for a release note proposal.", notice: "This is a local preparation preview. It does not create a tag, commit, GitHub release, or remote request. Local artifact digests are never substituted for CI artifact identities." };
+  const sourceHead = await run("git", ["rev-parse", "HEAD"], project.path, 10_000);
+  return { generatedAt: new Date().toISOString(), sourceHead: sourceHead.ok ? sourceHead.output.trim() : null, baselineTag: baseline || null, version: version || null, commits, artifacts, localEvidence, notes: commits.length ? commits.map((commit) => `- ${commit.subject} (${commit.shortSha})`).join("\n") : "No commits are available for a release note proposal.", notice: "This is a local preparation preview. It does not create a tag, commit, GitHub release, or remote request. Local artifact digests are never substituted for CI artifact identities." };
 }
 
 router.get("/projects/:id/self-audit", async (req, res) => {
@@ -2004,6 +2007,382 @@ router.get("/projects/:id/release/preparation", async (req, res) => {
   const project = await resolveProject(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
   return res.json({ projectId: project.id, preparation: await releasePreparation(project) });
+});
+
+const RELEASE_EXECUTION_TIMEOUT_MS = 15 * 60_000;
+
+router.get("/projects/:id/release/records", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  return res.json({ projectId: project.id, records: await listReleaseRecords(getWorkspaceRoot(), project.id) });
+});
+
+router.get("/projects/:id/release/publications", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  return res.json({ projectId: project.id, publications: await listReleasePublications(getWorkspaceRoot(), project.id) });
+});
+
+/**
+ * Real local release execution. This is deliberately separate from the
+ * preparation preview: it requires project trust, an explicit confirmation,
+ * and the exact source SHA reviewed in Release Preparation. It runs the
+ * project's own detected build or package script, hashes the actual output
+ * bytes, persists provenance, and never invents a signature, CI identity, or
+ * remote publication.
+ */
+router.post("/projects/:id/release/execute", async (req, res) => {
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Release execution"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Release execution requires explicit confirmation after reviewing the exact version, source SHA, and output target.", permission: "ask", code: "RELEASE_CONFIRMATION_REQUIRED" });
+
+  const head = await run("git", ["rev-parse", "HEAD"], project.path, 10_000);
+  if (!head.ok) return res.status(422).json({ error: "Release execution requires a readable local Git HEAD.", detail: head.output });
+  const sourceSha = head.output.trim();
+  const expectedHead = typeof req.body?.expectedHead === "string" ? req.body.expectedHead.trim() : "";
+  if (!expectedHead) return res.status(428).json({ error: "Release execution requires the exact source SHA reviewed in Release Preparation. Refresh the preparation evidence and retry.", code: "RELEASE_PLAN_HEAD_REQUIRED" });
+  const mismatch = sourceHeadMismatch(expectedHead, sourceSha);
+  if (mismatch) return res.status(409).json({ error: "The reviewed release plan is stale because the local source HEAD changed. Refresh Release Preparation before executing.", code: "STALE_RELEASE_PLAN", ...mismatch });
+
+  const mode: "build" | "package" = req.body?.mode === "package" ? "package" : "build";
+  const profile = await detectProjectProfile(project);
+  const manifestPath = profile.manifests.find((manifest) => manifest.endsWith("package.json")) || "package.json";
+  let manifest: Record<string, unknown> | null = null;
+  try {
+    const parsed = JSON.parse(await fs.readFile(path.join(project.path, manifestPath), "utf8"));
+    manifest = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    manifest = null;
+  }
+  let version = typeof manifest?.version === "string" ? manifest.version : null;
+  let versionChange: ReleaseExecutionRecord["versionChange"] = null;
+  let snapshot: Awaited<ReturnType<typeof createSnapshot>> | undefined;
+  const requestedVersion = typeof req.body?.version === "string" ? req.body.version.trim() : "";
+  if (requestedVersion) {
+    if (!isReleaseVersion(requestedVersion)) return res.status(400).json({ error: "Provide an explicit semantic version such as 1.2.3 or 1.2.3-rc.1. KForge does not infer version intent from commits." });
+    if (requestedVersion !== version) {
+      if (req.body?.updateManifest !== true) return res.status(409).json({ error: `The manifest declares ${version || "no version"}; changing it to ${requestedVersion} requires updateManifest=true and explicit confirmation.`, code: "VERSION_UPDATE_NOT_CONFIRMED", currentVersion: version, requestedVersion });
+      if (!manifest || typeof manifest.version !== "string") return res.status(422).json({ error: `No writable package manifest version was found at ${manifestPath}.` });
+      snapshot = await createSnapshot(project.path, [manifestPath], `Before release version ${version} -> ${requestedVersion}`);
+      const nextManifest = { ...manifest, version: requestedVersion };
+      await fs.writeFile(path.join(project.path, manifestPath), `${JSON.stringify(nextManifest, null, 2)}\n`, "utf8");
+      manifest = nextManifest;
+      versionChange = { manifestPath, from: version, to: requestedVersion, snapshotId: snapshot.id };
+      version = requestedVersion;
+    }
+  }
+
+  const buildStartedAt = new Date().toISOString();
+  let buildResult: CommandResult;
+  if (mode === "package") {
+    const scripts = manifest && typeof manifest.scripts === "object" && manifest.scripts !== null ? manifest.scripts as Record<string, unknown> : {};
+    const packageScript = ["package:windows", "package", "dist"].find((name) => typeof scripts[name] === "string");
+    if (!packageScript) {
+      if (versionChange && snapshot) await restoreSnapshot(project.path, snapshot.id).catch(() => undefined);
+      return res.status(422).json({ error: "No supported package script was detected (package:windows, package, or dist). Use build mode or add a real project packaging script.", code: "PACKAGE_SCRIPT_UNAVAILABLE" });
+    }
+    const packageManager = profile.packageManager || "npm";
+    const execution = await run(packageManager, ["run", packageScript], project.path, RELEASE_EXECUTION_TIMEOUT_MS);
+    const completedAt = new Date().toISOString();
+    buildResult = {
+      action: "build",
+      projectId: project.id,
+      ok: execution.ok,
+      startedAt: buildStartedAt,
+      completedAt,
+      exitCode: execution.code,
+      output: execution.output,
+      message: execution.ok ? `Package script ${packageScript} completed successfully.` : `Package script ${packageScript} failed.`,
+      transparency: projectActionTransparency(project, "build", buildStartedAt, completedAt, execution.ok ? "SUCCEEDED" : "FAILED", execution.ok ? undefined : execution.output.slice(-1_000)),
+    };
+  } else {
+    buildResult = await executeProjectAction(project, "build", false, RELEASE_EXECUTION_TIMEOUT_MS);
+  }
+
+  const observedInventory = await collectArtifactInventory(project.path, RELEASE_ARTIFACT_ROOTS);
+  // A failed build cannot claim files left over from an earlier build. Artifact
+  // evidence is only attached when the current build actually succeeded.
+  const artifacts = buildResult.ok ? observedInventory.artifacts : [];
+  const artifactState: ReleaseExecutionRecord["artifactState"] = !buildResult.ok ? "BUILD_FAILED" : artifacts.length ? "VERIFIED" : "NOT_FOUND";
+  const artifactScan: ReleaseExecutionRecord["artifactScan"] = {
+    roots: observedInventory.roots,
+    limit: observedInventory.limit,
+    truncated: buildResult.ok && observedInventory.truncated,
+  };
+  const artifactDigest = buildResult.ok ? composeArtifactDigest(artifacts) : null;
+  const packageEvidence = await readReleaseEvidenceFile(project.path, "release/verification/package-windows.json");
+  // Signature evidence is only applied when its recorded digest matches the
+  // artifact bytes produced by this exact run. Old records stay stale evidence.
+  const signing = resolveReleaseSigning(artifacts, packageEvidence);
+  const ok = buildResult.ok && artifacts.length > 0;
+  let recovery: ReleaseExecutionRecord["recovery"];
+  if (!ok && versionChange && snapshot && req.body?.rollbackOnFailure !== false) {
+    try {
+      await restoreSnapshot(project.path, snapshot.id);
+      version = versionChange.from;
+      recovery = { rolledBack: true, snapshotId: snapshot.id, reason: artifacts.length ? "The build did not complete successfully; the manifest version change was restored." : "The build produced no verified artifact; the manifest version change was restored." };
+    } catch (error: unknown) {
+      recovery = { rolledBack: false, snapshotId: snapshot.id, reason: `Rollback failed: ${error instanceof Error ? error.message : "unknown snapshot restore error"}` };
+    }
+  }
+  const record: ReleaseExecutionRecord = {
+    schemaVersion: 1,
+    id: `${Date.now()}-${randomUUID()}`,
+    projectId: project.id,
+    projectPath: project.path,
+    sourceSha,
+    branch: project.branch,
+    version,
+    versionChange,
+    build: {
+      mode,
+      command: mode === "package" ? `${profile.packageManager || "npm"} run ${["package:windows", "package", "dist"].find((name) => typeof (manifest?.scripts as Record<string, unknown> | undefined)?.[name] === "string") || "package"}` : profile.commands.build || "detected build command",
+      ok: buildResult.ok,
+      exitCode: buildResult.exitCode,
+      startedAt: buildResult.startedAt,
+      completedAt: buildResult.completedAt,
+      outputTail: buildResult.output.slice(-8_000),
+    },
+    artifactState,
+    artifactScan,
+    artifacts,
+    artifactDigest,
+    signing,
+    publication: { state: "NOT_PUBLISHED", detail: "No GitHub Release, registry publication, or remote upload was attempted by local release execution." },
+    ...(recovery ? { recovery } : {}),
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await persistReleaseRecord(getWorkspaceRoot(), record);
+  } catch (error: unknown) {
+    return res.status(500).json({ ok: false, record, error: `Release evidence could not be persisted: ${error instanceof Error ? error.message : "unknown storage error"}` });
+  }
+  addActivity(project.id, {
+    kind: "system",
+    title: ok ? "Release artifact verified" : "Release execution stopped",
+    detail: ok ? `${artifacts.length} artifact file(s) hashed${artifactScan.truncated ? ` (inventory bounded at ${artifactScan.limit}; more files exist outside this record)` : ""}; aggregate digest ${artifactDigest?.slice(0, 16) || "unavailable"}.` : "The build or artifact verification did not complete; no CI or publication verdict was fabricated.",
+  });
+  return res.status(ok ? 201 : 422).json({ ok, record });
+});
+
+const RELEASE_PUBLICATION_ASSET_LIMIT = 10;
+const RELEASE_PUBLICATION_MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024;
+
+/**
+ * Publish a previously verified local release record to GitHub. This contract
+ * never accepts arbitrary file paths: it resolves assets from the persisted
+ * release record, re-hashes every file, requires the reviewed source HEAD, and
+ * keeps a draft until every asset is uploaded. The returned state is derived
+ * from an independent GitHub read-back, not from the command exit code alone.
+ */
+router.post("/projects/:id/release/publish", async (req, res) => {
+  const startedAt = new Date().toISOString();
+  const project = await resolveProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found in the configured KForge workspace." });
+  if (project.trust !== "trusted") return res.status(428).json(untrustedProjectError("Release publication"));
+  if (req.body?.confirmed !== true) return res.status(428).json({ error: "Publishing a release requires explicit confirmation after reviewing the exact artifact digest, version, tag, signing state, and GitHub repository.", permission: "ask", code: "RELEASE_PUBLICATION_CONFIRMATION_REQUIRED" });
+  const workspaceRoot = getWorkspaceRoot();
+  if (!(await isRemoteTransferEnabled(workspaceRoot))) return res.status(428).json({ error: "Release publication requires Online Optional or Online mode. Local First permits metadata reads only, and Offline Mode blocks all remote contact.", permission: "online-optional", code: "REMOTE_WRITE_DISABLED" });
+  const identity = parseGitHubRemote(project.remoteUrl);
+  if (!identity) return res.status(422).json({ error: "This project has no safe GitHub origin remote. KForge will not invent a publication target.", code: "GITHUB_REMOTE_REQUIRED" });
+  const head = await run("git", ["rev-parse", "HEAD"], project.path, 10_000);
+  if (!head.ok) return res.status(422).json({ error: "Release publication requires a readable local Git HEAD.", detail: head.output });
+  const sourceHead = head.output.trim();
+  const expectedHead = typeof req.body?.expectedHead === "string" ? req.body.expectedHead.trim() : "";
+  if (!expectedHead) return res.status(428).json({ error: "Publishing requires the exact source SHA reviewed in Release Preparation.", code: "RELEASE_PUBLICATION_HEAD_REQUIRED" });
+  const mismatch = sourceHeadMismatch(expectedHead, sourceHead);
+  if (mismatch) return res.status(409).json({ error: "The reviewed release plan is stale because the local source HEAD changed. Refresh Release Preparation before publishing.", code: "STALE_RELEASE_PLAN", ...mismatch });
+
+  const recordId = typeof req.body?.releaseRecordId === "string" ? req.body.releaseRecordId.trim() : "";
+  if (!recordId) return res.status(400).json({ error: "Select a persisted, verified release execution record to publish.", code: "RELEASE_RECORD_REQUIRED" });
+  const record = await getReleaseRecord(workspaceRoot, project.id, recordId);
+  if (!record) return res.status(404).json({ error: "The selected release record was not found for this project.", code: "RELEASE_RECORD_NOT_FOUND" });
+  const recordMismatch = sourceHeadMismatch(record.sourceSha, sourceHead);
+  if (recordMismatch) return res.status(409).json({ error: "The selected release record was built from a different source SHA than the current local HEAD. Refresh Release Preparation and rebuild before publishing.", code: "RELEASE_RECORD_STALE", ...recordMismatch });
+  if (record.artifactState !== "VERIFIED" || !record.artifacts.length) return res.status(409).json({ error: "Only a release record with verified artifact bytes can be published.", code: "RELEASE_RECORD_NOT_VERIFIED", state: record.artifactState });
+  if (record.artifactScan?.truncated === true) return res.status(409).json({ error: `The release record inventory was bounded at ${record.artifactScan.limit} files and is incomplete. Re-run release execution with a narrower output root before publishing.`, code: "RELEASE_INVENTORY_TRUNCATED", scan: record.artifactScan });
+  const distributables = record.artifacts.filter((artifact) => artifact.kind === "INSTALLER" || artifact.kind === "PACKAGE");
+  if (!distributables.length) return res.status(409).json({ error: "The verified release record contains no installer or package artifact. Bundle files alone are not a distributable release.", code: "NO_DISTRIBUTABLE_ARTIFACT" });
+  if (distributables.length > RELEASE_PUBLICATION_ASSET_LIMIT) return res.status(409).json({ error: `At most ${RELEASE_PUBLICATION_ASSET_LIMIT} distributable assets may be published in one confirmed action.`, code: "RELEASE_ASSET_LIMIT_EXCEEDED", count: distributables.length });
+  const oversized = distributables.find((artifact) => artifact.size > RELEASE_PUBLICATION_MAX_ASSET_BYTES);
+  if (oversized) return res.status(413).json({ error: `${oversized.path} exceeds the 2 GiB per-asset publication bound.`, code: "RELEASE_ASSET_TOO_LARGE" });
+  const names = distributables.map((artifact) => artifact.path.split("/").at(-1) || artifact.path);
+  if (new Set(names).size !== names.length) return res.status(409).json({ error: "Two distributable artifacts share a file name; GitHub release assets require unique names.", code: "RELEASE_ASSET_NAME_COLLISION", names });
+  const changed: string[] = [];
+  for (const artifact of record.artifacts) {
+    const current = await verifyArtifactBytes(project.path, artifact);
+    if ("reason" in current) changed.push(current.reason);
+  }
+  if (changed.length) return res.status(409).json({ error: "The artifact bytes no longer match the verified release record. Rebuild and verify before publishing.", code: "RELEASE_ARTIFACT_CHANGED", detail: changed });
+
+  const validated = validateReleaseInput({
+    tagName: req.body?.tagName ?? (record.version ? `v${record.version}` : ""),
+    name: req.body?.name ?? (record.version ? `KNOuX Forge ${record.version}` : `Release ${record.sourceSha.slice(0, 7)}`),
+    body: req.body?.body ?? "",
+    draft: req.body?.draft === true,
+    prerelease: req.body?.prerelease === true,
+    targetCommitish: record.sourceSha,
+  });
+  if (!validated.ok) return res.status(400).json({ error: "error" in validated ? validated.error : "Invalid release publication target.", code: "INVALID_RELEASE_PUBLICATION" });
+  if (record.version && validated.tagName !== record.version && validated.tagName !== `v${record.version}`) {
+    return res.status(409).json({ error: `The release tag must be exactly ${record.version} or v${record.version} for the verified version.`, code: "TAG_VERSION_MISMATCH", version: record.version, tagName: validated.tagName });
+  }
+  if (record.signing.state !== "VALID" && req.body?.acknowledgeUnsigned !== true) {
+    return res.status(409).json({ error: `The artifact signature state is ${record.signing.state}. Confirm acknowledgeUnsigned only after reviewing that this release is not proven signed.`, code: "SIGNING_ACKNOWLEDGEMENT_REQUIRED", signing: record.signing });
+  }
+
+  const tagEndpoint = `repos/${identity.slug}/releases/tags/${encodeURIComponent(validated.tagName)}`;
+  const readReleaseByTag = async (): Promise<Record<string, unknown> | null> => {
+    const read = await runGhApi(ghCliRunner, { endpoint: tagEndpoint, cwd: project.path, timeoutMs: 20_000 });
+    if (!read.ok) return null;
+    try { return JSON.parse(read.output) as Record<string, unknown>; } catch { return null; }
+  };
+  const existingRead = await runGhApi(ghCliRunner, { endpoint: tagEndpoint, cwd: project.path, timeoutMs: 20_000 });
+  let existing: Record<string, unknown> | null = null;
+  if (existingRead.ok) {
+    try { existing = JSON.parse(existingRead.output) as Record<string, unknown>; } catch { existing = null; }
+  }
+  if (existing) return res.status(409).json({ error: `A GitHub release for tag ${validated.tagName} already exists. KForge refuses to overwrite it.`, code: "RELEASE_ALREADY_EXISTS", tagName: validated.tagName });
+  if (!existingRead.ok && !/(404|not found)/i.test(existingRead.output)) {
+    const state = classifyGhMutationFailure(existingRead.output);
+    return res.status(githubMutationStatus(state)).json({ ok: false, state, error: `The existing release check failed: ${existingRead.output.slice(0, 500)}`, slug: identity.slug });
+  }
+
+  const creation = await executeGhMutation(ghCliRunner, {
+    cwd: project.path,
+    method: "POST",
+    endpoint: releaseEndpoint(identity),
+    fields: {
+      tag_name: validated.tagName,
+      name: validated.name,
+      body: validated.body,
+      draft: true,
+      prerelease: validated.prerelease,
+      target_commitish: record.sourceSha,
+    },
+    timeoutMs: 60_000,
+  });
+  let release = (creation.ok && creation.data && typeof creation.data === "object" ? creation.data : null) as Record<string, unknown> | null;
+  if (!creation.ok && creation.state === "UNKNOWN") {
+    // The command may have created the draft even though its output was not
+    // parseable. A tag read-back decides whether the side effect exists.
+    release = await readReleaseByTag();
+  }
+  if (!creation.ok && !release) {
+    const completedAt = new Date().toISOString();
+    const error = creation.error || "GitHub rejected the release creation.";
+    await recordRemoteContact(workspaceRoot, "github", { attemptedAt: completedAt, succeeded: false, destination: `https://api.github.com/repos/${identity.slug}`, error });
+    return res.status(githubMutationStatus(creation.state)).json({
+      ok: false,
+      state: creation.state,
+      error,
+      slug: identity.slug,
+      transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "ARTIFACT"], provider: "GitHub CLI", destination: `https://api.github.com/repos/${identity.slug}`, purpose: "Publish the explicitly confirmed, locally verified release artifact to GitHub.", confirmation: "CONFIRMED", startedAt, completedAt, result: "FAILED", reason: error }),
+    });
+  }
+  if (!release) release = await readReleaseByTag();
+  let releaseId = typeof release?.id === "number" ? release.id : null;
+  let releaseUrl = typeof release?.html_url === "string" ? release.html_url : null;
+  const assetPaths = distributables.map((artifact) => path.resolve(project.path, artifact.path));
+  const upload = await executeGhCommand(ghCliRunner, { cwd: project.path, args: releaseUploadArgs(validated.tagName, identity.slug, assetPaths), timeoutMs: 10 * 60_000 });
+  let readBack = await readReleaseByTag();
+  if (readBack) {
+    if (releaseId === null && typeof readBack.id === "number") releaseId = readBack.id;
+    if (releaseUrl === null && typeof readBack.html_url === "string") releaseUrl = readBack.html_url;
+  }
+  const assetsFrom = (value: Record<string, unknown> | null): ReleasePublicationAsset[] => {
+    const remoteAssets = Array.isArray(value?.assets) ? value.assets.filter((asset): asset is Record<string, unknown> => Boolean(asset) && typeof asset === "object") : [];
+    return distributables.map((artifact) => readBackPublishedAsset(artifact, remoteAssets.find((asset) => asset.name === (artifact.path.split("/").at(-1) || artifact.path))));
+  };
+  let assets = assetsFrom(readBack);
+  const verificationFrom = (values: ReleasePublicationAsset[]): ReleasePublicationRecord["verification"] => values.every((asset) => asset.state === "VERIFIED") ? "VERIFIED" : values.some((asset) => asset.state !== "MISSING") ? "PARTIAL" : "UNVERIFIED";
+  let verification = verificationFrom(assets);
+  const verifiedCount = () => assets.filter((asset) => asset.state === "VERIFIED").length;
+  let outcome: ReleasePublicationRecord["outcome"];
+  let detail: string;
+  let httpStatus: number;
+  let completedAt = new Date().toISOString();
+
+  if (!upload.ok) {
+    outcome = "UPLOAD_FAILED";
+    detail = `GitHub release ${validated.tagName} was created as a draft, but asset upload failed: ${upload.error || "unknown upload error"}. The draft was left in place.`;
+    httpStatus = 502;
+  } else if (!readBack) {
+    outcome = "UPLOAD_UNVERIFIED";
+    detail = `Assets were uploaded to draft release ${validated.tagName}, but the independent GitHub read-back failed. The draft was left unpublished.`;
+    httpStatus = 502;
+  } else if (validated.draft) {
+    outcome = "DRAFT";
+    detail = `Draft GitHub release ${validated.tagName} was created with ${verifiedCount()}/${assets.length} independently verified asset(s).`;
+    httpStatus = verification === "VERIFIED" ? 201 : 502;
+  } else if (verification !== "VERIFIED") {
+    outcome = "DRAFT";
+    detail = `Assets were uploaded, but independent read-back is ${verification}. The draft was deliberately left unpublished.`;
+    httpStatus = 502;
+  } else if (!releaseId) {
+    outcome = "PUBLISH_FAILED_DRAFT_RETAINED";
+    detail = `Assets were uploaded, but the draft release id could not be read back. The draft was left in place for manual review.`;
+    httpStatus = 502;
+  } else {
+    const publish = await executeGhMutation(ghCliRunner, { cwd: project.path, method: "PATCH", endpoint: `repos/${identity.slug}/releases/${releaseId}`, fields: { draft: false }, timeoutMs: 30_000 });
+    if (!publish.ok) {
+      outcome = "PUBLISH_FAILED_DRAFT_RETAINED";
+      detail = `Assets were uploaded, but the draft release could not be published: ${publish.error || "unknown publication error"}. The draft was left in place.`;
+      httpStatus = 502;
+    } else {
+      readBack = await readReleaseByTag();
+      if (!readBack) {
+        outcome = "PUBLISHED_UNVERIFIED";
+        detail = `The release publish command succeeded, but the independent GitHub read-back failed. Publication is not proven.`;
+        httpStatus = 502;
+      } else {
+        if (releaseId === null && typeof readBack.id === "number") releaseId = readBack.id;
+        if (releaseUrl === null && typeof readBack.html_url === "string") releaseUrl = readBack.html_url;
+        assets = assetsFrom(readBack);
+        verification = verificationFrom(assets);
+        outcome = "PUBLISHED";
+        detail = `GitHub release ${validated.tagName} was published with ${verifiedCount()}/${assets.length} independently verified asset(s).`;
+        httpStatus = verification === "VERIFIED" ? 201 : 502;
+        completedAt = new Date().toISOString();
+      }
+    }
+  }
+
+  const publication: ReleasePublicationRecord = {
+    schemaVersion: 1,
+    id: `${Date.now()}-${randomUUID()}`,
+    projectId: project.id,
+    releaseRecordId: record.id,
+    sourceSha: record.sourceSha,
+    tagName: validated.tagName,
+    releaseId,
+    releaseUrl,
+    outcome,
+    assets,
+    verification,
+    detail,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await persistReleasePublication(workspaceRoot, publication);
+  } catch (error: unknown) {
+    return res.status(500).json({ ok: httpStatus < 300, publication, error: `The GitHub publication result could not be persisted: ${error instanceof Error ? error.message : "unknown storage error"}` });
+  }
+  await recordRemoteContact(workspaceRoot, "github", { attemptedAt: completedAt, succeeded: httpStatus < 300, destination: `https://api.github.com/repos/${identity.slug}`, error: httpStatus < 300 ? null : detail });
+  return res.status(httpStatus).json({
+    ok: httpStatus < 300,
+    state: outcome,
+    recordId: record.id,
+    sourceSha: record.sourceSha,
+    slug: identity.slug,
+    release: { id: releaseId, url: releaseUrl, tagName: validated.tagName, draft: typeof readBack?.draft === "boolean" ? readBack.draft : outcome !== "PUBLISHED" },
+    assets,
+    verification,
+    publication,
+    transparency: createOperationTransparency({ execution: "REMOTE", network: "REQUIRED", dataClasses: ["METADATA", "ARTIFACT"], provider: "GitHub CLI", destination: `https://api.github.com/repos/${identity.slug}`, purpose: "Publish the explicitly confirmed, locally verified release artifact to GitHub.", confirmation: "CONFIRMED", startedAt, completedAt, result: httpStatus < 300 ? "SUCCEEDED" : "FAILED", reason: httpStatus < 300 ? undefined : detail }),
+    ...(httpStatus < 300 ? {} : { error: detail }),
+  });
 });
 
 router.get("/projects/:id/commit-preview", async (req, res) => {
@@ -2177,10 +2556,27 @@ async function executeMissionStrategyStep(project: ProjectSummary, mission: Miss
     case "test_evidence": return { ok: true, output: listTasks(project.id).filter((task) => task.kind === "test").slice(0, 5), message: "Persisted test evidence inspected." };
     case "build_evidence": return { ok: true, output: listTasks(project.id).filter((task) => task.kind === "build").slice(0, 5), message: "Persisted build evidence inspected." };
     case "release_evidence": { const scan = await ensureScan(); return { ok: true, output: scan.health.release, message: "Release evidence inspected." }; }
-    case "github_checks": return { ok: true, output: { state: "LOCAL_ONLY", detail: "No remote GitHub mutation or fabricated remote-check result was attempted." }, message: "GitHub preview retained local-only evidence." };
-    case "github_preview": return { ok: true, output: { state: "PREVIEW_ONLY", detail: "No pull request or release was created." }, message: "GitHub preview completed without remote mutation." };
+    case "github_checks": {
+      const slug = githubSlug(project.remoteUrl);
+      if (!slug) return { ok: false, blocked: true, output: { state: "NOT_CONFIGURED", detail: "No GitHub origin remote is configured." }, message: "GitHub Checks cannot be read without a GitHub origin remote." };
+      if (!(await isOptionalOnlineFeatureEnabled(getWorkspaceRoot()))) return { ok: false, blocked: true, output: { state: "OFFLINE", detail: "GitHub Checks reads are disabled in Offline Mode." }, message: "GitHub Checks were not contacted while Offline Mode is active." };
+      const head = await run("git", ["rev-parse", "HEAD"], project.path, 10_000);
+      const ref = head.ok ? head.output.trim() : project.branch;
+      const [checkRuns, commitStatus] = await Promise.all([
+        runGhApi(run, { endpoint: `repos/${slug}/commits/${ref}/check-runs`, cwd: project.path, timeoutMs: 20_000 }),
+        runGhApi(run, { endpoint: `repos/${slug}/commits/${ref}/status`, cwd: project.path, timeoutMs: 20_000 }),
+      ]);
+      const states = [githubReadState(checkRuns), githubReadState(commitStatus)];
+      const state = states.every((entry) => entry === "AVAILABLE") ? "AVAILABLE" : states.includes("BLOCKED") ? "BLOCKED" : states.includes("NOT_CONNECTED") ? "NOT_CONNECTED" : states.includes("UNAVAILABLE") ? "UNAVAILABLE" : "UNKNOWN";
+      const parse = (execution: CommandExecution) => { try { return execution.ok ? JSON.parse(execution.output) : { error: execution.output }; } catch { return { error: execution.output || "GitHub returned invalid JSON." }; } };
+      return { ok: state === "AVAILABLE", blocked: state !== "AVAILABLE", output: { state, ref, checkRuns: parse(checkRuns), status: parse(commitStatus), detail: state === "AVAILABLE" ? "Real check-runs and combined commit status were retrieved for the selected local HEAD." : checkRuns.output || commitStatus.output || "GitHub Checks evidence is unavailable." }, message: state === "AVAILABLE" ? "GitHub Checks were read from the real remote repository." : `GitHub Checks are ${state}; no pass was fabricated.` };
+    }
+    case "github_preview": return { ok: true, output: { state: "PREVIEW_ONLY", detail: "No pull request or release was created by this preparation step.", executionContracts: ["POST /projects/:id/github/pull-requests", "POST /projects/:id/github/releases", "POST /projects/:id/github/actions/:workflowId/dispatches", "POST /projects/:id/github/actions/runs/:runId/rerun"], note: "Authorized execution requires project trust, Online mode, explicit confirmation, exact repository identity, and a non-stale source SHA." }, message: "GitHub preparation stayed preview-only; separate authorized action contracts own mutations." };
     case "version": { const scan = await ensureScan(); return { ok: true, output: { packageManager: scan.profile.packageManager }, message: "Local version metadata evidence recorded." }; }
-    case "artifacts": return { ok: true, output: { state: "NOT_CREATED", detail: "No release artifact is created by preparation missions." }, message: "Artifact preview recorded without creating output." };
+    case "artifacts": {
+      const inventory = await collectArtifactEvidence(project.path, RELEASE_ARTIFACT_ROOTS);
+      return { ok: true, output: { state: "NOT_CREATED", created: false, detail: "This preparation step creates no artifact. The inventory below lists real files already present, each with byte size and SHA-256.", artifacts: inventory, artifactDigest: composeArtifactDigest(inventory) }, message: inventory.length ? `${inventory.length} existing artifact file(s) inventoried; no artifact was created by this step.` : "No existing release artifact was found; this preparation step did not create one." };
+    }
     case "release_gate": { const scan = await ensureScan(); return { ok: scan.health.release.state === "READY", output: scan.health.release, message: scan.health.release.state === "READY" ? "Release gate is ready from current evidence." : "Release gate is not ready from current evidence." }; }
     default: return { ok: false, blocked: true, message: `No verified executor is registered for strategy tool '${step.tool}'.` };
   }

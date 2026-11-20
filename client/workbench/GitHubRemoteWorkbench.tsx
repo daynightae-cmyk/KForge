@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CircleDot, ExternalLink, GitBranch, GitCommit, Github, GitPullRequest, PackageOpen, PlayCircle, RefreshCw, ShieldCheck } from "lucide-react";
-import { fetchJson } from "./api";
+import { fetchEvidence, fetchJson, jsonRequest } from "./api";
 import type { SurfaceProps } from "./surfaceContracts";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
 import { ProjectRequired } from "./ProjectStartActions";
@@ -238,6 +238,115 @@ function ReleasesView({ data }: { data: GitHubRemoteData }) {
   </section>;
 }
 
+function GitHubActionPanel({ view, project, data, onRefresh, onExecution }: { view: string; project: NonNullable<Props["project"]>; data: GitHubRemoteData; onRefresh: () => void; onExecution: Props["onExecution"] }) {
+  const repository = record(data.repository);
+  const sourceHead = typeof data.checks?.commitSha === "string" ? data.checks.commitSha : "";
+  const [expectedHead, setExpectedHead] = useState(sourceHead);
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [resultUrl, setResultUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [head, setHead] = useState(project.branch || "main");
+  const [base, setBase] = useState(text(repository.default_branch, "main"));
+  const [body, setBody] = useState("");
+  const [draft, setDraft] = useState(false);
+  const [tagName, setTagName] = useState("");
+  const [releaseName, setReleaseName] = useState("");
+  const [prerelease, setPrerelease] = useState(false);
+  const [workflowId, setWorkflowId] = useState("");
+  const [ref, setRef] = useState(project.branch || "main");
+  const [inputs, setInputs] = useState("{}");
+  const [runId, setRunId] = useState("");
+
+  useEffect(() => { setExpectedHead(sourceHead); }, [sourceHead]);
+  useEffect(() => { setBase(text(repository.default_branch, "main")); }, [repository.default_branch]);
+  useEffect(() => { setHead(project.branch || "main"); setRef(project.branch || "main"); }, [project.branch]);
+
+  if (view === "issues") return null;
+
+  const submit = async (endpoint: string, payload: Record<string, unknown>, label: string, urlValue?: unknown) => {
+    if (!confirmed || !expectedHead) return;
+    setBusy(true);
+    setMessage("");
+    setResultUrl("");
+    onExecution({ label, state: "RUNNING", source: "GitHub authorized action contract" });
+    try {
+      const response = await fetchEvidence(endpoint, jsonRequest({ ...payload, expectedHead, confirmed: true }));
+      const payloadData = response.data as Record<string, unknown>;
+      const error = typeof payloadData.error === "string" ? payloadData.error : "";
+      if (!response.ok) {
+        setMessage(error || `GitHub action returned ${response.status}. No success was inferred.`);
+        onExecution({ label, state: "FAILED", source: "GitHub authorized action contract", message: error });
+      } else {
+        const pullUrl = record(payloadData.pullRequest).htmlUrl;
+        const releaseUrl = record(payloadData.release).htmlUrl;
+        const url = typeof urlValue === "string" ? urlValue : typeof pullUrl === "string" ? pullUrl : typeof releaseUrl === "string" ? releaseUrl : "";
+        setResultUrl(url);
+        setMessage(`Authorized action accepted: ${String(payloadData.state || "OK")}. Verification: ${String(record(payloadData.verification).state || "RECORDED")}.`);
+        onExecution({ label, state: "PASS", source: "GitHub authorized action contract", message: String(payloadData.state || "OK") });
+        setConfirmed(false);
+        onRefresh();
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "GitHub action request failed.");
+      onExecution({ label, state: "FAILED", source: "GitHub authorized action contract", message: error instanceof Error ? error.message : undefined });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dispatchWorkflow = async () => {
+    let parsed: unknown = {};
+    try { parsed = inputs.trim() ? JSON.parse(inputs) : {}; } catch { setMessage("Workflow inputs must be a valid flat JSON object."); return; }
+    await submit(`/api/workspace/projects/${encodeURIComponent(project.id)}/github/actions/${encodeURIComponent(workflowId)}/dispatches`, { ref, inputs: parsed }, `Dispatch workflow ${workflowId}`);
+  };
+
+  const rerun = async () => {
+    await submit(`/api/workspace/projects/${encodeURIComponent(project.id)}/github/actions/runs/${encodeURIComponent(runId)}/rerun`, {}, `Rerun workflow run ${runId}`);
+  };
+
+  return <section className="rounded-lg border bg-card p-4" aria-label="Authorized GitHub action contracts">
+    <div className="flex flex-wrap items-center gap-2"><h2 className="mr-auto text-sm font-semibold">Authorized GitHub actions</h2><StatusBadge value="EXPLICIT_CONFIRMATION_REQUIRED" /></div>
+    <p className="mt-1 text-xs text-muted-foreground">These actions use the existing GitHub CLI transport. KForge derives the repository from the project origin remote, requires project trust and Online mode, binds the action to the reviewed local HEAD, and refuses stale plans. Reads above stay independent from these mutations.</p>
+    <label className="mt-3 grid gap-1 text-xs"><span className="text-muted-foreground">Reviewed source SHA</span><input value={expectedHead} onChange={(event) => setExpectedHead(event.target.value)} placeholder="40-character local HEAD" className="font-mono" /></label>
+
+    {view === "pull-requests" ? <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+      <label className="grid gap-1 sm:col-span-2"><span className="text-muted-foreground">Pull request title</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={256} /></label>
+      <label className="grid gap-1"><span className="text-muted-foreground">Head branch</span><input value={head} onChange={(event) => setHead(event.target.value)} /></label>
+      <label className="grid gap-1"><span className="text-muted-foreground">Base branch</span><input value={base} onChange={(event) => setBase(event.target.value)} /></label>
+      <label className="grid gap-1 sm:col-span-2"><span className="text-muted-foreground">Body</span><textarea value={body} onChange={(event) => setBody(event.target.value)} rows={3} /></label>
+      <label className="flex items-center gap-2"><input type="checkbox" checked={draft} onChange={(event) => setDraft(event.target.checked)} /><span>Create as draft</span></label>
+    </div> : null}
+
+    {view === "releases" ? <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+      <label className="grid gap-1"><span className="text-muted-foreground">Tag name</span><input value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="v1.2.3" /></label>
+      <label className="grid gap-1"><span className="text-muted-foreground">Release name</span><input value={releaseName} onChange={(event) => setReleaseName(event.target.value)} /></label>
+      <label className="grid gap-1 sm:col-span-2"><span className="text-muted-foreground">Release notes body</span><textarea value={body} onChange={(event) => setBody(event.target.value)} rows={3} /></label>
+      <label className="grid gap-1"><span className="text-muted-foreground">Target commitish (optional)</span><input value={ref} onChange={(event) => setRef(event.target.value)} placeholder="main" /></label>
+      <div className="flex items-center gap-3"><label className="flex items-center gap-2"><input type="checkbox" checked={draft} onChange={(event) => setDraft(event.target.checked)} /><span>Draft</span></label><label className="flex items-center gap-2"><input type="checkbox" checked={prerelease} onChange={(event) => setPrerelease(event.target.checked)} /><span>Prerelease</span></label></div>
+    </div> : null}
+
+    {view === "actions" ? <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+      <label className="grid gap-1"><span className="text-muted-foreground">Workflow ID or filename</span><input value={workflowId} onChange={(event) => setWorkflowId(event.target.value)} placeholder="kforge-verification.yml" /></label>
+      <label className="grid gap-1"><span className="text-muted-foreground">Ref</span><input value={ref} onChange={(event) => setRef(event.target.value)} /></label>
+      <label className="grid gap-1 sm:col-span-2"><span className="text-muted-foreground">Inputs (flat JSON object)</span><textarea value={inputs} onChange={(event) => setInputs(event.target.value)} rows={2} className="font-mono" /></label>
+      <label className="grid gap-1"><span className="text-muted-foreground">Run ID to rerun</span><input value={runId} onChange={(event) => setRunId(event.target.value)} placeholder="123456789" /></label>
+    </div> : null}
+
+    <label className="mt-3 flex items-start gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>I reviewed the exact repository, action, branch/tag, and source SHA. This performs a real remote GitHub mutation.</span></label>
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      {view === "pull-requests" ? <button className={buttonClass} disabled={!confirmed || !expectedHead || busy} onClick={() => void submit(`/api/workspace/projects/${encodeURIComponent(project.id)}/github/pull-requests`, { title, head, base, body, draft }, "Create authorized pull request")}>Create pull request</button> : null}
+      {view === "releases" ? <button className={buttonClass} disabled={!confirmed || !expectedHead || busy} onClick={() => void submit(`/api/workspace/projects/${encodeURIComponent(project.id)}/github/releases`, { tagName, name: releaseName, body, draft, prerelease, targetCommitish: ref || undefined }, "Create authorized GitHub release", undefined)}>Create release</button> : null}
+      {view === "actions" ? <button className={buttonClass} disabled={!confirmed || !expectedHead || !workflowId || busy} onClick={() => void dispatchWorkflow()}>Dispatch workflow</button> : null}
+      {view === "actions" ? <button className={buttonClass} disabled={!confirmed || !expectedHead || !runId || busy} onClick={() => void rerun()}>Rerun selected run</button> : null}
+      <span className="text-xs text-muted-foreground">{busy ? "Contacting GitHub with the confirmed action…" : "No request is sent until this button is pressed."}</span>
+    </div>
+    {message ? <p className="kw-message mt-3" role="status">{message}</p> : null}
+    {resultUrl ? <p className="mt-2 text-xs"><a className={linkClass} href={safeUrl(resultUrl)} target="_blank" rel="noreferrer">Open the verified GitHub result<ExternalLink size={12} /></a></p> : null}
+  </section>;
+}
+
 export default function GitHubRemoteWorkbench({ view, project, onExecution }: Props) {
   const [data, setData] = useState<GitHubRemoteData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -290,7 +399,7 @@ export default function GitHubRemoteWorkbench({ view, project, onExecution }: Pr
   return <section className="space-y-4" aria-label="KForge GitHub Remote Workbench">
     <header className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
       <Github size={16} />
-      <div className="mr-auto min-w-0"><strong className="block truncate text-sm">{data.slug || project.name}</strong><p className="mt-1 text-xs text-muted-foreground">Authenticated read-only GitHub engineering evidence · no remote mutation is exposed here.</p></div>
+      <div className="mr-auto min-w-0"><strong className="block truncate text-sm">{data.slug || project.name}</strong><p className="mt-1 text-xs text-muted-foreground">Authenticated GitHub read evidence plus separate, explicitly confirmed action contracts. Reads never trigger a mutation.</p></div>
       <StatusBadge value={data.connection?.state} />
       <span className="rounded-md bg-muted px-2 py-1 text-[11px]">{counts.pulls} PR</span>
       <span className="rounded-md bg-muted px-2 py-1 text-[11px]">{counts.issues} issues</span>
@@ -305,6 +414,7 @@ export default function GitHubRemoteWorkbench({ view, project, onExecution }: Pr
     {view === "issues" && <IssuesView data={data} />}
     {view === "actions" && <ActionsView data={data} />}
     {view === "releases" && <ReleasesView data={data} />}
+    {["pull-requests", "releases", "actions"].includes(view) ? <GitHubActionPanel view={view} project={project} data={data} onRefresh={() => void load(true)} onExecution={onExecution} /> : null}
 
     <details className="rounded-lg border bg-card px-4 py-3"><summary className="cursor-pointer text-xs font-medium">Advanced · GitHub raw evidence</summary><div className="mt-3"><AdvancedEvidence value={data} label="Raw remote evidence" /></div></details>
   </section>;
