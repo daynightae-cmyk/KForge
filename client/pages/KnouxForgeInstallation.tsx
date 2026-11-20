@@ -11,8 +11,9 @@ const fragmentPositions = [
   "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
 ];
 const installationKey = "knoux-forge-installation-complete";
-const fullRevealDuration = 11_200;
-const returningRevealDuration = 9_200;
+const fullRevealDuration = 5_600;
+// Returning users already know the mark: their entrance resolves sooner.
+const returningRevealDuration = 4_800;
 
 function isFirstLaunch() {
   try {
@@ -136,7 +137,7 @@ export default function KnouxForgeInstallation() {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const interactive = target?.closest("button, a, input, textarea, select");
-      if (event.key === "Escape" || (event.key === "Enter" && !interactive && stage === "reveal")) {
+      if (event.key === "Escape" || (event.key === "Enter" && !interactive && stage !== "leaving")) {
         event.preventDefault();
         enterWorkspace();
       }
@@ -185,6 +186,11 @@ export default function KnouxForgeInstallation() {
           <i className="kf-splash-logo-sweep" aria-hidden="true" />
           {stage === "complete" && <button className="kf-splash-logo-action" type="button" onClick={enterWorkspace}>Enter Workspace</button>}
         </div>
+        {stage === "complete" && (
+          <button className="kf-splash-enter" type="button" onClick={enterWorkspace}>
+            Enter Workspace <kbd>Enter</kbd>
+          </button>
+        )}
       </section>
     </main>
   );

@@ -24,6 +24,9 @@ import "./rebirth.css";
 import "./rebirth-screens.css";
 import "./rebirth-graph.css";
 import "./rebirth-apps.css";
+// Atelier is the final material authority: it resolves the accumulated
+// visual passes into one pearl/ink grammar for both themes.
+import "./forge-atelier.css";
 
 const CanonicalInspector = lazy(() => import("./CanonicalInspector"));
 

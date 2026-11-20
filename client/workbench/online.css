@@ -154,3 +154,67 @@
   color: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .38), 0 14px 28px -16px color-mix(in srgb, var(--kw-primary) 92%, transparent);
 }
+
+/* Atelier: the catalog card lifts and blooms with the service card.
+ * The existing top hairline (::before) is preserved; the bloom is a
+ * background layer so it never covers the card content. */
+.kw-capability-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(80% 60% at 82% -6%, color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 16%, transparent), transparent 60%),
+    var(--kw-glass-3, none),
+    color-mix(in srgb, var(--kw-panel) 92%, transparent);
+  transition: transform var(--kw-move, 200ms) var(--kw-ease-glass, ease), border-color var(--kw-move, 200ms) var(--kw-ease-glass, ease), box-shadow var(--kw-move, 200ms) var(--kw-ease-glass, ease), background var(--kw-move, 200ms) var(--kw-ease-glass, ease);
+}
+
+.kw-capability-card:hover {
+  transform: translateY(-2px);
+  background:
+    radial-gradient(80% 60% at 82% -6%, color-mix(in srgb, var(--kw-brand, var(--kw-primary)) 26%, transparent), transparent 62%),
+    var(--kw-glass-3, none),
+    color-mix(in srgb, var(--kw-panel) 92%, transparent);
+}
+
+.light .kw-capability-card:hover {
+  background:
+    radial-gradient(80% 60% at 82% -6%, rgba(169, 122, 255, 0.3), transparent 62%),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.66) 56%, rgba(238, 230, 252, 0.6));
+}
+
+.kw-capability-card .kw-card-actions button.kw-action-primary { position: relative; overflow: hidden; }
+
+.kw-capability-card .kw-card-actions button.kw-action-primary::after {
+  content: "";
+  position: absolute;
+  top: -30%;
+  bottom: -30%;
+  left: -45%;
+  width: 34%;
+  background: linear-gradient(100deg, transparent 8%, rgba(255, 255, 255, 0.34) 50%, transparent 92%);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kw-capability-card .kw-card-actions button.kw-action-primary:hover:not(:disabled)::after {
+  animation: kw-online-sheen 620ms var(--kw-ease-out, ease) forwards;
+}
+
+@keyframes kw-online-sheen {
+  0% { opacity: 0; transform: skewX(-18deg) translateX(0); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: skewX(-18deg) translateX(420%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kw-capability-card, .kw-capability-card::before { transition: none; }
+  .kw-capability-card:hover { transform: none; }
+  .kw-capability-card .kw-card-actions button.kw-action-primary::after { animation: none; }
+}
+
+[data-kf-reduced-motion="true"] .kw-capability-card,
+[data-kf-reduced-motion="true"] .kw-capability-card::before { transition: none; }
+[data-kf-reduced-motion="true"] .kw-capability-card:hover { transform: none; }
+[data-kf-reduced-motion="true"] .kw-capability-card .kw-card-actions button.kw-action-primary::after { animation: none; }

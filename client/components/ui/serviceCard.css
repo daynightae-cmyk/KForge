@@ -439,3 +439,68 @@
 .light .kw-service-card__result { border-color: rgba(88, 52, 160, .1); background: rgba(255, 255, 255, .72); }
 
 [data-kf-reduced-motion="true"] .kw-service-card--service { transition: none; transform: none; }
+
+/* ---- Atelier hover bloom: the card lights toward the pointer corner. ---- */
+.kw-service-card--service::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(80% 60% at 82% -6%, color-mix(in srgb, var(--kw-service-card-primary) 20%, transparent), transparent 60%);
+  opacity: 0;
+  transition: opacity var(--kw-move, 200ms) var(--kw-ease-out, ease);
+  pointer-events: none;
+}
+
+.kw-service-card--service:hover::before { opacity: 1; }
+
+.kw-service-card--service:hover .kw-service-card__icon {
+  border-color: color-mix(in srgb, var(--kw-service-card-primary) 46%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent), 0 10px 22px -14px color-mix(in srgb, var(--kw-service-card-primary) 70%, transparent);
+}
+
+.kw-service-card__icon { transition: border-color var(--kw-move, 200ms) var(--kw-ease-out, ease), box-shadow var(--kw-move, 200ms) var(--kw-ease-out, ease), transform var(--kw-move, 200ms) var(--kw-ease-out, ease); }
+.kw-service-card--service:hover .kw-service-card__icon { transform: translateY(-1px); }
+
+/* The primary card action joins the one sheen language. */
+.kw-service-card__action.kw-action-primary,
+.kw-service-card__action.is-primary { position: relative; overflow: hidden; }
+
+.kw-service-card__action.kw-action-primary::after,
+.kw-service-card__action.is-primary::after {
+  content: "";
+  position: absolute;
+  top: -30%;
+  bottom: -30%;
+  left: -45%;
+  width: 34%;
+  background: linear-gradient(100deg, transparent 8%, rgba(255, 255, 255, 0.34) 50%, transparent 92%);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kw-service-card__action.kw-action-primary:hover:not(:disabled)::after,
+.kw-service-card__action.is-primary:hover:not(:disabled)::after {
+  animation: kw-service-sheen 620ms var(--kw-ease-out, ease) forwards;
+}
+
+@keyframes kw-service-sheen {
+  0% { opacity: 0; transform: skewX(-18deg) translateX(0); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: skewX(-18deg) translateX(420%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kw-service-card--service::before,
+  .kw-service-card__icon { transition: none; }
+  .kw-service-card__action.kw-action-primary::after,
+  .kw-service-card__action.is-primary::after { animation: none; }
+}
+
+[data-kf-reduced-motion="true"] .kw-service-card--service::before,
+[data-kf-reduced-motion="true"] .kw-service-card__icon { transition: none; }
+[data-kf-reduced-motion="true"] .kw-service-card__action.kw-action-primary::after,
+[data-kf-reduced-motion="true"] .kw-service-card__action.is-primary::after { animation: none; }
+[data-kf-reduced-motion="true"] .kw-service-card--service:hover .kw-service-card__icon { transform: none; }

@@ -1,0 +1,1080 @@
+/* ==========================================================================
+   KNOuX Forge — Atelier. The final material authority.
+
+   Seven visual passes accumulated in this shell and disagreed with each
+   other: rebirth flattened the glass panes into opaque panels, three
+   different primary gradients fought over the same buttons, and the night
+   theme read as grey rather than ink. This layer is loaded last and owns
+   the single material grammar for both themes:
+
+     pearl day  — warm white glass over a lavender atmosphere
+     luminous night — deep violet ink with one brand bloom and lit edges
+
+   Presentation only. No selector here changes a service destination, an
+   availability state, a permission gate, an API call or an evidence string.
+   Every animation honors both reduced-motion channels: the OS media query
+   and the persisted html[data-kf-reduced-motion] preference.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* 1. Tokens — day                                                     */
+/* ------------------------------------------------------------------ */
+
+.kw-shell {
+  /* Brand, sampled from the official symbol. */
+  --kw-brand-lift: #a487ff;
+  --kw-brand: #8958ff;
+  --kw-brand-strong: #7a3df0;
+  --kw-brand-deep: #4c1cb4;
+  --kw-brand-ink: #140f26;
+
+  /* Pearl palette. Text colours are solid and AA-checked against panels. */
+  --kw-surface: #f7f4fd;
+  --kw-panel: #ffffff;
+  --kw-panel-2: #f4eefc;
+  --kw-text: #201738;
+  --kw-muted: #675e85;
+  --kw-border: #e7def6;
+  --kw-primary: #6f31ee;
+  --kw-primary-fg: #ffffff;
+
+  --kf-violet: #6f31ee;
+  --kf-violet-deep: #5122b8;
+  --kf-violet-soft: #f0e8fd;
+  --kf-lilac: #a685fa;
+  --kf-ink: #201738;
+  --kf-line: #e9e1f7;
+  --kf-line-strong: #d9cbf2;
+  --kf-panel-soft: #faf7ff;
+  --kf-panel-glass: rgba(255, 255, 255, 0.8);
+  --kf-shadow: 0 20px 46px -30px rgba(64, 32, 130, 0.4), 0 2px 8px rgba(64, 32, 130, 0.05);
+  --kf-shadow-sm: 0 10px 26px -20px rgba(64, 32, 130, 0.42);
+  --kf-glow: rgba(111, 49, 238, 0.14);
+  --kf-green: #0b7a45;
+  --kf-green-soft: #e4f6ec;
+  --kf-amber: #b45309;
+  --kf-amber-soft: #fdf3e3;
+  --kf-red: #c81e1e;
+  --kf-red-soft: #fdecec;
+  --kf-blue: #2563eb;
+  --kf-blue-soft: #e9f0fe;
+
+  /* Glass levels. */
+  --kw-glass-1: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(250, 247, 255, 0.64));
+  --kw-glass-2: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.38));
+  --kw-glass-3: linear-gradient(168deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.62) 54%, rgba(235, 225, 252, 0.56));
+  --kw-glass-4: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 250, 255, 0.92));
+  --kw-glass-5: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 247, 255, 0.95));
+  --kw-glass-border: rgba(84, 46, 158, 0.12);
+  --kw-glass-border-strong: color-mix(in srgb, var(--kw-brand-strong) 34%, transparent);
+  --kw-glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --kw-glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  --kw-blur-pane: 20px;
+  --kw-blur-float: 28px;
+  --kw-shadow-1: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 14px 32px -24px rgba(56, 32, 116, 0.4);
+  --kw-shadow-2: 0 1px 0 rgba(255, 255, 255, 0.92) inset, 0 26px 50px -28px rgba(56, 32, 116, 0.46);
+  --kw-shadow-3: 0 44px 96px -44px rgba(46, 26, 96, 0.5), 0 0 0 1px rgba(122, 61, 240, 0.12);
+
+  /* Geometry + motion: one easing family everywhere. */
+  --kw-radius-ctl: 10px;
+  --kw-radius-card: 15px;
+  --kw-radius-panel: 20px;
+  --kw-radius-float: 22px;
+  --kw-move-fast: 140ms;
+  --kw-move: 200ms;
+  --kw-move-slow: 340ms;
+  --kw-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --kw-ease-glass: cubic-bezier(0.16, 1, 0.3, 1);
+  --kw-focus: #6f31ee;
+  --kw-primary-gradient: linear-gradient(140deg, #9a6bff 0%, #7a3df0 52%, #5a24d6 100%);
+  --kw-primary-gradient-hover: linear-gradient(140deg, #ab83ff 0%, #8b52ff 52%, #6932df 100%);
+  --kw-primary-glow: 0 14px 30px -14px rgba(122, 61, 240, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* ------------------------------------------------------------------ */
+/* 2. Tokens — luminous night                                          */
+/* ------------------------------------------------------------------ */
+
+html.dark .kw-shell {
+  --background: 260 45% 5%;
+  --foreground: 262 60% 96%;
+  --card: 261 42% 9%;
+  --card-foreground: 262 60% 96%;
+  --popover: 261 44% 8%;
+  --popover-foreground: 262 60% 96%;
+  --primary: 262 100% 76%;
+  --primary-foreground: 260 45% 8%;
+  --secondary: 260 30% 14%;
+  --secondary-foreground: 262 45% 92%;
+  --muted: 260 28% 14%;
+  --muted-foreground: 260 24% 74%;
+  --accent: 260 32% 17%;
+  --accent-foreground: 262 45% 94%;
+  --destructive: 356 80% 66%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 260 30% 19%;
+  --input: 260 30% 20%;
+  --ring: 262 100% 76%;
+
+  --kw-surface: #0a0714;
+  --kw-panel: #151024;
+  --kw-panel-2: #1d1533;
+  --kw-text: #f4efff;
+  --kw-muted: #b3a8d4;
+  --kw-border: #2c2145;
+  --kw-primary: #b18cff;
+  --kw-primary-fg: #140b26;
+
+  --kf-violet: #a983ff;
+  --kf-violet-deep: #c9b3ff;
+  --kf-violet-soft: #251a41;
+  --kf-lilac: #c9b3ff;
+  --kf-ink: #f6f1ff;
+  --kf-line: #2a2044;
+  --kf-line-strong: #3b2d60;
+  --kf-panel-soft: #191230;
+  --kf-panel-glass: rgba(21, 16, 36, 0.72);
+  --kf-shadow: 0 26px 60px -30px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+  --kf-shadow-sm: 0 14px 32px -22px rgba(0, 0, 0, 0.8);
+  --kf-glow: rgba(169, 131, 255, 0.24);
+  --kf-green: #57e39a;
+  --kf-green-soft: rgba(52, 211, 153, 0.12);
+  --kf-amber: #ffc94d;
+  --kf-amber-soft: rgba(251, 191, 36, 0.12);
+  --kf-red: #ff8a8a;
+  --kf-red-soft: rgba(248, 113, 113, 0.12);
+  --kf-blue: #9ec5ff;
+  --kf-blue-soft: rgba(96, 165, 250, 0.14);
+  --kf-aurora: radial-gradient(circle at 82% 8%, rgba(137, 88, 255, 0.2), transparent 46%),
+    radial-gradient(circle at 96% 78%, rgba(76, 29, 149, 0.3), transparent 52%),
+    linear-gradient(118deg, #151024 0%, #171130 58%, #1d1436 100%);
+
+  --kw-glass-1: linear-gradient(180deg, rgba(28, 21, 48, 0.72), rgba(14, 10, 26, 0.82));
+  --kw-glass-2: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+  --kw-glass-3: linear-gradient(165deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02) 46%, rgba(137, 88, 255, 0.06));
+  --kw-glass-4: linear-gradient(180deg, rgba(32, 25, 54, 0.94), rgba(16, 12, 30, 0.96));
+  --kw-glass-5: linear-gradient(180deg, rgba(40, 31, 66, 0.96), rgba(19, 14, 34, 0.97));
+  --kw-glass-border: rgba(255, 255, 255, 0.09);
+  --kw-glass-border-strong: color-mix(in srgb, var(--kw-brand) 42%, transparent);
+  --kw-glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --kw-glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+  --kw-blur-pane: 24px;
+  --kw-blur-float: 32px;
+  --kw-shadow-1: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 38px -28px rgba(0, 0, 0, 0.9);
+  --kw-shadow-2: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 28px 58px -30px rgba(0, 0, 0, 0.95);
+  --kw-shadow-3: 0 42px 110px -46px rgba(0, 0, 0, 0.98), 0 0 0 1px color-mix(in srgb, var(--kw-brand) 20%, transparent);
+
+  --kw-focus: #b18cff;
+  --kw-primary-gradient: linear-gradient(140deg, #a983ff 0%, #8958ff 52%, #6d33e8 100%);
+  --kw-primary-gradient-hover: linear-gradient(140deg, #bd9dff 0%, #9a6bff 52%, #7a3df0 100%);
+  --kw-primary-glow: 0 16px 34px -14px rgba(137, 88, 255, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. Atmospheric canvas                                               */
+/* ------------------------------------------------------------------ */
+
+.kw-shell {
+  background:
+    radial-gradient(112% 70% at 80% -12%, rgba(206, 176, 255, 0.34), transparent 58%),
+    radial-gradient(84% 56% at 6% -4%, rgba(255, 255, 255, 0.9), transparent 60%),
+    radial-gradient(70% 52% at 46% 108%, rgba(167, 128, 240, 0.16), transparent 64%),
+    linear-gradient(178deg, #fdfcff 0%, #f7f4fd 46%, #f0eaf9 100%);
+  transition: background-color var(--kw-move-slow) var(--kw-ease-out);
+}
+
+html.dark .kw-shell {
+  background:
+    radial-gradient(112% 70% at 80% -12%, rgba(137, 88, 255, 0.2), transparent 60%),
+    radial-gradient(84% 56% at 6% -4%, rgba(255, 255, 255, 0.045), transparent 58%),
+    radial-gradient(70% 52% at 46% 108%, rgba(76, 29, 180, 0.28), transparent 66%),
+    linear-gradient(180deg, #0d0a1a 0%, #0a0714 48%, #070510 100%);
+}
+
+.kw-shell-glow {
+  inset: 64px 0 0 64px;
+  opacity: 0.9;
+  background:
+    radial-gradient(30% 26% at 74% 6%, rgba(255, 255, 255, 0.6), transparent 72%),
+    radial-gradient(46% 40% at 78% 12%, rgba(169, 122, 255, 0.3), transparent 74%),
+    conic-gradient(from 210deg at 76% 16%, transparent 0 62%, rgba(137, 88, 255, 0.1) 74%, transparent 88%);
+  mask-image: radial-gradient(120% 100% at 70% 0, black 12%, transparent 74%);
+}
+
+html.dark .kw-shell-glow {
+  background:
+    radial-gradient(30% 26% at 74% 6%, rgba(255, 255, 255, 0.16), transparent 72%),
+    radial-gradient(46% 40% at 78% 12%, rgba(137, 88, 255, 0.26), transparent 74%),
+    conic-gradient(from 210deg at 76% 16%, transparent 0 62%, rgba(137, 88, 255, 0.14) 74%, transparent 88%);
+}
+
+/* The halo motif carried forward from the installation emblem. */
+.kw-shell::after {
+  inset: -140px -140px auto auto;
+  left: auto;
+  width: 620px;
+  height: 620px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 44%, rgba(137, 88, 255, 0.09) 44.6%, transparent 46%),
+    radial-gradient(circle at 50% 50%, transparent 0 58%, rgba(137, 88, 255, 0.06) 58.5%, transparent 60%),
+    radial-gradient(circle at 50% 50%, rgba(137, 88, 255, 0.12) 0 26%, transparent 62%);
+  mask-image: none;
+  pointer-events: none;
+}
+
+html.dark .kw-shell::after {
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 44%, rgba(169, 131, 255, 0.12) 44.6%, transparent 46%),
+    radial-gradient(circle at 50% 50%, transparent 0 58%, rgba(169, 131, 255, 0.08) 58.5%, transparent 60%),
+    radial-gradient(circle at 50% 50%, rgba(137, 88, 255, 0.16) 0 26%, transparent 62%);
+}
+
+/* The workbench pane stays pearl-bright in the day theme (brand-layer
+ * luminance contract) and transparent at night so the canvas bloom shows. */
+html.light .kw-workbench {
+  background: color-mix(in srgb, var(--kw-surface) 88%, transparent);
+}
+
+html.dark .kw-workbench {
+  background: transparent;
+}
+
+.kw-shell[data-living-mark="workspace"] .kw-workbench {
+  background: color-mix(in srgb, var(--kw-surface) 82%, transparent);
+}
+
+/* ------------------------------------------------------------------ */
+/* 4. Structural glass — one material for every pane                   */
+/* ------------------------------------------------------------------ */
+
+.kw-topbar {
+  border-bottom: 1px solid var(--kw-glass-border);
+  background: var(--kw-glass-1);
+  box-shadow: var(--kw-glass-hi), 0 18px 40px -34px rgba(20, 10, 40, 0.5);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--kw-blur-pane)) saturate(150%);
+}
+
+html.dark .kw-topbar {
+  box-shadow: var(--kw-glass-hi), 0 18px 44px -34px rgba(0, 0, 0, 0.85);
+}
+
+.kw-activity-bar {
+  border-right: 1px solid var(--kw-glass-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(246, 241, 254, 0.32));
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+}
+
+html.dark .kw-activity-bar {
+  background: linear-gradient(180deg, rgba(137, 88, 255, 0.1), transparent 44%);
+}
+
+.kw-explorer {
+  border-right: 1px solid var(--kw-glass-border);
+  background: var(--kw-glass-2);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+}
+
+html.dark .kw-explorer {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+}
+
+.kw-inspector {
+  border-left: 1px solid var(--kw-glass-border);
+  background: var(--kw-glass-2);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+}
+
+html.dark .kw-inspector {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.018));
+}
+
+/* Theme changes glide instead of snapping. */
+.kw-topbar,
+.kw-activity-bar,
+.kw-explorer,
+.kw-inspector,
+.kw-workbench,
+.kf-card,
+.kf-stat,
+.kw-surface-heading {
+  transition: background-color var(--kw-move-slow) var(--kw-ease-out), border-color var(--kw-move-slow) var(--kw-ease-out), color var(--kw-move-slow) var(--kw-ease-out), box-shadow var(--kw-move-slow) var(--kw-ease-out);
+}
+
+/* Opening and closing the side panes glides the grid instead of snapping. */
+.kw-shell {
+  transition: grid-template-columns var(--kw-move-slow) var(--kw-ease-glass), background-color var(--kw-move-slow) var(--kw-ease-out);
+}
+
+/* The Explorer and Inspector arrive as composed panes, not as popped boxes.
+ * Opacity-only: a retained transform would create a containing block and
+ * break the fixed-position drawer layout on narrow viewports. */
+.kw-explorer,
+.kw-inspector {
+  animation: kw-atelier-pane-in var(--kw-move-slow) var(--kw-ease-glass) both;
+}
+
+@keyframes kw-atelier-pane-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  .kw-topbar { background: var(--kw-panel); }
+  .kw-activity-bar, .kw-explorer, .kw-inspector { background: color-mix(in srgb, var(--kw-panel) 96%, transparent); }
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. Controls — one button language                                   */
+/* ------------------------------------------------------------------ */
+
+.kw-shell button,
+.kw-shell select,
+.kw-shell input,
+.kw-shell textarea {
+  border-color: var(--kf-line);
+  border-radius: var(--kw-radius-ctl);
+  background: var(--kw-panel);
+  color: var(--kw-text);
+  transition: border-color var(--kw-move-fast) var(--kw-ease-out), background var(--kw-move-fast) var(--kw-ease-out), color var(--kw-move-fast) var(--kw-ease-out), box-shadow var(--kw-move) var(--kw-ease-out), transform var(--kw-move-fast) var(--kw-ease-out);
+}
+
+html.dark .kw-shell button,
+html.dark .kw-shell select,
+html.dark .kw-shell input,
+html.dark .kw-shell textarea {
+  background: color-mix(in srgb, var(--kw-panel) 88%, transparent);
+}
+
+.kw-shell button:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--kf-lilac) 60%, var(--kf-line));
+  box-shadow: 0 6px 18px -12px var(--kf-glow);
+}
+
+.kw-shell button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.kw-shell input:focus-visible,
+.kw-shell select:focus-visible,
+.kw-shell textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--kw-primary) 55%, var(--kf-line));
+  outline: 2px solid color-mix(in srgb, var(--kw-focus) 55%, transparent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--kw-focus) 12%, transparent);
+}
+
+/* One calm focus ring. The old infinite pulse made every focused control
+ * look like it was mid-alarm; keyboard focus is now unmistakable and still. */
+.kw-shell :focus-visible {
+  outline: 2px solid var(--kw-focus);
+  outline-offset: 2px;
+}
+
+.kw-shell button:focus-visible,
+.kw-shell input:focus-visible,
+.kw-shell select:focus-visible,
+.kw-shell textarea:focus-visible,
+.kw-shell .kf-btn:focus-visible,
+.kw-shell .kf-tabs button:focus-visible {
+  animation: none;
+}
+
+/* Primary actions: one gradient, a travelling sheen on hover, a lifted
+ * glow, and a tactile press. Every primary dialect resolves here. */
+.kw-shell button.is-primary,
+.kw-shell .is-primary,
+.kw-shell .kw-action-primary,
+.kw-shell .kf-btn.kf-btn--primary,
+.kw-project-card__actions button.is-primary,
+.kw-settings-v4__header button.is-primary,
+.kw-start-actions__primary {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #fff 24%, transparent);
+  border-radius: var(--kw-radius-ctl);
+  background: var(--kw-primary-gradient);
+  color: #fff;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  box-shadow: var(--kw-primary-glow);
+}
+
+.kw-shell button.is-primary:hover:not(:disabled),
+.kw-shell .is-primary:hover:not(:disabled),
+.kw-shell .kw-action-primary:hover:not(:disabled),
+.kw-shell .kf-btn.kf-btn--primary:hover:not(:disabled),
+.kw-project-card__actions button.is-primary:hover:not(:disabled),
+.kw-settings-v4__header button.is-primary:hover:not(:disabled),
+.kw-start-actions__primary:hover:not(:disabled) {
+  background: var(--kw-primary-gradient-hover);
+  border-color: color-mix(in srgb, #fff 32%, transparent);
+  transform: translateY(-1px);
+  box-shadow: 0 20px 40px -16px color-mix(in srgb, var(--kw-brand) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.kw-shell button.is-primary::after,
+.kw-shell .is-primary::after,
+.kw-shell .kw-action-primary::after,
+.kw-shell .kf-btn.kf-btn--primary::after,
+.kw-start-actions__primary::after {
+  content: "";
+  position: absolute;
+  top: -30%;
+  bottom: -30%;
+  left: -45%;
+  width: 34%;
+  background: linear-gradient(100deg, transparent 8%, rgba(255, 255, 255, 0.34) 50%, transparent 92%);
+  transform: skewX(-18deg) translateX(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kw-shell button.is-primary:hover:not(:disabled)::after,
+.kw-shell .is-primary:hover:not(:disabled)::after,
+.kw-shell .kw-action-primary:hover:not(:disabled)::after,
+.kw-shell .kf-btn.kf-btn--primary:hover:not(:disabled)::after,
+.kw-start-actions__primary:hover:not(:disabled)::after {
+  animation: kw-atelier-sheen 620ms var(--kw-ease-out) forwards;
+}
+
+@keyframes kw-atelier-sheen {
+  0% { opacity: 0; transform: skewX(-18deg) translateX(0); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: skewX(-18deg) translateX(420%); }
+}
+
+/* Secondary component buttons keep the quiet glass face. */
+.kw-shell .kf-btn {
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kw-radius-ctl);
+  background: var(--kw-glass-2), var(--kw-panel);
+  color: var(--kf-ink);
+  font-weight: 600;
+  box-shadow: var(--kw-glass-hi);
+}
+
+.kw-shell .kf-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--kf-lilac) 65%, var(--kf-line));
+  background: var(--kw-glass-3), var(--kw-panel);
+  color: var(--kw-primary);
+  transform: translateY(-1px);
+  box-shadow: var(--kw-glass-hi), 0 10px 22px -14px var(--kf-glow);
+}
+
+.kw-shell .kf-btn.kf-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.kw-shell .kf-btn.kf-btn--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--kw-primary) 9%, transparent);
+  box-shadow: none;
+}
+
+/* The surface-heading refresh action: quiet glass with a radial bloom,
+ * replacing the old absolute-positioned glow pseudo-element. */
+.kw-shell .kw-surface-heading > button {
+  position: relative;
+  border-color: var(--kw-glass-border);
+  background: var(--kw-glass-2), var(--kw-panel);
+  box-shadow: var(--kw-glass-hi);
+}
+
+.kw-shell .kw-surface-heading > button::after { content: none; }
+
+.kw-shell .kw-surface-heading > button:hover:not(:disabled) {
+  border-color: var(--kw-glass-border-strong);
+  background:
+    radial-gradient(120% 140% at 50% 0, color-mix(in srgb, var(--kw-primary) 16%, transparent), transparent 70%),
+    var(--kw-glass-3), var(--kw-panel);
+  color: var(--kw-primary);
+  transform: translateY(-1px);
+  box-shadow: var(--kw-glass-hi), 0 12px 26px -16px var(--kf-glow);
+}
+
+.kw-shell .kw-surface-heading > button:hover:not(:disabled) svg {
+  transform: rotate(90deg);
+}
+
+.kw-shell .kw-surface-heading > button svg {
+  transition: transform var(--kw-move) var(--kw-ease-glass);
+}
+
+/* ------------------------------------------------------------------ */
+/* 6. Navigation — activity rail + explorer                            */
+/* ------------------------------------------------------------------ */
+
+.kw-shell .kw-activity-bar button {
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  color: color-mix(in srgb, var(--kw-muted) 80%, var(--kw-primary));
+  transition: background var(--kw-move-fast) var(--kw-ease-out), color var(--kw-move-fast) var(--kw-ease-out), border-color var(--kw-move-fast) var(--kw-ease-out), box-shadow var(--kw-move) var(--kw-ease-out), transform var(--kw-move-fast) var(--kw-ease-out);
+}
+
+.kw-shell .kw-activity-bar button:hover {
+  border-color: var(--kf-line);
+  background: var(--kf-violet-soft);
+  color: var(--kw-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px -14px var(--kf-glow);
+}
+
+/* The active domain is a lit brand key, not a breathing alarm. */
+.kw-shell .kw-activity-bar button.is-active {
+  animation: none;
+  border-color: color-mix(in srgb, #fff 26%, transparent);
+  background: var(--kw-primary-gradient);
+  color: #fff;
+  box-shadow: var(--kw-primary-glow);
+}
+
+html.dark .kw-shell .kw-activity-bar button.is-active {
+  box-shadow: 0 0 0 1px rgba(201, 179, 255, 0.3), 0 14px 30px -12px rgba(137, 88, 255, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.kw-shell .kw-activity-bar button.is-active:hover {
+  background: var(--kw-primary-gradient-hover);
+  transform: translateY(-1px);
+  color: #fff;
+}
+
+.kw-shell .kw-explorer-scroll section > button {
+  background: transparent;
+  border-color: transparent;
+  transition: background var(--kw-move-fast) var(--kw-ease-out), color var(--kw-move-fast) var(--kw-ease-out), border-color var(--kw-move-fast) var(--kw-ease-out), transform var(--kw-move-fast) var(--kw-ease-out), box-shadow var(--kw-move) var(--kw-ease-out);
+}
+
+.kw-shell .kw-explorer-scroll section > button:hover {
+  border-color: var(--kf-line);
+  background: color-mix(in srgb, var(--kw-panel) 86%, transparent);
+  color: var(--kf-ink);
+  transform: translateX(2px);
+  box-shadow: 0 8px 18px -14px var(--kf-glow);
+}
+
+.kw-shell .kw-explorer-scroll section > button.is-active {
+  border-color: color-mix(in srgb, #fff 20%, transparent);
+  background: var(--kw-primary-gradient);
+  color: #fff;
+  box-shadow: var(--kw-primary-glow);
+}
+
+.kw-shell .kw-explorer-scroll section > button.is-active:hover {
+  background: var(--kw-primary-gradient-hover);
+  color: #fff;
+}
+
+.kw-shell .kw-explorer-scroll section > button.is-active svg { color: rgba(255, 255, 255, 0.92); }
+.kw-shell .kw-explorer-scroll section > button.is-active::after { color: #fff; }
+
+/* The command trigger is the front door to the palette: a quiet glass bar
+ * that brightens toward the brand on hover. */
+.kw-shell .kw-command-trigger {
+  border-color: color-mix(in srgb, var(--kw-primary) 22%, var(--kw-glass-border));
+  background: var(--kw-glass-2), var(--kw-panel);
+  box-shadow: var(--kw-glass-hi);
+}
+
+.kw-shell .kw-command-trigger:hover {
+  border-color: color-mix(in srgb, var(--kw-primary) 50%, var(--kw-glass-border));
+  background: var(--kw-glass-3), var(--kw-panel);
+  box-shadow: var(--kw-glass-hi), 0 0 0 3px color-mix(in srgb, var(--kw-primary) 8%, transparent), 0 12px 26px -18px var(--kf-glow);
+  transform: translateY(-1px);
+}
+
+.kw-navigation-back:hover:not(:disabled) {
+  border-color: var(--kf-lilac);
+  color: var(--kw-primary);
+  transform: translateX(-2px);
+  box-shadow: 0 8px 18px -12px var(--kf-glow);
+}
+
+/* ------------------------------------------------------------------ */
+/* 7. Surface hero                                                     */
+/* ------------------------------------------------------------------ */
+
+.kw-surface-heading {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-panel);
+  background: var(--kf-aurora);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow);
+}
+
+html.dark .kw-surface-heading {
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 24px 54px -34px rgba(0, 0, 0, 0.9);
+}
+
+.kw-surface-heading::before {
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.3), transparent 66%);
+}
+
+html.dark .kw-surface-heading::before {
+  background: radial-gradient(circle, rgba(137, 88, 255, 0.3), transparent 66%);
+}
+
+.kw-title-accent {
+  background: linear-gradient(96deg, var(--kw-brand-lift), var(--kw-brand-strong));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+html.dark .kw-title-accent {
+  background: linear-gradient(96deg, #c9b3ff, #8958ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* ------------------------------------------------------------------ */
+/* 8. Cards, stats and panels — glass with a hover bloom               */
+/* ------------------------------------------------------------------ */
+
+.kf-card {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-panel);
+  background: var(--kw-glass-3), var(--kw-panel);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow-sm);
+  transition: transform var(--kw-move) var(--kw-ease-glass), border-color var(--kw-move) var(--kw-ease-glass), box-shadow var(--kw-move) var(--kw-ease-glass), background-color var(--kw-move-slow) var(--kw-ease-out);
+}
+
+.kf-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(90% 70% at 88% -8%, color-mix(in srgb, var(--kw-brand) 14%, transparent), transparent 62%);
+  opacity: 0;
+  transition: opacity var(--kw-move) var(--kw-ease-out);
+  pointer-events: none;
+}
+
+.kf-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--kw-glass-border-strong);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow);
+}
+
+.kf-card:hover::before { opacity: 1; }
+
+html.dark .kf-card {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: var(--kw-glass-3), color-mix(in srgb, var(--kw-panel) 92%, transparent);
+}
+
+html.dark .kf-card:hover {
+  border-color: color-mix(in srgb, var(--kw-brand) 40%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 26px 54px -30px rgba(0, 0, 0, 0.95), 0 0 24px -12px rgba(137, 88, 255, 0.35);
+}
+
+/* Stat tiles keep a solid measured face so evidence contrast is provable. */
+.kf-stat {
+  border: 1px solid var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--kf-violet) 10%, transparent), transparent 52%),
+    var(--kw-panel);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow-sm);
+  transition: transform var(--kw-move) var(--kw-ease-glass), border-color var(--kw-move) var(--kw-ease-glass), box-shadow var(--kw-move) var(--kw-ease-glass), background-color var(--kw-move-slow) var(--kw-ease-out);
+}
+
+.kf-stat:hover {
+  transform: translateY(-2px);
+  border-color: var(--kw-glass-border-strong);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow);
+}
+
+html.dark .kf-stat {
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+.kf-stat__label { color: var(--kw-muted); }
+.kf-stat__value { color: var(--kf-ink); }
+.kf-stat__value small { color: var(--kw-muted); }
+.kf-stat__foot { color: var(--kw-muted); }
+
+.kw-quality-card,
+.kw-surface-section,
+.kw-operation-panel,
+.kw-agent-panel {
+  border-color: var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  transition: transform var(--kw-move) var(--kw-ease-glass), border-color var(--kw-move) var(--kw-ease-glass), box-shadow var(--kw-move) var(--kw-ease-glass);
+}
+
+.kw-quality-card:hover,
+.kw-surface-section:hover,
+.kw-operation-panel:hover,
+.kw-agent-panel:hover {
+  transform: translateY(-2px);
+  border-color: var(--kw-glass-border-strong);
+  box-shadow: var(--kf-shadow-sm);
+}
+
+/* Project cards: the active project carries a lit brand edge. */
+.kw-project-card {
+  border-color: var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  transition: transform var(--kw-move) var(--kw-ease-glass), border-color var(--kw-move) var(--kw-ease-glass), box-shadow var(--kw-move) var(--kw-ease-glass);
+}
+
+.kw-project-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--kw-glass-border-strong);
+  box-shadow: var(--kf-shadow);
+}
+
+.kw-project-card.is-active {
+  border-color: color-mix(in srgb, var(--kw-brand) 52%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--kw-brand) 24%, transparent), var(--kf-shadow-sm);
+}
+
+/* Tabs: the active tab is a small glass key. */
+.kf-tabs {
+  border-color: var(--kw-glass-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--kw-panel-2) 80%, transparent);
+}
+
+.kw-shell .kf-tabs button {
+  border-color: transparent;
+  background: transparent;
+  transition: background var(--kw-move-fast) var(--kw-ease-out), color var(--kw-move-fast) var(--kw-ease-out), border-color var(--kw-move-fast) var(--kw-ease-out), box-shadow var(--kw-move) var(--kw-ease-out);
+}
+
+.kw-shell .kf-tabs button:hover:not(.is-active) {
+  border-color: transparent;
+  color: var(--kw-primary);
+  background: color-mix(in srgb, var(--kw-primary) 7%, transparent);
+  box-shadow: none;
+}
+
+.kw-shell .kf-tabs button.is-active {
+  border-color: var(--kw-glass-border);
+  background: var(--kw-glass-4), var(--kw-panel);
+  color: var(--kw-primary);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow-sm);
+}
+
+/* ------------------------------------------------------------------ */
+/* 9. Evidence and operation results — the professional result face    */
+/* ------------------------------------------------------------------ */
+
+.kw-operation-result {
+  position: relative;
+  padding: 14px 16px;
+  border: 1px solid var(--kw-glass-border);
+  border-left: 3px solid var(--kw-brand);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-3), var(--kw-panel);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow-sm);
+  animation: kw-atelier-rise var(--kw-move-slow) var(--kw-ease-glass) both;
+}
+
+html.dark .kw-operation-result {
+  border-color: rgba(255, 255, 255, 0.09);
+  border-left-color: var(--kw-brand);
+  background: var(--kw-glass-3), color-mix(in srgb, var(--kw-panel) 94%, transparent);
+}
+
+.kw-operation-result pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--kw-panel-2) 72%, transparent);
+  color: var(--kw-text);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.kw-service-card__result {
+  border: 1px solid var(--kw-glass-border);
+  border-left: 3px solid color-mix(in srgb, var(--kw-brand) 70%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--kw-panel-2) 60%, transparent);
+}
+
+.kw-answer {
+  border-color: var(--kw-glass-border);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-3), var(--kw-panel);
+  box-shadow: var(--kw-glass-hi);
+}
+
+html.dark .kw-answer {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: var(--kw-glass-3), color-mix(in srgb, var(--kw-panel) 94%, transparent);
+}
+
+.kw-message {
+  border-color: color-mix(in srgb, var(--kw-brand) 26%, transparent);
+  border-radius: var(--kw-radius-card);
+  background: var(--kw-glass-4), var(--kw-panel);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow-sm);
+  animation: kw-atelier-rise var(--kw-move-slow) var(--kw-ease-glass) both;
+}
+
+/* Evidence lists in the Inspector read as lit ledger rows. */
+.kw-inspector .kw-evidence-list dt {
+  color: color-mix(in srgb, var(--kw-primary) 78%, var(--kw-text));
+}
+
+html.dark .kw-inspector .kw-evidence-list dt {
+  color: #c9b3ff;
+}
+
+/* ------------------------------------------------------------------ */
+/* 10. Floating surfaces — palette, dock, bottom panel                 */
+/* ------------------------------------------------------------------ */
+
+.kw-palette {
+  border-color: var(--kw-glass-border);
+  border-radius: var(--kw-radius-float);
+  background: var(--kw-glass-5);
+  box-shadow: var(--kw-shadow-3);
+  backdrop-filter: blur(var(--kw-blur-float)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--kw-blur-float)) saturate(160%);
+  animation: kw-atelier-float-in var(--kw-move-slow) var(--kw-ease-glass) both;
+}
+
+.kw-palette-backdrop {
+  background: color-mix(in srgb, var(--kw-brand-ink) 46%, transparent);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  animation: kw-atelier-fade var(--kw-move) var(--kw-ease-out) both;
+}
+
+html.light .kw-palette-backdrop { background: rgba(46, 28, 92, 0.24); }
+
+.kw-palette-results button {
+  transition: background var(--kw-move-fast) var(--kw-ease-out), border-color var(--kw-move-fast) var(--kw-ease-out), transform var(--kw-move-fast) var(--kw-ease-out), box-shadow var(--kw-move) var(--kw-ease-out);
+}
+
+.kw-palette-results button:hover {
+  transform: translateX(3px);
+  border-color: var(--kw-glass-border-strong);
+  box-shadow: 0 10px 22px -16px var(--kf-glow);
+}
+
+.kw-persistent-preview {
+  border-color: var(--kw-glass-border-strong);
+  border-radius: 16px;
+  background: var(--kw-glass-4);
+  box-shadow: var(--kw-shadow-2);
+  backdrop-filter: blur(var(--kw-blur-float)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--kw-blur-float)) saturate(150%);
+}
+
+.kw-persistent-preview-launcher {
+  border: 1px solid var(--kw-glass-border-strong);
+  border-radius: 999px;
+  background: var(--kw-glass-4);
+  box-shadow: var(--kw-shadow-2);
+  color: var(--kw-primary);
+  font-weight: 650;
+  backdrop-filter: blur(var(--kw-blur-float)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--kw-blur-float)) saturate(150%);
+  transition: transform var(--kw-move-fast) var(--kw-ease-out), box-shadow var(--kw-move) var(--kw-ease-out), border-color var(--kw-move-fast) var(--kw-ease-out);
+}
+
+.kw-shell .kw-persistent-preview-launcher:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--kw-brand) 55%, transparent);
+  box-shadow: var(--kw-shadow-2), 0 0 26px -10px color-mix(in srgb, var(--kw-brand) 55%, transparent);
+}
+
+.kw-bottom-panel {
+  border-top: 1px solid var(--kw-glass-border);
+  background: var(--kw-glass-1);
+  backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--kw-blur-pane)) saturate(140%);
+}
+
+@keyframes kw-atelier-float-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes kw-atelier-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ------------------------------------------------------------------ */
+/* 11. Entrance motion — one rise, short stagger, always settles       */
+/* ------------------------------------------------------------------ */
+
+@keyframes kw-atelier-rise {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
+}
+
+.kw-workbench-scroll > * {
+  animation: kw-atelier-rise var(--kw-move-slow) var(--kw-ease-glass) both;
+}
+
+.kw-workbench-scroll > :nth-child(2) { animation-delay: 45ms; }
+.kw-workbench-scroll > :nth-child(3) { animation-delay: 90ms; }
+.kw-workbench-scroll > :nth-child(4) { animation-delay: 130ms; }
+.kw-workbench-scroll > :nth-child(5) { animation-delay: 165ms; }
+
+.kw-surface-heading,
+.kf-card,
+.kf-stat,
+.kw-quality-card,
+.kw-surface-section,
+.kw-operation-panel,
+.kw-agent-panel,
+.kw-inspector-project {
+  animation: kw-atelier-rise 380ms var(--kw-ease-glass) both;
+}
+
+/* ------------------------------------------------------------------ */
+/* 12. Empty states, loading fallback + scrollbars                     */
+/* ------------------------------------------------------------------ */
+
+.kw-empty__mark {
+  border-color: var(--kw-glass-border-strong);
+  background:
+    radial-gradient(circle at 32% 20%, rgba(255, 255, 255, 0.9), transparent 54%),
+    linear-gradient(145deg, var(--kf-violet-soft), var(--kw-panel));
+  box-shadow: var(--kw-glass-hi), 0 16px 34px -22px var(--kf-glow);
+}
+
+html.dark .kw-empty__mark {
+  border-color: color-mix(in srgb, var(--kw-brand) 36%, transparent);
+  background:
+    radial-gradient(circle at 32% 20%, rgba(255, 255, 255, 0.12), transparent 54%),
+    linear-gradient(145deg, #251a41, #151024);
+}
+
+.kw-loading {
+  background:
+    radial-gradient(90% 70% at 76% -10%, rgba(169, 122, 255, 0.3), transparent 62%),
+    linear-gradient(178deg, #fdfcff, #f2edfa);
+  color: #4a3d68;
+}
+
+html.dark .kw-loading {
+  background:
+    radial-gradient(90% 70% at 76% -10%, rgba(137, 88, 255, 0.24), transparent 62%),
+    linear-gradient(178deg, #0d0a1a, #070510);
+  color: #b3a8d4;
+}
+
+.kw-shell ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kw-brand) 28%, transparent);
+  background-clip: padding-box;
+}
+
+.kw-shell ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--kw-brand) 48%, transparent);
+  background-clip: padding-box;
+}
+
+/* ------------------------------------------------------------------ */
+/* 12b. Late-loading surface materials                                 */
+/*                                                                      */
+/* Per-surface stylesheets (online, preview, provider…) load after the  */
+/* shell chunk. These higher-specificity rules keep their panels on the */
+/* one atelier material without touching the ownership contracts.       */
+/* ------------------------------------------------------------------ */
+
+.kw-shell .kw-simple-surface,
+.kw-shell .kw-release-gate,
+.kw-shell .kw-command-table {
+  border-color: var(--kw-glass-border);
+  background: var(--kw-glass-3), var(--kw-panel);
+  box-shadow: var(--kw-glass-hi), var(--kf-shadow-sm);
+}
+
+html.dark .kw-shell .kw-simple-surface,
+html.dark .kw-shell .kw-release-gate,
+html.dark .kw-shell .kw-command-table {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: var(--kw-glass-3), color-mix(in srgb, var(--kw-panel) 94%, transparent);
+}
+
+/* shadcn primary buttons inside utility panels join the one gradient +
+ * sheen language instead of keeping a flat Tailwind face. */
+.kw-shell .kw-workbench-scroll .bg-card button.bg-primary,
+.kw-shell .kw-inspector .bg-card button.bg-primary {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #fff 24%, transparent);
+  background: var(--kw-primary-gradient);
+  color: #fff;
+  font-weight: 650;
+  box-shadow: var(--kw-primary-glow);
+}
+
+.kw-shell .kw-workbench-scroll .bg-card button.bg-primary:hover:not(:disabled),
+.kw-shell .kw-inspector .bg-card button.bg-primary:hover:not(:disabled) {
+  background: var(--kw-primary-gradient-hover);
+  border-color: color-mix(in srgb, #fff 32%, transparent);
+  transform: translateY(-1px);
+  box-shadow: 0 20px 40px -16px color-mix(in srgb, var(--kw-brand) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.kw-shell .kw-workbench-scroll .bg-card button.bg-primary::after,
+.kw-shell .kw-inspector .bg-card button.bg-primary::after {
+  content: "";
+  position: absolute;
+  top: -30%;
+  bottom: -30%;
+  left: -45%;
+  width: 34%;
+  background: linear-gradient(100deg, transparent 8%, rgba(255, 255, 255, 0.34) 50%, transparent 92%);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kw-shell .kw-workbench-scroll .bg-card button.bg-primary:hover:not(:disabled)::after,
+.kw-shell .kw-inspector .bg-card button.bg-primary:hover:not(:disabled)::after {
+  animation: kw-atelier-sheen 620ms var(--kw-ease-out) forwards;
+}
+
+/* ------------------------------------------------------------------ */
+/* 13. Reduced motion — both channels, no exceptions                   */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .kw-shell *,
+  .kw-shell *::before,
+  .kw-shell *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+html[data-kf-reduced-motion="true"] .kw-shell *,
+html[data-kf-reduced-motion="true"] .kw-shell *::before,
+html[data-kf-reduced-motion="true"] .kw-shell *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+html[data-kf-reduced-motion="true"] .kw-shell button:not(:disabled):hover,
+html[data-kf-reduced-motion="true"] .kf-card:hover,
+html[data-kf-reduced-motion="true"] .kf-stat:hover,
+html[data-kf-reduced-motion="true"] .kw-project-card:hover,
+html[data-kf-reduced-motion="true"] .kw-explorer-scroll section > button:hover,
+html[data-kf-reduced-motion="true"] .kw-activity-bar button:hover,
+html[data-kf-reduced-motion="true"] .kw-persistent-preview-launcher:hover {
+  transform: none !important;
+}
