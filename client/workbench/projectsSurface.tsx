@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SurfaceProps } from "./surfaceContracts";
 import type { ProjectSummary } from "@shared/workspace";
-import { fetchJson, jsonRequest } from "./api";
+import { fetchJson } from "./api";
 import { ArrowRight, Compass, GitBranch, Hammer, Play, Search, TerminalSquare, TestTube2 } from "lucide-react";
 import { EmptyState, StatusBadge } from "./ui";
 import ServiceCatalogue from "./ServiceCatalogue";
@@ -81,10 +81,6 @@ function ProjectsSurface({ view, workspace, project, onProjectSelect, onRefresh 
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
-  const [pathInput, setPathInput] = useState("");
-  const [remoteUrl, setRemoteUrl] = useState("");
-  const [targetName, setTargetName] = useState("");
-  const [message, setMessage] = useState("");
   const [healthEvidence, setHealthEvidence] = useState<Record<string, PersistedHealthSummary>>({});
 
   useEffect(() => {
@@ -109,8 +105,20 @@ function ProjectsSurface({ view, workspace, project, onProjectSelect, onRefresh 
   const visibleRows = rows.slice((Math.min(page, pageCount) - 1) * pageSize, Math.min(page, pageCount) * pageSize);
   const allSelected = rows.length > 0 && rows.every((row) => selected.includes(row.id));
 
-  if (view === "open-project") return <section className="kw-form-surface"><h2>Open Project</h2><p>Register an existing local directory without remote contact.</p><input aria-label="Local project path" value={pathInput} onChange={(event) => setPathInput(event.target.value)} /><button onClick={() => void fetchJson<{ project: ProjectSummary }>("/api/workspace/projects/open", jsonRequest({ path: pathInput.trim() })).then(async (data) => { onProjectSelect(data.project.id); await onRefresh(); setMessage(`Opened ${data.project.name}.`); }).catch((error) => setMessage(error instanceof Error ? error.message : "Open project failed."))}>Open project</button>{message && <p>{message}</p>}</section>;
-  if (view === "import-project") return <section className="kw-form-surface"><h2>Import Repository</h2><p>Clone is policy-controlled and always requires explicit confirmation.</p><input aria-label="Repository HTTPS URL" value={remoteUrl} onChange={(event) => setRemoteUrl(event.target.value)} /><input aria-label="Destination folder" value={targetName} onChange={(event) => setTargetName(event.target.value)} /><button onClick={() => void (async () => { if (!window.confirm(`Clone ${remoteUrl}?`)) return; try { const data = await fetchJson<{ project: ProjectSummary }>("/api/workspace/projects/clone", jsonRequest({ remoteUrl, targetName, confirmed: true })); onProjectSelect(data.project.id); await onRefresh(); setMessage(`Imported ${data.project.name}.`); } catch (error) { setMessage(error instanceof Error ? error.message : "Import failed."); } })()}>Clone with confirmation</button>{message && <p>{message}</p>}</section>;
+  if (view === "open-project") return <section className="kw-form-surface" aria-label="KForge Open Project">
+    <h2>Open Project</h2>
+    <p>Register an existing local directory without remote contact.</p>
+    <ProjectStartActions key="open-project" initialMode="open" />
+    <p className="kw-form-surface__hint">Opening a project activates it for every project-scoped capability. This destination uses the same canonical ProjectStartActions handler as the Project Center.</p>
+  </section>;
+  if (view === "import-project") return <section className="kw-form-surface" aria-label="KForge Import Repository">
+    <h2>Import Repository</h2>
+    <p>Clone is policy-controlled: KForge refuses the transfer unless Online Optional or Online mode is active, and records the contact as evidence.</p>
+    {/* Keyed remount: Open Project and Import Project render the same handler
+        at the same tree position, so without a key the retained instance
+        would keep the previous destination's tab mode. */}
+    <ProjectStartActions key="import-project" initialMode="clone" />
+  </section>;
   if (view !== "workspace") return <EmptyState title="Specialized Projects surface unavailable" detail={`${view} must be routed through its dedicated Projects Workbench. KForge does not fall back to a duplicate shared collection implementation.`} />;
 
   const openTool = (target: string) => window.dispatchEvent(new CustomEvent("kforge:navigate", { detail: { target } }));

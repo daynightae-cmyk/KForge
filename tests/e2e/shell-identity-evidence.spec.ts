@@ -22,12 +22,20 @@ const VIEWPORTS = [
   { width: 1920, height: 1080 },
 ] as const;
 const THEMES = ["light", "dark"] as const;
-// Two composed surfaces per viewport/theme: the default workspace and a
-// settings surface that exercises form controls, tabs and cards.
-const SURFACES: Array<{ activity: string; view: string }> = [
-  { activity: "Projects", view: "Workspace" },
-  { activity: "System", view: "Settings" },
-];
+// Composed surfaces per viewport/theme, selected by KFORGE_CAPTURE_SHELL_SURFACES:
+// "shell" (default) — workspace + settings; "projects" — the Projects entry
+// destinations rewritten onto the canonical ProjectStartActions handler.
+const SURFACE_SETS: Record<string, Array<{ activity: string; view: string }>> = {
+  shell: [
+    { activity: "Projects", view: "Workspace" },
+    { activity: "System", view: "Settings" },
+  ],
+  projects: [
+    { activity: "Projects", view: "Open Project" },
+    { activity: "Projects", view: "Import Project" },
+  ],
+};
+const SURFACES = SURFACE_SETS[process.env.KFORGE_CAPTURE_SHELL_SURFACES || "shell"] || SURFACE_SETS.shell;
 
 type ShellRecord = {
   theme: string;
@@ -114,7 +122,7 @@ test.describe("KForge shell identity multi-viewport evidence (opt-in)", () => {
               // Let entrance stagger and lazy surfaces settle before capture.
               await page.waitForTimeout(900);
               const file = path.join(root,
-                `${theme}-${viewport.width}x${viewport.height}-${surface.activity.toLowerCase().replace(/[^a-z]+/g, "-")}-${surface.view.toLowerCase()}.png`);
+                `${theme}-${viewport.width}x${viewport.height}-${surface.activity.toLowerCase().replace(/[^a-z]+/g, "-")}-${surface.view.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`);
               await page.screenshot({ path: file, fullPage: false });
               records.push({ ...base, status: "CAPTURED", file: path.relative(root, file), pageErrors: pageErrors.splice(0) });
             } catch (error) {

@@ -17,9 +17,12 @@ type StartMode = "open" | "clone";
  * offers the two real ways a project enters KForge, against the real
  * `/projects/open` and `/projects/clone` services, and reports the real reason
  * a service refused instead of inventing success.
+ *
+ * `initialMode` lets a dedicated destination (Import Project) open directly on
+ * the canonical clone form instead of duplicating it.
  */
-export function ProjectStartActions({ compact = false }: { compact?: boolean }) {
-  const [mode, setMode] = useState<StartMode>("open");
+export function ProjectStartActions({ compact = false, initialMode = "open" }: { compact?: boolean; initialMode?: StartMode }) {
+  const [mode, setMode] = useState<StartMode>(initialMode);
   const [projectPath, setProjectPath] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
   const [targetName, setTargetName] = useState("");
