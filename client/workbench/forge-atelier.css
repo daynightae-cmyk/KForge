@@ -1052,7 +1052,10 @@ html.dark .kw-shell .kw-command-table {
 /* 13. Reduced motion — both channels, no exceptions                   */
 /* ------------------------------------------------------------------ */
 
+/* The shell root itself is included: its grid/theme glide must stop too,
+ * not only the transitions of its descendants. */
 @media (prefers-reduced-motion: reduce) {
+  .kw-shell,
   .kw-shell *,
   .kw-shell *::before,
   .kw-shell *::after {
@@ -1062,6 +1065,7 @@ html.dark .kw-shell .kw-command-table {
   }
 }
 
+html[data-kf-reduced-motion="true"] .kw-shell,
 html[data-kf-reduced-motion="true"] .kw-shell *,
 html[data-kf-reduced-motion="true"] .kw-shell *::before,
 html[data-kf-reduced-motion="true"] .kw-shell *::after {
@@ -1077,4 +1081,39 @@ html[data-kf-reduced-motion="true"] .kw-explorer-scroll section > button:hover,
 html[data-kf-reduced-motion="true"] .kw-activity-bar button:hover,
 html[data-kf-reduced-motion="true"] .kw-persistent-preview-launcher:hover {
   transform: none !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* 14. Brand mark — authentic symbol pixels in both themes             */
+/* ------------------------------------------------------------------ */
+
+/* The official symbol is violet artwork on transparency. An earlier pass
+ * inverted it to white for a violet tile; on the day theme's pearl tile that
+ * rendered a white-on-white ghost. The mark now keeps its authentic pixels
+ * (no filter) on a pearl key by day and a lit violet key by night, matching
+ * the approved installation emblem in both themes. */
+.kw-shell .kw-brand-mark img {
+  filter: drop-shadow(0 2px 5px rgba(20, 8, 48, 0.28));
+}
+
+html.light .kw-shell .kw-brand-mark {
+  border-color: rgba(255, 255, 255, 0.85);
+  background:
+    radial-gradient(120% 120% at 28% 0, rgba(255, 255, 255, 0.98), rgba(246, 241, 255, 0.78) 62%, rgba(232, 220, 252, 0.7));
+  box-shadow: 0 12px 26px -16px rgba(84, 44, 168, 0.5), inset 0 1px 0 #fff;
+}
+
+html.dark .kw-shell .kw-brand-mark {
+  border-color: rgba(255, 255, 255, 0.22);
+  background:
+    radial-gradient(130% 130% at 18% 0%, rgba(255, 255, 255, 0.3), transparent 44%),
+    linear-gradient(145deg, #b79aff 0%, #9a6bff 46%, #7a3df0 100%);
+  box-shadow:
+    0 0 0 1px rgba(169, 131, 255, 0.28),
+    0 10px 26px -10px rgba(126, 78, 255, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+html.dark .kw-shell .kw-brand-mark img {
+  filter: brightness(0) invert(1) drop-shadow(0 2px 5px rgba(20, 8, 48, 0.35));
 }

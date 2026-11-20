@@ -51,7 +51,10 @@ let errorSequence = 0;
 
 function nextErrorId() {
   errorSequence += 1;
-  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  // Alternation instead of a bracket character class: Tailwind's content
+  // scanner misreads a bracketed dash-colon-dot-T-Z class in this file as an
+  // arbitrary-property candidate and emits invalid CSS.
+  const stamp = new Date().toISOString().replace(/-|:|\.|T|Z/g, "").slice(0, 14);
   return `KF-${stamp}-${errorSequence.toString(36).toUpperCase()}`;
 }
 
