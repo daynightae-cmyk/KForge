@@ -24,7 +24,9 @@ const VIEWPORTS = [
 const THEMES = ["light", "dark"] as const;
 // Composed surfaces per viewport/theme, selected by KFORGE_CAPTURE_SHELL_SURFACES:
 // "shell" (default) — workspace + settings; "projects" — the Projects entry
-// destinations rewritten onto the canonical ProjectStartActions handler.
+// destinations rewritten onto the canonical ProjectStartActions handler;
+// "ai" — the AI Provider Studio destinations; "online" — the Online catalog
+// and its honest task-history destinations.
 const SURFACE_SETS: Record<string, Array<{ activity: string; view: string }>> = {
   shell: [
     { activity: "Projects", view: "Workspace" },
@@ -37,6 +39,10 @@ const SURFACE_SETS: Record<string, Array<{ activity: string; view: string }>> = 
   ai: [
     { activity: "AI", view: "Providers" },
     { activity: "AI", view: "Models" },
+  ],
+  online: [
+    { activity: "Online", view: "Marketplace" },
+    { activity: "Online", view: "Downloads" },
   ],
 };
 const SURFACES = SURFACE_SETS[process.env.KFORGE_CAPTURE_SHELL_SURFACES || "shell"] || SURFACE_SETS.shell;

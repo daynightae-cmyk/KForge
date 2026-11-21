@@ -6,7 +6,7 @@ import { fetchJson } from "./api";
 import { AdvancedEvidence, EmptyState, StatusBadge } from "./ui";
 import { ProjectRequired } from "./ProjectStartActions";
 
-type TaskKind = "scan" | "audit" | "test" | "build" | "typecheck" | "runtime" | "git" | "github" | "clone" | "agent" | "snapshot";
+type TaskKind = "scan" | "audit" | "test" | "build" | "typecheck" | "runtime" | "git" | "github" | "clone" | "agent" | "snapshot" | "install" | "update" | "uninstall" | "package-run";
 type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked" | "retrying";
 type TaskLog = { at: string; message: string; stream: "system" | "stdout" | "stderr" };
 

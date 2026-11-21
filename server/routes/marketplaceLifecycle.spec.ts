@@ -100,4 +100,53 @@ describe("Marketplace lifecycle API", () => {
     const registry = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".kforge", "marketplace-registry.json"), "utf8")) as { items: Array<{ id?: string }> };
     expect(registry.items.filter((entry) => entry.id === ITEM_ID)).toHaveLength(0);
   }, 30_000);
+
+  it("records every confirmed lifecycle mutation as real persisted task evidence and keeps refusals out of history", async () => {
+    const { flushTaskStore, initializeTaskStore, listTasks } = await import("../services/tasks");
+    // The router module may already have bound the task store to another
+    // suite's workspace; rebind it to this test's isolated root so the
+    // recorded history is provably durable in this workspace's ledger file.
+    await initializeTaskStore(workspaceRoot);
+
+    const refused = await post("install", false);
+    expect(refused.status).toBe(400);
+    await flushTaskStore();
+    expect(listTasks("online"), "a refused mutation must not invent history").toHaveLength(0);
+
+    const installResponse = await post("install");
+    expect(installResponse.status).toBe(200);
+    const installBody = await installResponse.json() as { operationId: string };
+    await flushTaskStore();
+    const afterInstall = listTasks("online");
+    expect(afterInstall).toHaveLength(1);
+    expect(afterInstall[0]).toMatchObject({ kind: "install", status: "succeeded", progress: 100 });
+    expect(afterInstall[0].output).toContain(installBody.operationId);
+    expect(afterInstall[0].output).toContain(ITEM_ID);
+    const durable = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".kforge", "tasks.json"), "utf8")) as { tasks: Array<{ kind: string }> };
+    expect(durable.tasks.filter((task) => task.kind === "install")).toHaveLength(1);
+
+    const runResponse = await post("run");
+    expect(runResponse.status).toBe(200);
+    await flushTaskStore();
+    const afterRun = listTasks("online");
+    expect(afterRun).toHaveLength(2);
+    expect(afterRun.find((task) => task.kind === "package-run")).toMatchObject({ status: "succeeded" });
+
+    const uninstallResponse = await post("uninstall");
+    expect(uninstallResponse.status).toBe(200);
+    await flushTaskStore();
+    const afterUninstall = listTasks("online");
+    expect(afterUninstall).toHaveLength(3);
+    expect(afterUninstall.find((task) => task.kind === "uninstall")).toMatchObject({ status: "succeeded" });
+
+    // A real failed operation is recorded as failed evidence, never hidden.
+    const missingRun = await post("run");
+    expect(missingRun.status).toBe(422);
+    await flushTaskStore();
+    const afterMissingRun = listTasks("online");
+    expect(afterMissingRun).toHaveLength(4);
+    const failedRun = afterMissingRun.filter((task) => task.kind === "package-run").sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0];
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBeTruthy();
+  }, 30_000);
 });

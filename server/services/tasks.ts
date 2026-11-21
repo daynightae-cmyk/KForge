@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 
-export type TaskKind = "scan" | "audit" | "test" | "build" | "typecheck" | "runtime" | "git" | "github" | "clone" | "agent" | "snapshot";
+export type TaskKind = "scan" | "audit" | "test" | "build" | "typecheck" | "runtime" | "git" | "github" | "clone" | "agent" | "snapshot" | "install" | "update" | "uninstall" | "package-run";
 export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "blocked" | "retrying";
 export type MissionStepStatus = "queued" | "running" | "waiting-confirmation" | "succeeded" | "failed" | "blocked" | "skipped";
 export type MissionType = "audit" | "fix-critical" | "improve-security" | "improve-tests" | "refactor" | "prepare-release" | "prepare-github" | "documentation" | "performance";

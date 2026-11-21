@@ -26,8 +26,8 @@ export function EvidenceCards({ rows }: { rows: RecordRow[] }) {
   return <div className="kw-card-grid">{rows.map((row, index) => <article className="kw-evidence-card" key={String(row.id || row.name || row.label || index)}><strong>{String(row.name || row.label || row.id || `Evidence ${index + 1}`)}</strong><EvidenceRows value={row} /><details><summary>Advanced · Raw Evidence</summary><pre>{JSON.stringify(row, null, 2)}</pre></details></article>)}</div>;
 }
 
-export function TaskTable({ tasks }: { tasks: TaskRow[]; emptyTitle?: string; emptyDetail?: string }) {
-  if (!tasks.length) return <EmptyState title="No persisted tasks" detail="Tasks appear only after a real operation creates evidence." />;
+export function TaskTable({ tasks, emptyTitle, emptyDetail }: { tasks: TaskRow[]; emptyTitle?: string; emptyDetail?: string }) {
+  if (!tasks.length) return <EmptyState title={emptyTitle || "No persisted tasks"} detail={emptyDetail || "Tasks appear only after a real operation creates evidence."} />;
   return <div className="kw-table-wrap" aria-label="Persisted task evidence"><table className="kw-table"><thead><tr><th>Task</th><th>Project</th><th>State</th><th>Progress</th><th>Started</th><th>Duration</th><th>Evidence</th></tr></thead><tbody>{tasks.map((task) => <tr key={task.id}><td><strong>{task.kind}</strong><small>{task.id}</small></td><td>{task.projectId}</td><td><StatusBadge value={task.status} /></td><td>{task.progress ?? 0}%</td><td>{task.startedAt ? new Date(task.startedAt).toLocaleString() : "UNKNOWN"}</td><td>{task.durationMs ? `${task.durationMs} ms` : "UNKNOWN / RUNNING"}</td><td><span>{task.error || task.logs?.at(-1)?.message || task.output?.slice(0, 140) || "No output yet"}</span><details className="kw-task-detail"><summary>Task evidence</summary><pre>{JSON.stringify(task, null, 2)}</pre></details></td></tr>)}</tbody></table></div>;
 }
 
