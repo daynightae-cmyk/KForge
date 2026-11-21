@@ -1,5 +1,21 @@
 # Project Status
 
+## Upgrade program — Tasks 01–03 verified head (2026-11-20)
+
+- Product: KNOuX Forge.
+- Verified SHA: `16c6ae3dd136f2d16e59323d77ad8dbde868827c`.
+- GitHub Actions `KForge Verification Gate` run **44852775161** completed successfully on that exact SHA. Both jobs green: **aggregate verification gate** (10m47s — locked install, production audit, typecheck, lint, unit/integration tests, production build, full browser E2E on a clean runner) and **Windows NSIS package gate** (18m2s — Windows browser E2E, packaged desktop shell, NSIS installer, truthful UNSIGNED Authenticode evidence, installed-runtime lifecycle).
+- Commit chain, each CI-green on its exact SHA before the next task started:
+  - Task 01 (shell identity): `83f842a` preserved core + `b202bca` fixes — run **44830461097** green. Root reduced-motion kill, authentic day brand mark, Tailwind invalid-CSS regex fix; 12/12 shell captures Day/Night × 3 resolutions.
+  - Task 02 (project entry): `aed2fc0` — run **44837313901** green. Open/Import Project unified on canonical `ProjectStartActions` (`initialMode` + keyed remount); new `project-entry-destinations.spec.ts`; local full E2E 93 passed / 0 failed.
+  - Task 03 (AI): `16c6ae3` — run **44852775161** green. Provider Studio honors view-driven tab intents (Providers→ENVIRONMENT, Models→MODELS); AI Tasks ledger renders honest loading/refusal/recovery instead of a fake empty state; structured mission `EvidenceRows`; provider hero/tab flex-shrink clip fixed in the atelier layer with a ≤1px clip regression; new `ai-destination-contracts.spec.ts`; 12/12 AI captures, 0 flagged.
+- Local verification on the Task 03 tree: typecheck, lint (353 files), 643 unit tests, clean production build (no CSS warning), `verify:desktop` loopback PASS, brand/asset budgets PASS, `npm audit --omit=dev` **0 vulnerabilities**. Full-suite lazy-surface flakes under host contention were classified as contention; isolated reruns passed and the clean-runner CI gate is the arbiter. No test was weakened.
+- Repository hygiene (owner-authorized 2026-11-20): all work consolidated on one head; dirty non-unique tool leftovers and build outputs (`dist/`, `test-results/`, `release/`) removed after preservation; `node_modules` reinstalled via `npm ci` from the lockfile; unique evidence (`verification/`, `docs/verification-evidence/`) archived to `D:\Temp\opencode\kforge-evidence-archive\` and restored in place.
+- Ref topology: `main` only, local and origin. HEAD = `main` = `origin/main`; clean working tree at verification time; no stashes, worktrees or other branches.
+- Installer trust: **UNSIGNED** development/release-candidate artifact; no Trusted Publisher or SmartScreen claim.
+- Dependabot: one open alert (**108**, moderate `minimatch` in the dev toolchain) tracked, not suppressed; production audit 0.
+- Pushes report admin bypass of the two required status checks; closure still waits for the gate to go green on the exact pushed SHA, as recorded above. Administrative enforcement is not claimed beyond that evidence.
+
 ## Latest completed authoritative verification (2026-11-18)
 
 - Product: KNOuX Forge.
