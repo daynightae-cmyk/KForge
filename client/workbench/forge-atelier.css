@@ -1048,6 +1048,17 @@ html.dark .kw-shell .kw-command-table {
   animation: kw-atelier-sheen 620ms var(--kw-ease-out) forwards;
 }
 
+/* Provider Studio hero and tab row: the main pane is a bounded flex column,
+ * so these flex items (the hero has overflow:hidden) were shrunk below their
+ * content — the hero to a 22px sliver clipping identity, credential line and
+ * test actions; the tab row to clipped pills. Both are the studio's primary
+ * navigation/evidence chrome; they keep their natural height and let the pane
+ * scroll instead. */
+.kw-shell .kw-provider-main .kw-provider-hero,
+.kw-shell .kw-provider-main .kw-provider-tabs {
+  flex-shrink: 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* 13. Reduced motion — both channels, no exceptions                   */
 /* ------------------------------------------------------------------ */

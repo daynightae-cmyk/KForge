@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { SurfaceProps, RecordRow, TaskRow } from "./surfaceContracts";
 import type { ProjectSummary } from "@shared/workspace";
 import { fetchJson, jsonRequest } from "./api";
-import { EvidenceCards, TaskTable } from "./ui";
+import { EvidenceCards, EvidenceRows, TaskTable } from "./ui";
 import ProviderStudio from "./ProviderStudio";
 import { ProjectRequired } from "./ProjectStartActions";
 import { Activity, Bot, CheckCircle2, Clock3, ListChecks, PlayCircle, ShieldCheck, Wrench } from "lucide-react";
@@ -78,7 +78,7 @@ function AgentMissionSurface({ project }: { project: ProjectSummary }) {
             <span className="kf-chip">Project · {project.name}</span>
           </div>
           {message && <p className="kw-message" role="status">{message}</p>}
-          {started ? <details className="kw-agent-started" open><summary>Started mission evidence · {started.id}</summary><pre>{JSON.stringify(started, null, 2)}</pre></details> : null}
+          {started ? <details className="kw-agent-started" open><summary>Started mission evidence · {started.id}</summary><EvidenceRows value={started} /><details><summary>Advanced · Raw Evidence</summary><pre>{JSON.stringify(started, null, 2)}</pre></details></details> : null}
         </div>
       </section>
 
@@ -100,7 +100,24 @@ function AgentMissionSurface({ project }: { project: ProjectSummary }) {
 
 function AITasks() {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
-  useEffect(() => { let active = true; const refresh = () => void fetchJson<{ tasks: TaskRow[] }>("/api/workspace/tasks").then((data) => { if (active) setTasks((data.tasks || []).filter((task) => task.kind === "agent" || task.projectId === "ai-center")); }).catch(() => undefined); refresh(); const timer = window.setInterval(refresh, 700); return () => { active = false; window.clearInterval(timer); }; }, []);
+  const [ledgerError, setLedgerError] = useState("");
+  const [ledgerLoaded, setLedgerLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => void fetchJson<{ tasks: TaskRow[] }>("/api/workspace/tasks").then((data) => {
+      if (!active) return;
+      setTasks((data.tasks || []).filter((task) => task.kind === "agent" || task.projectId === "ai-center"));
+      setLedgerError("");
+      setLedgerLoaded(true);
+    }).catch((error) => {
+      // A failed ledger read must not masquerade as an empty ledger: the
+      // surface states the real refusal instead of inventing "no tasks".
+      if (active) { setLedgerError(error instanceof Error ? error.message : "Task ledger read failed."); setLedgerLoaded(true); }
+    });
+    refresh();
+    const timer = window.setInterval(refresh, 2000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
   const stats = taskStats(tasks);
   return <div className="kf-stack">
     <section className="kf-stat-grid" aria-label="Task center summary">
@@ -111,7 +128,10 @@ function AITasks() {
     </section>
     <section className="kf-card" aria-label="Task Center">
       <header className="kf-card__head"><div className="kf-card__title"><span className="kf-tile"><Activity size={17} /></span><div><h2>Task Center</h2><p>Persisted agent and AI tasks with their evidence.</p></div></div></header>
-      <div className="kf-card__body"><TaskTable tasks={tasks} /></div>
+      <div className="kf-card__body">
+        {ledgerError ? <p className="kw-message" role="alert">Task ledger unavailable: {ledgerError} KForge does not treat a failed read as an empty ledger.</p> : null}
+        {!ledgerLoaded ? <p role="status">Loading the persisted task ledger…</p> : ledgerError ? null : <TaskTable tasks={tasks} />}
+      </div>
     </section>
   </div>;
 }

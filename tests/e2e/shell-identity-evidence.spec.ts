@@ -34,6 +34,10 @@ const SURFACE_SETS: Record<string, Array<{ activity: string; view: string }>> = 
     { activity: "Projects", view: "Open Project" },
     { activity: "Projects", view: "Import Project" },
   ],
+  ai: [
+    { activity: "AI", view: "Providers" },
+    { activity: "AI", view: "Models" },
+  ],
 };
 const SURFACES = SURFACE_SETS[process.env.KFORGE_CAPTURE_SHELL_SURFACES || "shell"] || SURFACE_SETS.shell;
 
@@ -123,7 +127,10 @@ test.describe("KForge shell identity multi-viewport evidence (opt-in)", () => {
               await page.waitForTimeout(900);
               const file = path.join(root,
                 `${theme}-${viewport.width}x${viewport.height}-${surface.activity.toLowerCase().replace(/[^a-z]+/g, "-")}-${surface.view.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`);
-              await page.screenshot({ path: file, fullPage: false });
+              // Finish entrance animations for the capture itself: a mid-rise
+              // frame is not evidence of the settled surface. The product's
+              // motion is unchanged; only the recorded frame is settled.
+              await page.screenshot({ path: file, fullPage: false, animations: "disabled" });
               records.push({ ...base, status: "CAPTURED", file: path.relative(root, file), pageErrors: pageErrors.splice(0) });
             } catch (error) {
               records.push({ ...base, error: String(error).slice(0, 1200), pageErrors: pageErrors.splice(0) });

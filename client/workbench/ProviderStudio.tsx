@@ -34,14 +34,22 @@ function parseHeaderLines(value: string) {
   return result;
 }
 
-export default function ProviderStudio({ project }: { view: string; project?: ProjectSummary }) {
+/** The service directory routes "Configure provider" (AI / Providers) to the
+ * environment/credential tab and "Review models" (AI / Models) to the model
+ * catalogue. Anything else keeps the historical default. */
+function tabForView(view: string): ProviderTab {
+  if (view === "providers") return "ENVIRONMENT";
+  return "MODELS";
+}
+
+export default function ProviderStudio({ view, project }: { view: string; project?: ProjectSummary }) {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [selectedProvider, setSelectedProvider] = useState("openai");
   const [models, setModels] = useState<CanonicalModel[]>([]);
   const [sessions, setSessions] = useState<ProviderSessionSummary[]>([]);
   const [activeSession, setActiveSession] = useState<ProviderSessionSummary | null>(null);
   const [vault, setVault] = useState<VaultStatus | null>(null);
-  const [tab, setTab] = useState<ProviderTab>("MODELS");
+  const [tab, setTab] = useState<ProviderTab>(() => tabForView(view));
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
@@ -84,6 +92,10 @@ export default function ProviderStudio({ project }: { view: string; project?: Pr
   };
 
   useEffect(() => { void refresh(); }, []);
+  // Providers and Models render this same studio at the same tree position;
+  // navigating between the two destinations must land on the tab the service
+  // directory promises, not retain the previous destination's tab.
+  useEffect(() => { setTab(tabForView(view)); }, [view]);
   useEffect(() => () => { if (revealTimer.current !== null) window.clearTimeout(revealTimer.current); }, []);
 
   useEffect(() => {
