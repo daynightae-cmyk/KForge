@@ -817,6 +817,43 @@ html.dark .kw-answer {
   background: var(--kw-glass-3), color-mix(in srgb, var(--kw-panel) 94%, transparent);
 }
 
+/* Ask KForge answers read as structured evidence, not a raw JSON dump. */
+.kw-answer__text {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.kw-answer h3 {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kw-answer__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kw-answer__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--kw-glass-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--kw-panel-2) 55%, transparent);
+}
+
+.kw-answer__list small {
+  flex-basis: 100%;
+  color: var(--kw-muted);
+}
+
 .kw-message {
   border-color: color-mix(in srgb, var(--kw-brand) 26%, transparent);
   border-radius: var(--kw-radius-card);

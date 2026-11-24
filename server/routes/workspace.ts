@@ -63,6 +63,7 @@ import { readPlatformSettings, resetPlatformSettings, SettingsValidationError, u
 import { completeOperationTransparency, createOperationTransparency, getOnlineControlCenter, isGitHubRemoteUrl, recordRemoteContact } from "../services/onlineControlCenter";
 import { GH_DEFAULT_CONCURRENCY, GH_LEAST_PRIVILEGE_GUIDANCE, classifyGhRateLimit, ghPagination, mapWithConcurrency, readGhRateLimit, runGhApi } from "../services/githubClient";
 import { redactProjectText } from "../services/redaction";
+import { parseGitStatusPorcelainZ, formatGitStatusChanges, type GitFileChange as GitStatusFileChange } from "../services/gitStatus";
 import { createSelfAuditRecord, inspectKForgeIdentity, markSelfAuditWaitingForRestart, persistSelfAuditRecord, readSelfAuditRecord, recordSelfAuditStage } from "../services/selfAudit";
 
 const execFileAsync = promisify(execFile);
@@ -135,10 +136,13 @@ async function run(command: string, args: string[], cwd: string, timeout = 15_00
       windowsHide: true,
       maxBuffer: 2_500_000,
     });
-    return { ok: true, code: 0, output: redactProjectText("command-output", `${result.stdout || ""}${result.stderr || ""}`.trim()).content };
+    // Trim only the trailing edge. Leading whitespace is evidence for line-oriented
+    // parsers such as `git status --porcelain`, where the first two columns are the
+    // index/worktree state and a leading `trim()` silently shifts the first path.
+    return { ok: true, code: 0, output: redactProjectText("command-output", `${result.stdout || ""}${result.stderr || ""}`.trimEnd()).content };
   } catch (error: unknown) {
     const details = errorDetails(error);
-    return { ok: false, code: details.code, output: redactProjectText("command-output", `${details.stdout}${details.stderr || details.message}`.trim()).content, timedOut: details.timedOut };
+    return { ok: false, code: details.code, output: redactProjectText("command-output", `${details.stdout}${details.stderr || details.message}`.trimEnd()).content, timedOut: details.timedOut };
   }
 }
 
@@ -303,19 +307,19 @@ async function gitInfo(projectPath: string) {
   }
   const [branch, status, remote, lastCommit] = await Promise.all([
     run("git", ["branch", "--show-current"], projectPath),
-    run("git", ["status", "--porcelain=v1", "--branch"], projectPath),
+    run("git", ["status", "--porcelain=v1", "--branch", "-z"], projectPath),
     run("git", ["remote", "get-url", "origin"], projectPath),
     run("git", ["log", "-1", "--format=%cI"], projectPath),
   ]);
-  const lines = status.output.split(/\r?\n/).filter(Boolean);
-  const head = lines[0] || "";
-  const changes = lines.slice(1);
+  const tokens = status.output.split("\0").filter(Boolean);
+  const head = tokens.find((token) => token.startsWith("## ")) || "";
+  const changes = parseGitStatusPorcelainZ(status.output);
   return {
     isGit: true,
     branch: branch.ok && branch.output ? branch.output : "detached",
     remoteUrl: remote.ok && remote.output ? remote.output : undefined,
-    modifiedFiles: changes.filter((line) => !line.startsWith("??")).length,
-    untrackedFiles: changes.filter((line) => line.startsWith("??")).length,
+    modifiedFiles: changes.filter((entry) => !entry.untracked).length,
+    untrackedFiles: changes.filter((entry) => entry.untracked).length,
     ahead: Number(head.match(/ahead (\d+)/)?.[1] || 0),
     behind: Number(head.match(/behind (\d+)/)?.[1] || 0),
     lastActivity: lastCommit.ok && lastCommit.output ? lastCommit.output : "No commits",
@@ -930,7 +934,7 @@ function selfAuditCommandState(result: CommandResult): SelfAuditStageState {
 }
 
 function normalizedGitStatus(value: string) {
-  return value.split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean).sort();
+  return parseGitStatusPorcelainZ(value).map((entry) => formatGitStatusChanges([entry])).sort();
 }
 
 export async function executeKForgeSelfAudit(project: ProjectSummary): Promise<SelfAuditRecord> {
@@ -944,7 +948,7 @@ export async function executeKForgeSelfAudit(project: ProjectSummary): Promise<S
   let graph: Awaited<ReturnType<typeof buildProjectGraph>> | undefined;
   let profile: ProjectProfile | undefined;
   const commandResults: CommandResult[] = [];
-  const initialStatus = await run("git", ["status", "--porcelain=v1", "--untracked-files=all"], project.path);
+  const initialStatus = await run("git", ["status", "--porcelain=v1", "--untracked-files=all", "-z"], project.path);
   const beforeStatus = normalizedGitStatus(initialStatus.output);
 
   const capture = async (id: SelfAuditStageId, work: () => Promise<{ state?: SelfAuditStageState; evidence: unknown }>) => {
@@ -1014,7 +1018,7 @@ export async function executeKForgeSelfAudit(project: ProjectSummary): Promise<S
     return { state, evidence: { readiness: state === "FAILED" ? "BLOCKED" : separated.readiness, verdicts: separated.verdicts, checks: commandResults.map((result) => ({ action: result.action, ok: result.ok, message: result.message })), blockers: blockingIssues.map((issue) => ({ id: issue.id, title: issue.title, source: issue.source })), note: "Remote evidence remains independently UNKNOWN, OFFLINE, NOT_CONFIGURED, or UNAVAILABLE when it was not explicitly fetched." } };
   });
 
-  const finalStatus = await run("git", ["status", "--porcelain=v1", "--untracked-files=all"], project.path);
+  const finalStatus = await run("git", ["status", "--porcelain=v1", "--untracked-files=all", "-z"], project.path);
   const afterStatus = normalizedGitStatus(finalStatus.output);
   const added = afterStatus.filter((line) => !beforeStatus.includes(line));
   const removed = beforeStatus.filter((line) => !afterStatus.includes(line));
@@ -1656,31 +1660,22 @@ router.post("/tasks/:taskId/mission/rollback", async (req, res) => {
   return res.json({ task, restored });
 });
 
-type GitFileChange = { file: string; indexStatus: string; worktreeStatus: string; staged: boolean; unstaged: boolean; untracked: boolean };
-
-function parseGitFileChanges(status: string): GitFileChange[] {
-  return status.split(/\r?\n/)
-    .filter((line) => /^[ MADRCU?!]{2} /.test(line))
-    .map((line) => {
-      const indexStatus = line[0] || " ";
-      const worktreeStatus = line[1] || " ";
-      const file = line.slice(3).trim();
-      return { file, indexStatus, worktreeStatus, staged: indexStatus !== " " && indexStatus !== "?", unstaged: worktreeStatus !== " " || indexStatus === "?", untracked: indexStatus === "?" && worktreeStatus === "?" };
-    })
-    .filter((entry) => Boolean(entry.file));
-}
 
 function safeGitPaths(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > 100) return null;
-  const files = [...new Set(value.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()))];
+  const files = [...new Set(value.filter((entry): entry is string => typeof entry === "string"))];
   if (files.length !== value.length) return null;
-  if (files.some((file) => !file || path.isAbsolute(file) || file.includes("\0") || file.split(/[\\/]/).some((part) => part === ".."))) return null;
+  // Reject padded names rather than silently staging a *different* path than the caller named.
+  if (files.some((file) => !file || file !== file.trim() || file.includes("\0") || file.split(/[\\/]/).some((part) => part === ".."))) return null;
+  if (files.some((file) => path.isAbsolute(file))) return null;
   return files;
 }
 
+type GitFileChange = GitStatusFileChange;
+
 async function gitCenter(project: ProjectSummary) {
   const [status, diffStat, stagedDiffStat, branches, history, stash, tags] = await Promise.all([
-    run("git", ["status", "--porcelain=v1", "--branch"], project.path),
+    run("git", ["status", "--porcelain=v1", "--branch", "-z"], project.path),
     run("git", ["diff", "--stat"], project.path),
     run("git", ["diff", "--cached", "--stat"], project.path),
     run("git", ["branch", "--format=%(refname:short)"], project.path),
@@ -1688,9 +1683,12 @@ async function gitCenter(project: ProjectSummary) {
     run("git", ["stash", "list"], project.path),
     run("git", ["tag", "--sort=-creatordate"], project.path),
   ]);
+  const changes = parseGitStatusPorcelainZ(status.output);
   return {
-    status: status.output,
-    changes: parseGitFileChanges(status.output),
+    // Re-render the parsed NUL-delimited evidence in porcelain v1's text shape
+    // so the raw evidence panel stays readable without re-deriving truth.
+    status: formatGitStatusChanges(changes),
+    changes,
     diffStat: diffStat.output,
     stagedDiffStat: stagedDiffStat.output,
     branches: branches.output.split(/\r?\n/).filter(Boolean),
@@ -1702,10 +1700,10 @@ async function gitCenter(project: ProjectSummary) {
 
 async function smartCommitPreview(project: ProjectSummary) {
   const [status, diffStat] = await Promise.all([
-    run("git", ["status", "--porcelain=v1"], project.path),
+    run("git", ["status", "--porcelain=v1", "-z"], project.path),
     run("git", ["diff", "--stat", "HEAD"], project.path),
   ]);
-  const changes = status.output.split(/\r?\n/).filter(Boolean).map((line) => ({ status: line.slice(0, 2).trim() || "?", file: line.slice(3).trim() })).filter((entry) => entry.file);
+  const changes = parseGitStatusPorcelainZ(status.output).map((entry) => ({ status: entry.indexStatus.trim() || entry.worktreeStatus.trim() || "?", file: entry.file, originalFile: entry.originalFile, staged: entry.staged }));
   const areas = [...new Set(changes.map((entry) => entry.file.split(/[\\/]/)[0] || "root"))];
   const scope = areas.length === 1 ? areas[0].replace(/[^A-Za-z0-9_-]/g, "") || "workspace" : "workspace";
   const title = changes.length ? `chore(${scope}): update ${changes.length} file${changes.length === 1 ? "" : "s"}` : "chore: no working tree changes";

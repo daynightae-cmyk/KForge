@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { openWorkbench, selectExplorerView } from "./helpers/workbench";
+import { openWorkbench, selectExplorerView, setProjectContext } from "./helpers/workbench";
 
 /**
  * Opt-in Task-01 shell identity evidence. Never runs as part of the ordinary
@@ -26,7 +26,8 @@ const THEMES = ["light", "dark"] as const;
 // "shell" (default) — workspace + settings; "projects" — the Projects entry
 // destinations rewritten onto the canonical ProjectStartActions handler;
 // "ai" — the AI Provider Studio destinations; "online" — the Online catalog
-// and its honest task-history destinations.
+// and its honest task-history destinations; "intelligence" — the bounded
+// local evidence destinations with honest read states and structured answers.
 const SURFACE_SETS: Record<string, Array<{ activity: string; view: string }>> = {
   shell: [
     { activity: "Projects", view: "Workspace" },
@@ -44,8 +45,15 @@ const SURFACE_SETS: Record<string, Array<{ activity: string; view: string }>> = 
     { activity: "Online", view: "Marketplace" },
     { activity: "Online", view: "Downloads" },
   ],
+  intelligence: [
+    { activity: "Intelligence", view: "Project Graph" },
+    { activity: "Intelligence", view: "Ask KForge" },
+  ],
 };
 const SURFACES = SURFACE_SETS[process.env.KFORGE_CAPTURE_SHELL_SURFACES || "shell"] || SURFACE_SETS.shell;
+// Intelligence surfaces are project-scoped; captures must show real evidence,
+// never the projectless fallback.
+const NEEDS_PROJECT = SURFACES.some((surface) => surface.activity === "Intelligence");
 
 type ShellRecord = {
   theme: string;
@@ -99,6 +107,12 @@ test.describe("KForge shell identity multi-viewport evidence (opt-in)", () => {
     // Fresh isolated workspace: offline mode, no implicit remote contact.
     const mode = await page.request.post("/api/workspace/platform/mode", { data: { mode: "offline" } });
     expect(mode.ok(), "enforcing offline evidence capture").toBeTruthy();
+    let captureProjectId = "";
+    if (NEEDS_PROJECT) {
+      const opened = await page.request.post("/api/workspace/projects/open", { data: { path: process.cwd() } });
+      expect(opened.ok(), await opened.text()).toBeTruthy();
+      captureProjectId = ((await opened.json()) as { project: { id: string } }).project.id;
+    }
 
     let fatalError: string | undefined;
     try {
@@ -121,6 +135,7 @@ test.describe("KForge shell identity multi-viewport evidence (opt-in)", () => {
           await setTheme(page, theme);
           await page.reload({ waitUntil: "domcontentloaded" });
           await expect(page.locator(".kw-topbar")).toBeVisible({ timeout: 60_000 });
+          if (captureProjectId) await setProjectContext(page, captureProjectId);
 
           for (const surface of SURFACES) {
             const base: ShellRecord = {
@@ -129,7 +144,22 @@ test.describe("KForge shell identity multi-viewport evidence (opt-in)", () => {
             };
             try {
               await selectExplorerView(page, surface.activity, surface.view);
-              // Let entrance stagger and lazy surfaces settle before capture.
+              // Ask KForge evidence must show a real structured answer, not
+              // an empty form: ask one bounded question through the real API.
+              if (surface.activity === "Intelligence" && surface.view === "Ask KForge") {
+                const ask = page.getByRole("region", { name: "Ask KForge evidence", exact: true });
+                await ask.getByLabel("Ask KForge question", { exact: true }).fill("What release blockers are supported by current local evidence?");
+                await ask.getByRole("button", { name: "Analyze project evidence", exact: true }).click();
+                await expect(ask.getByRole("article", { name: "Ask KForge answer" })).toBeVisible({ timeout: 120_000 });
+              }
+              // Let entrance stagger and lazy surfaces settle before capture:
+              // wait until no status region reports a pending load, so a shot
+              // can never publish a loading skeleton as surface evidence.
+              await page.waitForFunction(() => {
+                const region = document.querySelector(".kw-workbench");
+                if (!region) return false;
+                return !Array.from(region.querySelectorAll('[role="status"]')).some((node) => /^(Loading|Reading|Contacting|Analyzing)\b/i.test((node.textContent || "").trim()));
+              }, { timeout: 90_000 });
               await page.waitForTimeout(900);
               const file = path.join(root,
                 `${theme}-${viewport.width}x${viewport.height}-${surface.activity.toLowerCase().replace(/[^a-z]+/g, "-")}-${surface.view.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`);

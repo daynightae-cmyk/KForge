@@ -56,7 +56,7 @@ async function settleSurface(page: import("@playwright/test").Page) {
       if (!region) return false;
       const pending = Array.from(region.querySelectorAll('[role="status"]')).some((node) => {
         const text = (node.textContent || "").trim();
-        return /^Loading\b/i.test(text) || /^Reading\b/i.test(text) || /^Contacting\b/i.test(text) || /^Analyzing\b/i.test(text);
+        return /^Loading\b/i.test(text) || /^Reading\b/i.test(text) || /^Contacting\b/i.test(text) || /^Analyzing\b/i.test(text) || /^Analyzing\b/i.test((node.querySelector("button")?.textContent || "").trim());
       });
       return !pending;
     }, { timeout: SETTLE_TIMEOUT });

@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SurfaceProps, RecordRow } from "./surfaceContracts";
 import type { ProjectSummary } from "@shared/workspace";
 import { fetchJson, jsonRequest } from "./api";
 import { viewLabel } from "./navigation";
-import { StatusBadge } from "./ui";
+import { AdvancedEvidence, StatusBadge } from "./ui";
 import { SimpleFetchSurface } from "./surfaceShared";
 import { ProjectRequired } from "./ProjectStartActions";
 import {
@@ -52,16 +52,23 @@ function ProjectGraphWorkbench({ project }: { project: ProjectSummary }) {
   const [impact, setImpact] = useState<RecordRow | null>(null);
   const [impactBusy, setImpactBusy] = useState(false);
   const [impactError, setImpactError] = useState("");
+  const graphAbort = useRef<AbortController | null>(null);
 
-  useEffect(() => {
+  const readGraph = useCallback(() => {
+    graphAbort.current?.abort();
     const controller = new AbortController();
+    graphAbort.current = controller;
     setData(null);
     setMessage("");
     void fetchJson<GraphResponse>(`/api/workspace/projects/${encodeURIComponent(project.id)}/graph`, { signal: controller.signal })
       .then((next) => { if (!controller.signal.aborted) setData(next); })
       .catch((error: unknown) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Project graph evidence unavailable."); });
-    return () => controller.abort();
   }, [project.id]);
+
+  useEffect(() => {
+    readGraph();
+    return () => graphAbort.current?.abort();
+  }, [readGraph]);
 
   const nodes = useMemo(() => data?.graph?.nodes || [], [data]);
   const edges = useMemo(() => data?.graph?.edges || [], [data]);
@@ -192,6 +199,9 @@ function ProjectGraphWorkbench({ project }: { project: ProjectSummary }) {
     if (!impactTarget.trim() || impactBusy) return;
     setImpactBusy(true);
     setImpactError("");
+    // A new analysis must never leave the previous target's result on screen
+    // as if it answered the new question.
+    setImpact(null);
     try {
       const result = await fetchJson<RecordRow>(`/api/workspace/projects/${encodeURIComponent(project.id)}/graph/impact?target=${encodeURIComponent(impactTarget.trim())}`);
       setImpact(result);
@@ -209,10 +219,12 @@ function ProjectGraphWorkbench({ project }: { project: ProjectSummary }) {
   const highestModule = modules[0];
   const mostConnected = [...positioned].sort((left, right) => (degree.get(right.key) || 0) - (degree.get(left.key) || 0))[0];
 
-  return <section className="kw-simple-surface kw-graph-workbench" aria-label="Project graph evidence">
-    {message && <p className="kw-message" role="status">{message}</p>}
+  return <section className="kw-simple-surface kw-graph-workbench" aria-label="Project graph evidence" data-graph-state={message ? "READ_FAILED" : data ? "LOADED" : "LOADING"}>
+    <div className="kw-toolbar"><h2>Project Graph</h2><button onClick={readGraph}>Refresh evidence</button></div>
+    {message ? <p className="kw-message" role="alert">Project graph evidence unavailable: {message} KForge does not treat a failed read as an empty scan. Use Refresh evidence to retry.</p> : null}
     {!data && !message ? <div className="kw-graph-loading" role="status">Reading bounded local graph evidence…</div> : null}
 
+    {data ? <>
     <section className="kf-stat-grid" aria-label="Project graph summary">
       <article className="kf-stat"><span className="kf-tile"><Layers size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Files</span><strong className="kf-stat__value">{counts.files}<small> indexed</small></strong><span className="kf-stat__foot">{counts.tests} test files · {counts.configs} config</span></div></article>
       <article className="kf-stat"><span className="kf-tile"><Boxes size={18} /></span><div className="kf-stat__body"><span className="kf-stat__label">Modules</span><strong className="kf-stat__value">{modules.length}<small> groups</small></strong><span className="kf-stat__foot">Largest: {highestModule?.group || "—"}</span></div></article>
@@ -309,6 +321,7 @@ function ProjectGraphWorkbench({ project }: { project: ProjectSummary }) {
         </div>
       </aside>
     </div>
+    </> : null}
   </section>;
 }
 
@@ -325,16 +338,23 @@ function IntelligenceSurface({ view, project }: SurfaceProps) {
 function CodeUnderstanding({ project }: { project: ProjectSummary }) {
   const [data, setData] = useState<GraphResponse | null>(null);
   const [message, setMessage] = useState("");
+  const graphAbort = useRef<AbortController | null>(null);
 
-  useEffect(() => {
+  const readGraph = useCallback(() => {
+    graphAbort.current?.abort();
     const controller = new AbortController();
+    graphAbort.current = controller;
     setData(null);
     setMessage("");
     void fetchJson<GraphResponse>(`/api/workspace/projects/${encodeURIComponent(project.id)}/graph`, { signal: controller.signal })
       .then((next) => { if (!controller.signal.aborted) setData(next); })
       .catch((error: unknown) => { if (controller.signal.aborted) return; setMessage(error instanceof Error ? error.message : "Code understanding evidence unavailable."); });
-    return () => controller.abort();
   }, [project.id]);
+
+  useEffect(() => {
+    readGraph();
+    return () => graphAbort.current?.abort();
+  }, [readGraph]);
 
   const nodes = data?.graph?.nodes || [];
   const edges = data?.graph?.edges || [];
@@ -349,8 +369,9 @@ function CodeUnderstanding({ project }: { project: ProjectSummary }) {
   return <section className="kw-form-surface" aria-label="Code Understanding evidence" data-code-understanding-state={message ? "UNAVAILABLE" : data ? "SCANNED" : "LOADING"}>
     <h2>Code Understanding</h2>
     <p>Structure evidence comes from the bounded local Project Graph scan of this project. Nothing here is inferred from a remote service.</p>
-    {message && <p className="kw-message" role="status">{message}</p>}
-    {!data && !message ? <p className="kw-message">Reading bounded local structure evidence…</p> : null}
+    <div className="kw-inline-actions"><button onClick={readGraph}>Refresh evidence</button></div>
+    {message ? <p className="kw-message" role="alert">Code understanding evidence unavailable: {message} KForge does not treat a failed read as an empty scan. Use Refresh evidence to retry.</p> : null}
+    {!data && !message ? <p className="kw-message" role="status">Reading bounded local structure evidence…</p> : null}
     {data ? <>
       <div className="kw-inline-actions">
         <span className="kw-badge">Files {files.length}</span>
@@ -386,15 +407,66 @@ function CodeUnderstanding({ project }: { project: ProjectSummary }) {
 }
 
 function ImpactAnalysis({ project }: { project: ProjectSummary }) {
-  const [target, setTarget] = useState(""); const [data, setData] = useState<RecordRow | null>(null); const [message, setMessage] = useState("");
+  const [target, setTarget] = useState("");
+  const [data, setData] = useState<RecordRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
   const body = (data?.impact || {}) as RecordRow;
   const asList = (value: unknown) => Array.isArray(value) ? value : [];
-  return <section className="kw-form-surface kw-impact-surface"><h2>Impact Analysis</h2><p>Static dependents, reverse dependencies and owned symbols from the bounded project graph. Runtime behavior is never inferred.</p><div className="kw-impact-form"><input aria-label="Impact target" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="src/api/users.ts" /><button className="kf-btn kf-btn--primary" disabled={!target.trim()} onClick={() => void fetchJson<RecordRow>(`/api/workspace/projects/${encodeURIComponent(project.id)}/graph/impact?target=${encodeURIComponent(target.trim())}`).then(setData).catch((error) => setMessage(error instanceof Error ? error.message : "Impact analysis failed."))}>Analyze impact</button></div>{message && <p className="kw-message">{message}</p>}{body.target ? <div className="kw-impact-result"><div className="kw-impact-result__head"><strong>{String(body.file || body.target)}</strong><StatusBadge value={body.risk || "UNKNOWN"} /></div><div className="kw-impact-grid"><span><small>Direct</small><strong>{asList(body.directDependents).length}</strong></span><span><small>Transitive</small><strong>{asList(body.transitiveDependents).length}</strong></span><span><small>Symbols</small><strong>{asList(body.affectedSymbols).length}</strong></span><span><small>Tests</small><strong>{asList(body.relatedTests).length}</strong></span></div><p>{String(body.message || "Impact evidence returned.")}</p><pre>{JSON.stringify(data, null, 2)}</pre></div> : null}</section>;
+  const analyze = async () => {
+    if (!target.trim() || busy) return;
+    setBusy(true);
+    setMessage("");
+    // The previous target's result must never masquerade as the new answer.
+    setData(null);
+    try {
+      setData(await fetchJson<RecordRow>(`/api/workspace/projects/${encodeURIComponent(project.id)}/graph/impact?target=${encodeURIComponent(target.trim())}`));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Impact analysis failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <section className="kw-form-surface kw-impact-surface" aria-label="Impact Analysis evidence"><h2>Impact Analysis</h2><p>Static dependents, reverse dependencies and owned symbols from the bounded project graph. Runtime behavior is never inferred.</p><div className="kw-impact-form"><input aria-label="Impact target" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="src/api/users.ts" /><button className="kf-btn kf-btn--primary" disabled={!target.trim() || busy} onClick={() => void analyze()}>{busy ? "Analyzing…" : "Analyze impact"}</button></div>{busy ? <p className="kw-message" role="status">Analyzing bounded graph evidence…</p> : null}{message ? <p className="kw-message" role="alert">Impact analysis unavailable: {message} KForge does not treat a failed analysis as zero dependents.</p> : null}{body.target ? <div className="kw-impact-result"><div className="kw-impact-result__head"><strong>{String(body.file || body.target)}</strong><StatusBadge value={body.risk || "UNKNOWN"} /></div><div className="kw-impact-grid"><span><small>Direct</small><strong>{asList(body.directDependents).length}</strong></span><span><small>Transitive</small><strong>{asList(body.transitiveDependents).length}</strong></span><span><small>Symbols</small><strong>{asList(body.affectedSymbols).length}</strong></span><span><small>Tests</small><strong>{asList(body.relatedTests).length}</strong></span></div><p>{String(body.message || "Impact evidence returned.")}</p><AdvancedEvidence value={data} label="Advanced impact evidence" /></div> : null}</section>;
 }
 
 function AskKForge({ project }: { project: ProjectSummary }) {
-  const [question, setQuestion] = useState(""); const [answer, setAnswer] = useState<RecordRow | null>(null); const [message, setMessage] = useState("");
-  return <section className="kw-form-surface"><h2>Ask KForge</h2><p>Answers are bounded to redacted project evidence; deterministic rules are used when no local model is available.</p><textarea aria-label="Ask KForge question" value={question} onChange={(e) => setQuestion(e.target.value)} /><button disabled={!question.trim()} onClick={() => void fetchJson<RecordRow>(`/api/workspace/projects/${encodeURIComponent(project.id)}/ask`, jsonRequest({ question })).then(setAnswer).catch((error) => setMessage(error instanceof Error ? error.message : "Ask KForge failed."))}>Analyze project evidence</button>{message && <p className="kw-message">{message}</p>}{answer && <article className="kw-answer"><pre>{JSON.stringify(answer, null, 2)}</pre></article>}</section>;
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<RecordRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const ask = async () => {
+    if (!question.trim() || busy) return;
+    setBusy(true);
+    setMessage("");
+    // The previous question's answer must never masquerade as the new one.
+    setAnswer(null);
+    try {
+      setAnswer(await fetchJson<RecordRow>(`/api/workspace/projects/${encodeURIComponent(project.id)}/ask`, jsonRequest({ question: question.trim() })));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ask KForge failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const mode = typeof answer?.mode === "string" ? answer.mode : "";
+  const answerBody = answer?.answer;
+  const rules = answerBody && typeof answerBody === "object" ? answerBody as RecordRow : null;
+  const contextFiles = Array.isArray(answer?.contextFiles) ? answer.contextFiles.map(String) : [];
+  const risks = rules && Array.isArray(rules.topRisks) ? rules.topRisks as RecordRow[] : [];
+  const verification = rules && Array.isArray(rules.verification) ? rules.verification as RecordRow[] : [];
+  return <section className="kw-form-surface" aria-label="Ask KForge evidence"><h2>Ask KForge</h2><p>Answers are bounded to redacted project evidence; deterministic rules are used when no local model is available.</p><textarea aria-label="Ask KForge question" value={question} onChange={(e) => setQuestion(e.target.value)} /><button className="kf-btn kf-btn--primary" disabled={!question.trim() || busy} onClick={() => void ask()}>{busy ? "Analyzing…" : "Analyze project evidence"}</button>{busy ? <p className="kw-message" role="status">Analyzing bounded project evidence…</p> : null}{message ? <p className="kw-message" role="alert">Ask KForge unavailable: {message} KForge does not invent an answer when the analysis fails.</p> : null}{answer ? <article className="kw-answer" aria-label="Ask KForge answer">
+    <div className="kw-inline-actions"><StatusBadge value={mode || "UNKNOWN"} /><span className="kw-muted">{mode === "local-ai" ? `Local model ${String(answer.model || "UNKNOWN")} via ${String(answer.provider || "UNKNOWN")}` : "Deterministic scan evidence — no active local model"}</span></div>
+    {typeof rules?.notice === "string" ? <p className="kw-muted">{rules.notice}</p> : null}
+    {typeof answerBody === "string" ? <p className="kw-answer__text">{answerBody}</p> : null}
+    {rules ? <>
+      <div className="kw-inline-actions"><span className="kw-badge">Project {String(rules.project || project.name)}</span><span className="kw-badge">Health {String(rules.health ?? "UNKNOWN")}</span></div>
+      <section aria-label="Top evidence-backed risks"><h3>Top risks from the current scan</h3>{risks.length ? <ul className="kw-answer__list">{risks.map((risk, index) => <li key={String(risk.title || index)}><StatusBadge value={risk.severity} /> <strong>{String(risk.title || "UNKNOWN")}</strong><small>{String(risk.file || "no file")} · {String(risk.source || "UNKNOWN")}{risk.suggestion ? ` · ${String(risk.suggestion)}` : ""}</small></li>)}</ul> : <p className="kw-muted">The current scan recorded no ranked risk evidence.</p>}</section>
+      <section aria-label="Verification evidence"><h3>Verification evidence</h3>{verification.length ? <ul className="kw-answer__list">{verification.map((entry, index) => <li key={String(entry.check || index)}><strong>{String(entry.check || "UNKNOWN")}</strong> <StatusBadge value={entry.status} /><small>{String(entry.evidence || "No evidence detail recorded.")}</small></li>)}</ul> : <p className="kw-muted">No verification check has recorded evidence yet.</p>}</section>
+    </> : null}
+    <p className="kw-muted">Bounded context: {contextFiles.length} redacted project file(s){contextFiles.length ? ` — ${contextFiles.slice(0, 8).join(", ")}${contextFiles.length > 8 ? ", …" : ""}` : ""}.</p>
+    <AdvancedEvidence value={answer} label="Advanced answer evidence" />
+  </article> : null}</section>;
 }
 
 export default IntelligenceSurface;

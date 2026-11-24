@@ -108,6 +108,10 @@ describe("KForge contextual workbench architecture", () => {
   it("uses surfaceShared as the canonical owner of generic fetch UI while specialized Developer and System workbenches avoid that fallback", () => {
     const shared = sharedHelperSource();
     expect(shared).toMatch(/export\s+function\s+SimpleFetchSurface\b/);
+    // A failed read must be a refusal (role=alert), never passive status text
+    // beside stale evidence, and never an invented empty result.
+    expect(shared).toContain('role="alert"');
+    expect(shared).toContain("does not treat a failed read as empty evidence");
     const developer = developerSurfaceSource();
     expect(developer).not.toMatch(/SimpleFetchSurface/);
     const system = systemSurfaceSource();
@@ -119,6 +123,25 @@ describe("KForge contextual workbench architecture", () => {
     expect(remote).toContain('"pull-requests", "issues", "actions", "releases"');
     const shell = workbenchSource();
     expect(shell).not.toMatch(/function\s+SimpleFetchSurface\b/);
+  });
+
+  it("keeps Intelligence evidence honest: failed reads are refusals and Ask KForge answers are structured, not raw JSON", () => {
+    const intelligence = intelligenceSurfaceSource();
+    // Graph and Code Understanding must never render zeroed stats as if a
+    // failed read were an empty scan; both offer explicit refresh recovery.
+    expect(intelligence).toContain('data-graph-state={message ? "READ_FAILED" : data ? "LOADED" : "LOADING"}');
+    expect(intelligence).toContain("does not treat a failed read as an empty scan");
+    expect(intelligence).toContain('role="alert"');
+    expect(intelligence).toContain("Refresh evidence");
+    // Ask KForge renders the real /ask response as structured evidence with
+    // provenance; raw JSON is demoted to advanced evidence, never primary UX.
+    expect(intelligence).toContain("/ask`, jsonRequest");
+    expect(intelligence).toContain("Advanced answer evidence");
+    expect(intelligence).toContain("does not invent an answer when the analysis fails");
+    expect(intelligence).not.toMatch(/<article className="kw-answer"><pre>/);
+    // A new analysis clears the previous target's/question's result.
+    expect(intelligence).toMatch(/setImpact\(null\)/);
+    expect(intelligence).toMatch(/setAnswer\(null\)/);
   });
 
   it("routes Online selection through onInspectorContext and the lazy CanonicalInspector", () => {
