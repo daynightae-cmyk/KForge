@@ -64,6 +64,9 @@ CLAUDE.md
 
 # Hermes temporary recovery artifacts
 /kforge-recovery-*
+
+# Temporary publishing directories (not part of KForge source)
+/kforge-release-publish-*/
 /*.log
 /phase*-*.log
 /typecheck-*.log
